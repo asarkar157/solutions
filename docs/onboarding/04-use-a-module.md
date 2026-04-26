@@ -75,5 +75,5 @@ For a **large** composition (many integrations and agents), see the runnable exa
 
 ---
 
-**Next:** [Step 5 — Go deeper]({% link onboarding/05-go-deeper.md %})  
-**Previous:** [Step 3 — Run checks]({% link onboarding/03-run-checks.md %})
+**Next:** [Step 5 — Go deeper]({% include doc_url.html path="onboarding/05-go-deeper.md" %})  
+**Previous:** [Step 3 — Run checks]({% include doc_url.html path="onboarding/03-run-checks.md" %})

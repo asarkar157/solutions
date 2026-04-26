@@ -53,5 +53,5 @@ You should see targets such as `fmt`, `fmt-check`, `opa-check`, `validate`, and 
 
 ---
 
-**Next:** [Step 3 — Run checks]({% link onboarding/03-run-checks.md %})  
-**Previous:** [Step 1 — Orientation]({% link onboarding/01-orientation.md %})
+**Next:** [Step 3 — Run checks]({% include doc_url.html path="onboarding/03-run-checks.md" %})  
+**Previous:** [Step 1 — Orientation]({% include doc_url.html path="onboarding/01-orientation.md" %})

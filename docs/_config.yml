@@ -12,6 +12,8 @@ theme: minima
 # Change url/baseurl/repository if you fork or rename the repo.
 url: "https://appcd-dev.github.io"
 baseurl: "/solutions"
+# Project Pages need baseurl on internal paths: include doc_url.html (see _includes/doc_url.html).
+# The Liquid link tag omits baseurl and breaks links on github.io/<repo>/.
 
 # Used by jekyll-github-metadata and Liquid (e.g. module source examples).
 repository: appcd-dev/solutions

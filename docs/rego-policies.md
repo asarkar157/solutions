@@ -54,9 +54,9 @@ For language reference, see the official **[Rego policy language](https://www.op
 ## Authoring policies in this repository
 
 - **Examples to learn from:** [`modules/aios-policies/policies/`]({{ site.github.repository_url }}/blob/main/modules/aios-policies/policies/) and per-module folders such as [`modules/aios-agent-aws-sre/policies/`]({{ site.github.repository_url }}/blob/main/modules/aios-agent-aws-sre/policies/).
-- **Local checks:** Install **OPA** as in [Step 2 — Your machine]({% link onboarding/02-your-machine.md %}), then run **`make opa-check`** and **`make opa-fmt`** ([Step 3 — Run checks]({% link onboarding/03-run-checks.md %})).
+- **Local checks:** Install **OPA** as in [Step 2 — Your machine]({% include doc_url.html path="onboarding/02-your-machine.md" %}), then run **`make opa-check`** and **`make opa-fmt`** ([Step 3 — Run checks]({% include doc_url.html path="onboarding/03-run-checks.md" %})).
 - **One file at a time:** `make opa-check` validates each **`.rego` file on its own**, similar to how standalone policies are uploaded.
 
 ## Related onboarding
 
-- [Policies (Rego) — repository layout and CI]({% link onboarding/05-go-deeper.md %}#policies-rego)
+- [Policies (Rego) — repository layout and CI]({% include doc_url.html path="onboarding/05-go-deeper.md" anchor="policies-rego" %})

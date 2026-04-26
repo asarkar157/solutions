@@ -10,7 +10,7 @@ parent: Onboarding
 
 ## What is this repository?
 
-**AIOS Modules** is a collection of **Terraform modules** used to configure **AIOS** (AI operations) on the **StackGen** platform: agents, integrations, policies (Rego), and related resources. Modules are composed in layers (foundation → integrations → agents; see [Architecture]({% link architecture.md %})).
+**AIOS Modules** is a collection of **Terraform modules** used to configure **AIOS** (AI operations) on the **StackGen** platform: agents, integrations, policies (Rego), and related resources. Modules are composed in layers (foundation → integrations → agents; see [Architecture]({% include doc_url.html path="architecture.md" %})).
 
 ## Two common paths
 
@@ -26,9 +26,9 @@ parent: Onboarding
 - **Terraform** `>= 1.5` (CI uses a recent 1.9.x).
 - **LLM provider keys** as required by the modules you enable (see root README).
 
-You do **not** need all of that on day one to finish [step 2]({% link onboarding/02-your-machine.md %})—only Terraform (and Git) to clone.
+You do **not** need all of that on day one to finish [step 2]({% include doc_url.html path="onboarding/02-your-machine.md" %})—only Terraform (and Git) to clone.
 
 ---
 
-**Next:** [Step 2 — Your machine]({% link onboarding/02-your-machine.md %})  
-**Back:** [Onboarding hub]({% link onboarding/index.md %})
+**Next:** [Step 2 — Your machine]({% include doc_url.html path="onboarding/02-your-machine.md" %})  
+**Back:** [Onboarding hub]({% include doc_url.html path="onboarding/index.md" %})

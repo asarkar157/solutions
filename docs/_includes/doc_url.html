@@ -1,0 +1,8 @@
+{%- comment -%}
+  Internal page URL with site.baseurl (project Pages). Replaces raw {% link %} which omits baseurl.
+  Usage: {% include doc_url.html path="onboarding/01-orientation.md" %}
+         {% include doc_url.html path="onboarding/05-go-deeper.md" anchor="policies-rego" %}
+{%- endcomment -%}
+{%- assign doc_url_page = site.pages | where: "path", include.path | first -%}
+{%- if doc_url_page -%}{{ doc_url_page.url | relative_url }}{%- if include.anchor -%}#{{- include.anchor -}}{%- endif -%}
+{%- endif -%}

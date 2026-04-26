@@ -62,5 +62,5 @@ Removes `.terraform` directories under `modules/` and `examples/` from local `in
 
 ---
 
-**Next:** [Step 4 — Use a module]({% link onboarding/04-use-a-module.md %})  
-**Previous:** [Step 2 — Your machine]({% link onboarding/02-your-machine.md %})
+**Next:** [Step 4 — Use a module]({% include doc_url.html path="onboarding/04-use-a-module.md" %})  
+**Previous:** [Step 2 — Your machine]({% include doc_url.html path="onboarding/02-your-machine.md" %})

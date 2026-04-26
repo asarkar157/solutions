@@ -15,7 +15,7 @@ This guide walks you through migrating from the monolithic `terraform/guild/main
 
 1. Ensure you have **OpenTofu or Terraform** `>= 1.5` installed (this repository pins OpenTofu in [`.opentofu-version`]({{ site.github.repository_url }}/blob/main/.opentofu-version) for CI)
 2. Back up your existing Terraform state
-3. Review the [architecture diagram]({% link architecture.md %})
+3. Review the [architecture diagram]({% include doc_url.html path="architecture.md" %})
 
 ## Step 1: Configure the Provider (Root Module)
 
