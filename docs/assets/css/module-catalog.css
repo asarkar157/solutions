@@ -1,0 +1,93 @@
+/* ── Module Catalog ─────────────────────────────────────── */
+
+/* Hero */
+.catalog-hero{text-align:center;padding:2.5rem 1rem 1.5rem}
+.catalog-hero h1{font-size:2.2rem;margin:0 0 .5rem;background:linear-gradient(135deg,#6366f1,#8b5cf6,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.catalog-subtitle{color:#64748b;max-width:680px;margin:0 auto;line-height:1.6}
+
+/* Toolbar */
+.catalog-toolbar{max-width:1200px;margin:0 auto 1.5rem;padding:0 1rem}
+.catalog-search{position:relative;margin-bottom:.75rem}
+.catalog-search input{width:100%;padding:.65rem .65rem .65rem 2.4rem;border:1px solid #e2e8f0;border-radius:8px;font-size:.95rem;background:#f8fafc;transition:border-color .2s,box-shadow .2s}
+.catalog-search input:focus{outline:none;border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.15)}
+.search-icon{position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none}
+
+/* Typeahead Tags */
+.tag-typeahead{margin-bottom:1rem;position:relative}
+.tag-input-container{position:relative;margin-bottom:0.5rem}
+.tag-input-container input{width:100%;padding:0.6rem 0.6rem 0.6rem 1rem;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;background:#fff;transition:all 0.2s}
+.tag-input-container input:focus{outline:none;border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.15)}
+.tag-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:20;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05)}
+.tag-dropdown.hidden{display:none}
+.tag-dropdown-item{padding:0.6rem 1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:0.85rem;color:#334155;border-bottom:1px solid #f8fafc}
+.tag-dropdown-item:last-child{border-bottom:none}
+.tag-dropdown-item:hover,.tag-dropdown-item.focused{background:#f8fafc;color:#7c3aed}
+.tag-dropdown-item .count{font-size:0.75rem;color:#94a3b8}
+.active-tags{display:flex;flex-wrap:wrap;gap:0.4rem}
+.active-tag-pill{display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem 0.3rem 0.8rem;border-radius:20px;background:#7c3aed;color:#fff;font-size:0.8rem;box-shadow:0 2px 4px rgba(124,58,237,0.2)}
+.active-tag-pill button{background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;padding:0;font-size:1.1rem;line-height:1;display:flex;align-items:center;justify-content:center;transition:color 0.15s}
+.active-tag-pill button:hover{color:#fff}
+
+/* Layers */
+.catalog-layer{max-width:1200px;margin:0 auto 2rem;padding:0 1rem}
+.catalog-layer.hidden{display:none}
+.layer-header{font-size:1.3rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem}
+.layer-badge{font-size:.7rem;font-weight:600;padding:.2rem .55rem;border-radius:4px;color:#fff;text-transform:uppercase;letter-spacing:.04em}
+.layer-badge.l0{background:#0ea5e9}.layer-badge.l1{background:#f59e0b}.layer-badge.l2{background:#8b5cf6}
+
+/* Grid */
+.module-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
+
+/* Card */
+.module-card{border:1px solid #e2e8f0;border-radius:12px;padding:1.25rem;background:#fff;transition:transform .15s,box-shadow .15s;display:flex;flex-direction:column}
+.module-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.module-card.hidden{display:none}
+.card-top{display:flex;align-items:flex-start;gap:.75rem;margin-bottom:.6rem}
+.card-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+.card-title-group{flex:1;min-width:0}
+.card-title{font-size:1rem;font-weight:600;margin:0;line-height:1.3;color:#1e293b}
+.card-module-name{font-size:.75rem;font-family:monospace;color:#8b5cf6;margin-top:2px;word-break:break-all}
+.card-desc{font-size:.85rem;color:#64748b;line-height:1.5;margin-bottom:.75rem;flex:1}
+.card-tags{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.75rem}
+.card-tag{font-size:.7rem;padding:.15rem .45rem;border-radius:4px;background:#f1f5f9;color:#475569}
+
+/* Source URL row */
+.card-source{display:flex;align-items:center;gap:.4rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:.35rem .5rem;font-size:.72rem;font-family:monospace;color:#334155;overflow:hidden;margin-bottom:.6rem}
+.card-source code{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copy-btn{flex-shrink:0;background:none;border:none;cursor:pointer;color:#64748b;padding:2px;border-radius:4px;transition:color .15s}
+.copy-btn:hover{color:#7c3aed}
+.copy-btn.copied{color:#22c55e}
+
+/* Expandable details */
+.card-details{overflow:hidden;max-height:0;transition:max-height .3s ease}
+.card-details.open{max-height:1200px}
+.card-details-inner{padding-top:.5rem;border-top:1px solid #f1f5f9}
+.detail-section{margin-bottom:.6rem}
+.detail-section h4{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin:0 0 .3rem}
+.var-table{width:100%;font-size:.78rem;border-collapse:collapse}
+.var-table th{text-align:left;padding:.25rem .4rem;color:#64748b;border-bottom:1px solid #e2e8f0;font-weight:600}
+.var-table td{padding:.25rem .4rem;border-bottom:1px solid #f1f5f9;color:#334155;word-break:break-word}
+.var-table td code{font-size:.72rem;background:#f1f5f9;padding:1px 4px;border-radius:3px}
+.var-required{color:#ef4444;font-weight:700;font-size:.7rem}
+.var-optional{color:#22c55e;font-size:.7rem}
+
+/* Usage snippet */
+.usage-block{position:relative;background:#0f172a;border-radius:6px;padding:.85rem 1rem;margin-top:.3rem;overflow-x:auto;border:1px solid #334155}
+.usage-block pre{margin:0;color:#f1f5f9;font-size:.8rem;line-height:1.6;white-space:pre;-webkit-text-size-adjust:100%}
+.usage-copy{position:absolute;top:.5rem;right:.5rem;background:rgba(255,255,255,.15);border:none;color:#fff;cursor:pointer;padding:4px 10px;border-radius:4px;font-size:.72rem;font-weight:500}
+.usage-copy:hover{background:rgba(255,255,255,.25)}
+
+/* Toggle button */
+.card-toggle{display:inline-flex;align-items:center;gap:.3rem;background:none;border:none;font-size:.78rem;color:#7c3aed;cursor:pointer;padding:0;font-weight:500}
+.card-toggle:hover{text-decoration:underline}
+.card-toggle .arrow{transition:transform .2s;display:inline-block}
+.card-toggle .arrow.open{transform:rotate(90deg)}
+
+/* No results */
+.no-results{text-align:center;padding:3rem;color:#94a3b8;font-size:1rem}
+
+/* Responsive */
+@media(max-width:600px){
+  .module-grid{grid-template-columns:1fr}
+  .catalog-hero h1{font-size:1.6rem}
+}
