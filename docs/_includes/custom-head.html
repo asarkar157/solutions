@@ -1,0 +1,50 @@
+{% comment %}
+  Fenced ```mermaid blocks become Rouge/kramdown <pre><code class="language-mermaid">.
+  GitHub Pages does not ship Mermaid; load it here and replace those blocks at runtime.
+{% endcomment %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  function upgradeMermaidBlocks() {
+    var codes = document.querySelectorAll('pre code.language-mermaid');
+    if (!codes.length) {
+      return [];
+    }
+    var nodes = [];
+    codes.forEach(function (code) {
+      var pre = code.parentElement;
+      if (!pre || pre.tagName !== 'PRE') {
+        return;
+      }
+      var graph = (code.textContent || '').replace(/\u00a0/g, ' ').trim();
+      var wrap = pre.closest('div.highlighter-rouge') || pre;
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = graph;
+      wrap.parentNode.replaceChild(div, wrap);
+      nodes.push(div);
+    });
+    return nodes;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof mermaid === 'undefined') {
+      return;
+    }
+    var nodes = upgradeMermaidBlocks();
+    if (!nodes.length) {
+      return;
+    }
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'neutral',
+      flowchart: { htmlLabels: true, useMaxWidth: true }
+    });
+    mermaid.run({ nodes: nodes });
+  });
+})();
+</script>
+<style>
+  .mermaid { margin: 1rem 0; overflow-x: auto; }
+  .mermaid svg { max-width: 100%; height: auto; }
+</style>

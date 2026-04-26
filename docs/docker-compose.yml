@@ -1,0 +1,18 @@
+# Local GitHub Pages–style preview (github-pages gem + Minima).
+# From this directory: docker compose up --build
+# Site: http://127.0.0.1:4000/solutions/  (see baseurl in _config.yml)
+
+services:
+  jekyll:
+    build: .
+    ports:
+      - "4000:4000"
+      - "35729:35729"
+    volumes:
+      - .:/srv/jekyll
+      - jekyll_bundle:/usr/local/bundle
+    environment:
+      JEKYLL_ENV: development
+
+volumes:
+  jekyll_bundle:

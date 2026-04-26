@@ -1,4 +1,10 @@
-# Optional: preview the site locally.
+# Preview locally (native Ruby):
 #   cd docs && bundle install && bundle exec jekyll serve --livereload
+#
+# Preview with Docker (matches GitHub Pages gem set):
+#   cd docs && docker compose up --build
+#   Open http://127.0.0.1:4000/solutions/ (path matches site.baseurl in _config.yml)
 source "https://rubygems.org"
 gem "github-pages", group: :jekyll_plugins
+# Ruby 3+ no longer includes WEBrick; Jekyll needs it for `jekyll serve`.
+gem "webrick", "~> 1.8"
