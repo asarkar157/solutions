@@ -24,7 +24,7 @@ help:
 	@echo "  make check          fmt-check, opa-fmt-check, opa-check, validate"
 	@echo "  make clean          remove .terraform caches under modules/ and examples/"
 	@echo ""
-	@echo "validate needs network + StackGen registry token (TF_TOKEN_releases_stackgen_com; OpenTofu reads the same env names as Terraform)."
+	@echo "validate needs network; see README if dev_overrides force a minimal CLI config (then set TF_TOKEN_releases_stackgen_com)."
 
 fmt:
 	$(TF) fmt -recursive

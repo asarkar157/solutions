@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "1 — Orientation"
-permalink: /onboarding/step-1/
+permalink: step-1/
 nav_order: 10
 parent: Onboarding
 ---

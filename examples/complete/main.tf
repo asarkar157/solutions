@@ -9,7 +9,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.0"
+      version = "~> 0.1.0"
     }
   }
 }
@@ -176,7 +176,7 @@ output "sre_workflow_names" {
 
 output "marketing_agent_names" {
   description = "Names of marketing agents (multi-persona module)"
-  value         = module.marketing.agent_names
+  value       = module.marketing.agent_names
 }
 
 output "compliance_agent_name" {

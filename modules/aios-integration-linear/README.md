@@ -6,7 +6,7 @@ Linear project management integration via OAuth. Connects directly to `mcp.linea
 
 ```hcl
 module "linear_integration" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-integration-linear"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-linear"
 
   credential_provider_id = var.linear_oauth_provider_id
 }

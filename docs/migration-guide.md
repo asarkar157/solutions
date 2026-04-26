@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Migration Guide
-permalink: /migration-guide/
+permalink: migration-guide/
 nav_order: 30
 ---
 
@@ -15,7 +15,7 @@ This guide walks you through migrating from the monolithic `terraform/guild/main
 
 1. Ensure you have **OpenTofu or Terraform** `>= 1.5` installed (this repository pins OpenTofu in [`.opentofu-version`]({{ site.github.repository_url }}/blob/main/.opentofu-version) for CI)
 2. Back up your existing Terraform state
-3. Review the [architecture diagram](architecture.md)
+3. Review the [architecture diagram]({% link architecture.md %})
 
 ## Step 1: Configure the Provider (Root Module)
 
@@ -26,7 +26,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.0"
+      version = "~> 0.1.0"
     }
   }
 }
@@ -49,7 +49,7 @@ resource "sg_guild_model" "gpt4o" { ... }
 **After (modular):**
 ```hcl
 module "foundation" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-foundation"
+  source = "github.com/appcd-dev/solutions//modules/aios-foundation"
 
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
@@ -74,7 +74,7 @@ resource "sg_policy" "sre_remediation" { ... }
 **After:**
 ```hcl
 module "policies" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-policies"
+  source = "github.com/appcd-dev/solutions//modules/aios-policies"
 
   # Disable policies you don't need
   create_policies = {
@@ -95,7 +95,7 @@ resource "sg_guild_integration" "azure_production" { ... }
 **After:**
 ```hcl
 module "azure_integration" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-integration-azure"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-azure"
 
   azure_subscription_id = var.azure_subscription_id
 }
@@ -126,7 +126,7 @@ module "sre" {
 **After:**
 ```hcl
 module "sre" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-agent-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = module.policies.policy_ids

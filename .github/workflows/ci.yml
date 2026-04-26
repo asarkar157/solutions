@@ -1,6 +1,6 @@
 # OpenTofu fmt, OPA (fmt + check), and OpenTofu validate per module/example root.
 # HashiCorp Terraform is interchangeable (same commands). Version: .opentofu-version
-# Prerequisites, secrets, and Make targets: repository README → "Local verification", "Continuous integration".
+# Prerequisites and Make targets: repository README → "Local verification", "Continuous integration".
 name: CI
 
 on:
@@ -63,8 +63,6 @@ jobs:
   opentofu-validate:
     name: OpenTofu validate
     runs-on: ubuntu-latest
-    env:
-      TF_TOKEN_releases_stackgen_com: ${{ secrets.STACKGEN_TERRAFORM_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v2
@@ -74,9 +72,5 @@ jobs:
       - name: Validate all module and example roots
         run: |
           set -euo pipefail
-          if [[ -z "${TF_TOKEN_releases_stackgen_com:-}" ]]; then
-            echo "::warning::Skipping OpenTofu validate: STACKGEN_TERRAFORM_REGISTRY_TOKEN is not set (fork PR or configure this secret on the repository)."
-            exit 0
-          fi
           chmod +x ./scripts/terraform-validate-all.sh
           ./scripts/terraform-validate-all.sh

@@ -18,7 +18,7 @@ Uses a user-provided MCP server image (BYOI pattern) wrapping the official mcp-c
 
 ```hcl
 module "clickhouse_inspector" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-agent-clickhouse-inspector"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-clickhouse-inspector"
 
   model_names = {
     gpt4o         = module.foundation.model_names.gpt4o

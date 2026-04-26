@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "3 — Run checks"
-permalink: /onboarding/step-3/
+permalink: step-3/
 nav_order: 12
 parent: Onboarding
 ---
@@ -33,7 +33,7 @@ make fmt
 `make validate` runs **`tofu init`** and **`tofu validate`** in each module and example when OpenTofu is installed; otherwise it uses **`terraform`** (same flags). That requires:
 
 - **Network** access to download providers.
-- A **token** for the StackGen provider registry host **`releases.stackgen.com`** (same as CI).
+- A **token** or other credentials for **`releases.stackgen.com`** if your network or registry policy requires them (see the repository README).
 
 Set the environment variable (works for **OpenTofu and Terraform**):
 
@@ -50,7 +50,7 @@ Details and alternatives (for example `~/.terraformrc` / OpenTofu CLI config) ar
 make check
 ```
 
-This runs format checks, OPA checks, and `validate`. It is expected to **fail** on `validate` until a valid registry token is set.
+This runs format checks, OPA checks, and `validate`. If `validate` fails on provider download, configure registry credentials as in the README.
 
 ## 4. Clean up after experiments
 

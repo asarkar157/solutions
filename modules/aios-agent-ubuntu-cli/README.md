@@ -15,7 +15,7 @@ Dedicated Linux OS diagnostic agent for read-only triage: network connectivity, 
 
 ```hcl
 module "ubuntu_cli" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-agent-ubuntu-cli"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-ubuntu-cli"
 
   model_names = {
     gpt4o         = module.foundation.model_names.gpt4o

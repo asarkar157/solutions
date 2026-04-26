@@ -6,6 +6,6 @@ Generic Ubuntu MCP shell for OS-level diagnostics (curl, ping, dig, journalctl, 
 
 ```hcl
 module "ubuntu_integration" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-integration-ubuntu"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-ubuntu"
 }
 ```

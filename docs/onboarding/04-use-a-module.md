@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "4 — Use a module"
-permalink: /onboarding/step-4/
+permalink: step-4/
 nav_order: 13
 parent: Onboarding
 ---
@@ -57,7 +57,7 @@ provider "sg" {
 }
 ```
 
-Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.0`** (install **v0.1.0** or newer from `releases.stackgen.com`).
+Each module’s `required_providers` pins the StackGen provider at **`~> 0.1.0`** (any **v0.1.x** from `releases.stackgen.com`, not **v0.2** or newer).
 
 ## 4. Plan
 

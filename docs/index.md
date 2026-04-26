@@ -22,14 +22,6 @@ You do **not** need to finish everything at once. Use the steps in order, or jum
 | [Architecture]({% link architecture.md %}) | Layer diagram and how modules relate. |
 | [Repository README]({{ site.github.repository_url }}/blob/main/README.md) | Full reference: modules table, CI, `Makefile`, prerequisites. |
 | [Runnable example]({{ site.github.repository_url }}/blob/main/examples/complete/) | Full stack under `examples/complete/`. |
-
----
-
-## Enable this site on GitHub (maintainers)
-
-1. In GitHub: **Settings → Pages**.
-2. **Build and deployment**: source **Deploy from a branch** (or keep default if your org uses GitHub Actions for Pages).
-3. **Branch**: your default branch (e.g. `main`), folder **`/docs`**.
-4. Save. After the build finishes, open the green **Visit site** URL (often `https://<org>.github.io/<repo>/`).
+| [Writing Rego policies]({% link rego-policies.md %}) | Plain-language guide to policy evaluation, sample AIOS `input` JSON, OPA Playground, and repo examples. |
 
 If links or styles look wrong, edit **`baseurl`** and **`url`** in [`_config.yml`]({{ site.github.repository_url }}/blob/main/docs/_config.yml) so they match your org, site type, and repository name.

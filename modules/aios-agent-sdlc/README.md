@@ -28,7 +28,7 @@ Multi-channel request processing (Jira/Slack/Web): analyze → create tracking i
 
 ```hcl
 module "sdlc" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-agent-sdlc"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-sdlc"
 
   model_names = {
     gpt4o         = module.foundation.model_names.gpt4o

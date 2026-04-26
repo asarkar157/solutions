@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "2 — Your machine"
-permalink: /onboarding/step-2/
+permalink: step-2/
 nav_order: 11
 parent: Onboarding
 ---
@@ -36,10 +36,10 @@ opa version
 
 ```bash
 git clone {{ site.github.repository_url }}.git
-cd aios-modules   # or your checkout folder name
+cd solutions   # or your checkout folder name
 ```
 
-If your clone directory is not `aios-modules`, use that name in the commands below.
+If your clone directory is not `solutions`, use that name in the commands below.
 
 ## 4. See available commands
 

@@ -10,7 +10,7 @@ theme: minima
 # Project pages: https://<org>.github.io/<repository-name>/
 # "baseurl" must be "/<repository-name>" (leading slash, no trailing slash).
 # Change url/baseurl/repository if you fork or rename the repo.
-url: "https://stackgen-demo.github.io"
+url: "https://appcd-dev.github.io"
 baseurl: "/solutions"
 
 # Used by jekyll-github-metadata and Liquid (e.g. module source examples).
@@ -23,7 +23,10 @@ header_pages:
   - index.md
   - onboarding/index.md
   - architecture.md
+  - rego-policies.md
   - migration-guide.md
 
 markdown: kramdown
+# Global pretty URLs. In page front matter, do not use a leading slash on `permalink`
+# (e.g. `architecture/`), or GitHub project Pages will drop `baseurl` and links 404.
 permalink: pretty

@@ -1,0 +1,3 @@
+# Used only by scripts/terraform-validate-all.sh (via TF_CLI_CONFIG_FILE).
+# Omit dev_overrides from ~/.terraformrc so validate matches CI and published
+# provider schemas (see README / script header). Add other CLI settings here if needed.

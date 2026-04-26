@@ -2,7 +2,7 @@
 
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-1.9.x-FFEC00?logo=opentofu&logoColor=black)](https://opentofu.org/)
 [![Terraform](https://img.shields.io/badge/Terraform-interchangeable-blue.svg)](https://www.terraform.io/)
-[![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://github.com/stackgen-demo/terraform-provider-stackgen)
+[![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://github.com/appcd-dev/terraform-provider-stackgen)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![CI](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml)
 
@@ -14,7 +14,7 @@ Step-by-step docs for **new users and contributors** live under [`docs/`](docs/)
 
 1. **Enable Pages:** GitHub **Settings → Pages →** build from the default branch, folder **`/docs`** ([publishing source docs](https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)).
 2. **Open the site** after the first build (GitHub shows the URL; it is usually `https://<org>.github.io/<repo>/`).
-3. **Start onboarding:** [`/onboarding/`](https://stackgen-demo.github.io/solutions/onboarding/) — if your repo name or org is different, use your Pages URL and update `baseurl` / `repository` in [`docs/_config.yml`](docs/_config.yml) so links stay correct.
+3. **Start onboarding:** [`/onboarding/`](https://appcd-dev.github.io/solutions/onboarding/) — if your repo name or org is different, use your Pages URL and update `baseurl` / `repository` in [`docs/_config.yml`](docs/_config.yml) so links stay correct.
 
 Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` (see [`docs/Gemfile`](docs/Gemfile)).
 
@@ -169,12 +169,12 @@ make check            # fmt-check + opa-fmt-check + opa-check + validate
 make clean            # remove .terraform caches under modules/ and examples/
 ```
 
-**Registry authentication (required for `make validate` and the validate CI job):** modules download the StackGen provider from `releases.stackgen.com`. Set a token so the CLI can authenticate, for example:
+**Registry authentication (for local `make validate` if your environment requires it):** modules download the StackGen provider from `releases.stackgen.com`. CI does not set a GitHub Actions secret for the registry. Locally, if `init` cannot reach the provider, set credentials for that hostname, for example:
 
 - Environment variable: `export TF_TOKEN_releases_stackgen_com="<token>"` — same variable name for **OpenTofu and Terraform** ([OpenTofu credentials](https://opentofu.org/docs/cli/config/config-file/#credentials-1), [Terraform equivalent](https://developer.hashicorp.com/terraform/cli/config/config-file#environment-variables)).
 - Credentials block for hostname `releases.stackgen.com` in the CLI config file (`~/.terraformrc` is honored by both; OpenTofu also documents [`tofu` CLI config](https://opentofu.org/docs/cli/config/config-file/)).
 
-Without a token, **`tofu init` / `terraform init`** fails when resolving the `sg` provider.
+**`make validate` / [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh):** if **`dev_overrides`** appear in the active CLI config (`TF_CLI_CONFIG_FILE` when set, otherwise `~/.terraformrc`), the script switches to a minimal repo `TF_CLI_CONFIG_FILE` so validate uses **published** providers (same as CI) instead of a mismatched local build (for example missing `sg_guild_integration.id`, or an older `provider "sg"` schema than `stackgen_url` / `stackgen_token`). In that mode, set **`TF_TOKEN_releases_stackgen_com`** for registry access—credential blocks in `~/.terraformrc` are not read. To keep your normal CLI config, run **`AIOS_VALIDATE_RESPECT_HOMERC=1`**. To always use the minimal config, run **`AIOS_VALIDATE_USE_MINIMAL_CLI_CONFIG=1`**.
 
 ## Continuous integration
 
@@ -186,14 +186,12 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 | **OPA** | Install OPA; fail if any `.rego` needs `opa fmt`; run [`scripts/opa-check-all.sh`](scripts/opa-check-all.sh) (`opa check --v1-compatible` per file — policies are not one combined bundle). |
 | **OpenTofu validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) runs **`tofu`** (or **`terraform`** if only that is installed) in every Terraform root under `modules/` and `examples/`. |
 
-**Repository secret (organization / upstream repo):** add **`STACKGEN_TERRAFORM_REGISTRY_TOKEN`** in GitHub → *Settings → Secrets and variables → Actions*. The workflow maps it to `TF_TOKEN_releases_stackgen_com` so **`tofu init`** can reach `releases.stackgen.com`. If the secret is missing (for example on a fork pull request), the validate step is **skipped** with a warning so format and OPA jobs can still pass.
-
 ## 🔧 Prerequisites
 
 **When consuming these modules in your own stack:**
 
 - **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.0` from `releases.stackgen.com`
+- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `~> 0.1.0` from `releases.stackgen.com`
 - LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License

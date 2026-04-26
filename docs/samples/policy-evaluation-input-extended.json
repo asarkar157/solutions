@@ -1,0 +1,33 @@
+{
+  "agent": {
+    "id": "supply-chain-agent",
+    "name": "supply-chain-agent",
+    "tags": []
+  },
+  "timestamp": "2026-04-26T15:10:00Z",
+  "tool": {
+    "name": "run_shell",
+    "arguments": {
+      "command": "npm audit --json"
+    }
+  },
+  "reason": "Verify dependencies after manifest change.",
+  "environment": {
+    "owner_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+  },
+  "skill": {
+    "skill_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "skill_name": "secure-build-hygiene",
+    "source_id": "8d3e6679-7425-40de-944b-e07fc1f90ae8",
+    "trust_status": "approved",
+    "checksum": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  },
+  "policy_data": {
+    "allowed_tools": ["run_shell", "web_search"],
+    "context": {
+      "freeze_window_active": false,
+      "service_tier": "tier-1",
+      "environment": "staging"
+    }
+  }
+}

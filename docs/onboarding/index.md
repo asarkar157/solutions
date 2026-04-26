@@ -1,7 +1,6 @@
 ---
 layout: page
 title: Onboarding
-permalink: /onboarding/
 nav_order: 2
 ---
 
