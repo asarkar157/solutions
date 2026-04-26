@@ -38,13 +38,29 @@
     mermaid.initialize({
       startOnLoad: false,
       theme: 'neutral',
-      flowchart: { htmlLabels: true, useMaxWidth: true }
+      // useMaxWidth: false keeps the native diagram scale so labels stay readable;
+      // horizontal scroll is provided by .mermaid { overflow-x: auto } below.
+      flowchart: { htmlLabels: true, useMaxWidth: false },
+      themeVariables: {
+        fontSize: '18px'
+      }
     });
     mermaid.run({ nodes: nodes });
   });
 })();
 </script>
 <style>
-  .mermaid { margin: 1rem 0; overflow-x: auto; }
-  .mermaid svg { max-width: 100%; height: auto; }
+  .mermaid {
+    margin: 1rem 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 4px;
+    padding: 0.5rem 0;
+  }
+  /* Do not shrink wide graphs to column width; let users scroll horizontally. */
+  .mermaid svg {
+    max-width: none;
+    height: auto;
+    display: block;
+  }
 </style>

@@ -83,6 +83,9 @@ graph TD
 
 ## Resource Inventory by Module
 
+<details markdown="1">
+<summary>Show inventory table</summary>
+
 | Module | Agents | Runbooks | Workflows | Policies | Remediation Patterns |
 |--------|--------|----------|-----------|----------|---------------------|
 | aios-agent-sre | 5 | 9 | 2 | — | 8 |
@@ -99,6 +102,8 @@ graph TD
 | aios-agent-onboarding | 1 | 3 | 1 | — | — |
 | aios-agent-predictive-sre | 1 | 2 | 1 | — | — |
 | **Total** | **18** | **54** | **16** | **6+12** | **12** |
+
+</details>
 
 ## Design Principles
 

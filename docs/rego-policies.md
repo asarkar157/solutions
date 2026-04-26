@@ -7,7 +7,7 @@ nav_order: 19
 
 # Writing Rego policies
 
-For **solution engineers** governing StackGen agents and tools: policies in this repository are **[Open Policy Agent (OPA)](https://www.openpolicyagent.org/)** rules written in **Rego**. You ship them with Terraform or OpenTofu using the StackGen provider’s [`sg_policy`](https://github.com/appcd-dev/tofu-provider-stackgen/blob/main/docs/resources/policy.md) resource.
+For **solution engineers** governing StackGen agents and tools: policies in this repository are **[Open Policy Agent (OPA)](https://www.openpolicyagent.org/)** rules written in **Rego**. You ship them with Terraform or OpenTofu using the StackGen provider’s [`sg_policy`](https://appcd-dev.github.io/terraform-provider-stackgen/resources/policy.html) resource.
 
 ## What the policy is deciding
 

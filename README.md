@@ -2,7 +2,7 @@
 
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-1.9.x-FFEC00?logo=opentofu&logoColor=black)](https://opentofu.org/)
 [![Terraform](https://img.shields.io/badge/Terraform-interchangeable-blue.svg)](https://www.terraform.io/)
-[![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://github.com/appcd-dev/terraform-provider-stackgen)
+[![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://appcd-dev.github.io/terraform-provider-stackgen/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![CI](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml)
 
@@ -25,6 +25,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 | [`modules/`](modules/) | One directory per Terraform module (foundation, integrations, agents, policies). Each module is intended to be used via a `module` block `source` pointing at this repo (see [Quick start](#quick-start)). |
 | [`examples/`](examples/) | Runnable Terraform roots that compose modules for local experimentation and CI validation (`examples/complete`). Snippet-only quickstarts live next to them as READMEs. |
 | [`docs/`](docs/) | **GitHub Pages** onboarding site ([`docs/onboarding/`](docs/onboarding/)), Jekyll [`_config.yml`](docs/_config.yml), and [architecture](docs/architecture.md) for the dependency graph. |
+| [`AGENTS.md`](AGENTS.md) | **Cursor / IDE / AI assistants** — how to compose modules, provider setup, layer order, and module inventory (keep in sync when adding modules). |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
 **Conventions:** Modules declare `terraform { required_version = ">= 1.5" }` (HCL block name is unchanged under OpenTofu). **Prefer [OpenTofu](https://opentofu.org/)** (`tofu` CLI); [HashiCorp Terraform](https://www.terraform.io/) (`terraform`) is **interchangeable** for `fmt`, `init`, `validate`, `plan`, and `apply`. Rego policies are shipped as separate `sg_policy` bodies (each `.rego` file is validated in isolation in CI). The StackGen provider is resolved from `releases.stackgen.com` (see [Local verification](#local-verification) for authentication).
