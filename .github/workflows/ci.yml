@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+
+  opa:
+    name: OPA (fmt + check)
+    runs-on: ubuntu-latest
+    env:
+      OPA_VERSION: "0.70.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OPA
+        run: |
+          curl -sSL -o /tmp/opa \
+            "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static"
+          sudo install -m0755 /tmp/opa /usr/local/bin/opa
+          opa version
+      - name: opa fmt (check only)
+        run: |
+          set -euo pipefail
+          if ! find . -name '*.rego' -not -path './.git/*' -print -quit | grep -q .; then
+            echo "No .rego files."
+            exit 0
+          fi
+          need="$(find . -name '*.rego' -not -path './.git/*' -print0 | xargs -0 opa fmt -l || true)"
+          if [[ -n "${need}" ]]; then
+            echo "Rego needs formatting:"
+            echo "${need}"
+            exit 1
+          fi
+      - name: opa check
+        run: |
+          chmod +x ./scripts/opa-check-all.sh
+          ./scripts/opa-check-all.sh
+
+  terraform-validate:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    env:
+      TF_TOKEN_releases_stackgen_com: ${{ secrets.STACKGEN_TERRAFORM_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - name: Validate all module and example roots
+        run: |
+          set -euo pipefail
+          if [[ -z "${TF_TOKEN_releases_stackgen_com:-}" ]]; then
+            echo "::warning::Skipping terraform validate: STACKGEN_TERRAFORM_REGISTRY_TOKEN is not set (fork PR or configure this secret on the repository)."
+            exit 0
+          fi
+          chmod +x ./scripts/terraform-validate-all.sh
+          ./scripts/terraform-validate-all.sh
