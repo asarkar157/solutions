@@ -57,11 +57,14 @@ provider "sg" {
 }
 ```
 
+Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.0`** (install **v0.1.0** or newer from `releases.stackgen.com`).
+
 ## 4. Plan
 
 ```bash
-terraform init
-terraform plan
+tofu init
+tofu plan
+# Same with HashiCorp Terraform: terraform init && terraform plan
 ```
 
 Fix any missing variables or provider configuration before apply.

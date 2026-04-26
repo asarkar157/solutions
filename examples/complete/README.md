@@ -15,7 +15,8 @@ This example deploys the full AIOS stack, mirroring the production deployment in
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your values
-terraform init
-terraform plan
-terraform apply
+tofu init
+tofu plan
+tofu apply
+# Interchangeable: use `terraform` instead of `tofu` if you use HashiCorp Terraform.
 ```

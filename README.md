@@ -1,6 +1,7 @@
 # AIOS Modules — Reusable Terraform Modules for AI Operations
 
-[![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.5-blue.svg)](https://www.terraform.io/)
+[![OpenTofu](https://img.shields.io/badge/OpenTofu-1.9.x-FFEC00?logo=opentofu&logoColor=black)](https://opentofu.org/)
+[![Terraform](https://img.shields.io/badge/Terraform-interchangeable-blue.svg)](https://www.terraform.io/)
 [![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://github.com/stackgen-demo/terraform-provider-stackgen)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![CI](https://github.com/stackgen-demo/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/stackgen-demo/solutions/actions/workflows/ci.yml)
@@ -26,7 +27,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 | [`docs/`](docs/) | **GitHub Pages** onboarding site ([`docs/onboarding/`](docs/onboarding/)), Jekyll [`_config.yml`](docs/_config.yml), and [architecture](docs/architecture.md) for the dependency graph. |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
-**Conventions:** Terraform `>= 1.5` in modules; Rego policies are shipped as separate `sg_policy` bodies (each `.rego` file is validated in isolation in CI). The StackGen provider is resolved from `releases.stackgen.com` (see [Local verification](#local-verification) for authentication).
+**Conventions:** Modules declare `terraform { required_version = ">= 1.5" }` (HCL block name is unchanged under OpenTofu). **Prefer [OpenTofu](https://opentofu.org/)** (`tofu` CLI); [HashiCorp Terraform](https://www.terraform.io/) (`terraform`) is **interchangeable** for `fmt`, `init`, `validate`, `plan`, and `apply`. Rego policies are shipped as separate `sg_policy` bodies (each `.rego` file is validated in isolation in CI). The StackGen provider is resolved from `releases.stackgen.com` (see [Local verification](#local-verification) for authentication).
 
 ## 🏗 Architecture
 
@@ -138,39 +139,42 @@ The architecture diagram above includes composite **workflow** solutions (incide
 
 | Example | Description |
 |---------|-------------|
-| [`examples/complete/`](examples/complete/) | Runnable Terraform root: full AIOS stack (used for `terraform validate` in CI). |
+| [`examples/complete/`](examples/complete/) | Runnable Terraform root: full AIOS stack (validated in CI with **OpenTofu**; Terraform is interchangeable). |
 | [`examples/sre-quickstart/`](examples/sre-quickstart/) | Minimal copy-paste HCL in the README only (no `.tf` root in this folder). |
 
 ## Local verification
 
 Use the [`Makefile`](Makefile) from the repository root. Run `make help` for a short summary of targets.
 
+The Makefile **prefers OpenTofu** (`tofu` on your `PATH`). If `tofu` is not installed, it uses **`terraform`** instead. To force HashiCorp Terraform: `make TF=terraform fmt-check`.
+
 **Tools (align with CI when possible):**
 
 | Tool | Role |
 |------|------|
-| [Terraform](https://www.terraform.io/downloads) **1.9.x** (minimum **1.5** per modules) | Format and validate all module and example roots. CI pins **1.9.8** in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). |
+| **[OpenTofu](https://opentofu.org/docs/intro/install/)** **1.9.x** (see [`.opentofu-version`](.opentofu-version); minimum **1.5** per modules) | **Preferred** CLI for format and validate in this repo. CI uses OpenTofu with the version from `.opentofu-version` ([workflow](.github/workflows/ci.yml)). |
+| **[HashiCorp Terraform](https://developer.hashicorp.com/terraform/install)** | **Interchangeable** with OpenTofu for the same commands; use `make TF=terraform …` if you do not use `tofu`. |
 | [OPA](https://www.openpolicyagent.org/docs/latest/#running-opa) (CLI) | Rego formatting and `opa check` on each policy file. CI uses OPA **0.70.0**. |
 
 **Typical commands:**
 
 ```bash
-make fmt              # format all .tf
-make fmt-check        # CI-style Terraform format check
+make fmt              # format all .tf (tofu fmt, or terraform fmt if TF=terraform)
+make fmt-check        # CI-style format check
 make opa-fmt          # format all .rego
 make opa-fmt-check    # CI-style Rego format check
 make opa-check        # parse/typecheck each .rego with opa check --v1-compatible
-make validate         # terraform init -backend=false && validate per directory under modules/ and examples/
+make validate         # init -backend=false && validate per directory (tofu or terraform)
 make check            # fmt-check + opa-fmt-check + opa-check + validate
 make clean            # remove .terraform caches under modules/ and examples/
 ```
 
-**Registry authentication (required for `make validate` and the Terraform validate CI job):** modules download the StackGen provider from `releases.stackgen.com`. Set a token so Terraform can authenticate, for example:
+**Registry authentication (required for `make validate` and the validate CI job):** modules download the StackGen provider from `releases.stackgen.com`. Set a token so the CLI can authenticate, for example:
 
-- Environment variable: `export TF_TOKEN_releases_stackgen_com="<token>"` ([Terraform credential env convention](https://developer.hashicorp.com/terraform/cli/config/config-file#environment-variables)), or
-- Credentials block in `~/.terraformrc` for hostname `releases.stackgen.com`.
+- Environment variable: `export TF_TOKEN_releases_stackgen_com="<token>"` — same variable name for **OpenTofu and Terraform** ([OpenTofu credentials](https://opentofu.org/docs/cli/config/config-file/#credentials-1), [Terraform equivalent](https://developer.hashicorp.com/terraform/cli/config/config-file#environment-variables)).
+- Credentials block for hostname `releases.stackgen.com` in the CLI config file (`~/.terraformrc` is honored by both; OpenTofu also documents [`tofu` CLI config](https://opentofu.org/docs/cli/config/config-file/)).
 
-Without a token, `terraform init` fails when resolving the `sg` provider.
+Without a token, **`tofu init` / `terraform init`** fails when resolving the `sg` provider.
 
 ## Continuous integration
 
@@ -178,18 +182,18 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 
 | Job | What it does |
 |-----|----------------|
-| **Terraform fmt** | `terraform fmt -check -recursive` |
+| **OpenTofu fmt** | `tofu fmt -check -recursive` (version from [`.opentofu-version`](.opentofu-version)) |
 | **OPA** | Install OPA; fail if any `.rego` needs `opa fmt`; run [`scripts/opa-check-all.sh`](scripts/opa-check-all.sh) (`opa check --v1-compatible` per file — policies are not one combined bundle). |
-| **Terraform validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) in every Terraform root under `modules/` and `examples/`. |
+| **OpenTofu validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) runs **`tofu`** (or **`terraform`** if only that is installed) in every Terraform root under `modules/` and `examples/`. |
 
-**Repository secret (organization / upstream repo):** add **`STACKGEN_TERRAFORM_REGISTRY_TOKEN`** in GitHub → *Settings → Secrets and variables → Actions*. The workflow maps it to `TF_TOKEN_releases_stackgen_com` so `terraform init` can reach `releases.stackgen.com`. If the secret is missing (for example on a fork pull request), the validate step is **skipped** with a warning so format and OPA jobs can still pass.
+**Repository secret (organization / upstream repo):** add **`STACKGEN_TERRAFORM_REGISTRY_TOKEN`** in GitHub → *Settings → Secrets and variables → Actions*. The workflow maps it to `TF_TOKEN_releases_stackgen_com` so **`tofu init`** can reach `releases.stackgen.com`. If the secret is missing (for example on a fork pull request), the validate step is **skipped** with a warning so format and OPA jobs can still pass.
 
 ## 🔧 Prerequisites
 
 **When consuming these modules in your own stack:**
 
-- **Terraform** >= 1.5 (see modules’ `required_version` / CI pin above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.0.20` from `releases.stackgen.com`
+- **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
+- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.0` from `releases.stackgen.com`
 - LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License

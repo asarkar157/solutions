@@ -6,7 +6,7 @@ nav_order: 1
 
 # Welcome
 
-This site walks you through **AIOS Modules** in small steps: what the repository is, what to install, how to run checks locally, and how to reference a module from your own Terraform.
+This site walks you through **AIOS Modules** in small steps: what the repository is, what to install, how to run checks locally, and how to reference a module from your own **OpenTofu** or **Terraform** root (the CLIs are interchangeable; this repo prefers **OpenTofu**).
 
 You do **not** need to finish everything at once. Use the steps in order, or jump ahead when you are ready.
 

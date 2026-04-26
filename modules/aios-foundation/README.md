@@ -36,7 +36,7 @@ module "foundation" {
 | `stackgen_insecure` | Allow plaintext HTTP (dev only) | `bool` | `false` | no |
 | `org_id` | Organization ID | `string` | `""` | no |
 | `llm_api_keys` | LLM provider API keys | `object` | `{}` | no |
-| `models` | Model configuration overrides | `map(object)` | see defaults | no |
+| `name_prefix` | Prefix for resource names | `string` | `""` | no |
 
 ## Outputs
 

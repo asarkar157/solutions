@@ -15,7 +15,7 @@ parent: Onboarding
 ## Two common paths
 
 1. **I only want to use modules in my Terraform**  
-   You will reference module `source` URLs (GitHub), provide variables (Guild URL, API keys, etc.), and run `terraform plan` / `apply` in **your** environment. You do **not** have to clone this repo unless you want to read examples or contribute.
+   You will reference module `source` URLs (GitHub), provide variables (StackGen URL, API keys, etc.), and run **`tofu plan` / `tofu apply`** (or the same with **`terraform`**) in **your** environment. You do **not** have to clone this repo unless you want to read examples or contribute.
 
 2. **I want to change modules or run the same checks as CI**  
    You will clone this repository, install Terraform (and OPA for policy work), and use the **`Makefile`** targets described in later steps.

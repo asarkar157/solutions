@@ -23,6 +23,7 @@ header_pages:
   - index.md
   - onboarding/index.md
   - architecture.md
+  - migration-guide.md
 
 markdown: kramdown
 permalink: pretty

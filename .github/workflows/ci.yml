@@ -1,4 +1,5 @@
-# Terraform fmt, OPA (fmt + check), and terraform validate per module/example root.
+# OpenTofu fmt, OPA (fmt + check), and OpenTofu validate per module/example root.
+# HashiCorp Terraform is interchangeable (same commands). Version: .opentofu-version
 # Prerequisites, secrets, and Make targets: repository README → "Local verification", "Continuous integration".
 name: CI
 
@@ -16,17 +17,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  terraform-fmt:
-    name: Terraform fmt
+  opentofu-fmt:
+    name: OpenTofu fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: opentofu/setup-opentofu@v2
         with:
-          terraform_version: "1.9.8"
-          terraform_wrapper: false
-      - name: terraform fmt -check
-        run: terraform fmt -check -recursive
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+      - name: tofu fmt -check
+        run: tofu fmt -check -recursive
 
   opa:
     name: OPA (fmt + check)
@@ -59,17 +60,23 @@ jobs:
           chmod +x ./scripts/opa-check-all.sh
           ./scripts/opa-check-all.sh
 
-  terraform-validate:
-    name: Terraform validate
+  opentofu-validate:
+    name: OpenTofu validate
     runs-on: ubuntu-latest
+    env:
+      TF_TOKEN_releases_stackgen_com: ${{ secrets.STACKGEN_TERRAFORM_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: opentofu/setup-opentofu@v2
         with:
-          terraform_version: "1.9.8"
-          terraform_wrapper: false
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
       - name: Validate all module and example roots
         run: |
           set -euo pipefail
+          if [[ -z "${TF_TOKEN_releases_stackgen_com:-}" ]]; then
+            echo "::warning::Skipping OpenTofu validate: STACKGEN_TERRAFORM_REGISTRY_TOKEN is not set (fork PR or configure this secret on the repository)."
+            exit 0
+          fi
           chmod +x ./scripts/terraform-validate-all.sh
           ./scripts/terraform-validate-all.sh

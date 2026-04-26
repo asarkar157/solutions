@@ -8,15 +8,17 @@ parent: Onboarding
 
 # Step 2 — Your machine
 
-## 1. Install Terraform
+## 1. Install OpenTofu (preferred) or Terraform
 
-Install **Terraform 1.5 or newer** (matching [CI]({{ site.github.repository_url }}/blob/main/.github/workflows/ci.yml) is ideal, e.g. **1.9.x**).
+This repository **prefers [OpenTofu](https://opentofu.org/)**. Install a **1.5+** CLI; CI uses the version in [`.opentofu-version`]({{ site.github.repository_url }}/blob/main/.opentofu-version) (see [workflow]({{ site.github.repository_url }}/blob/main/.github/workflows/ci.yml)).
 
-- Official installs: [Terraform downloads](https://developer.hashicorp.com/terraform/install).
+- **OpenTofu:** [Installation](https://opentofu.org/docs/intro/install/)
+- **HashiCorp Terraform (interchangeable):** [Install Terraform](https://developer.hashicorp.com/terraform/install)
 
-Check:
+Check one or both:
 
 ```bash
+tofu version
 terraform version
 ```
 

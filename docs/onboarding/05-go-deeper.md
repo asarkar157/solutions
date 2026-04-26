@@ -18,7 +18,7 @@ Use this page as a **map**, not a checklist. Open links only when the topic appl
 
 ## Continuous integration
 
-- **[`.github/workflows/ci.yml`]({{ site.github.repository_url }}/blob/main/.github/workflows/ci.yml)** — Terraform `fmt`, OPA, `terraform validate` per root.
+- **[`.github/workflows/ci.yml`]({{ site.github.repository_url }}/blob/main/.github/workflows/ci.yml)** — OpenTofu **`tofu fmt`** / **`tofu validate`**, OPA; HashiCorp Terraform is interchangeable locally via `make TF=terraform`.
 - **Maintainers:** add the Actions secret **`STACKGEN_TERRAFORM_REGISTRY_TOKEN`** so validate can reach **`releases.stackgen.com`**. Fork PRs may skip validate when the secret is unavailable (see README).
 
 ## This documentation site (GitHub Pages)

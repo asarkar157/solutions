@@ -1,10 +1,19 @@
+---
+layout: page
+title: Migration Guide
+permalink: /migration-guide/
+nav_order: 30
+---
+
 # Migration Guide: Monolithic Guild → AIOS Modules
 
 This guide walks you through migrating from the monolithic `terraform/guild/main.tf` to the composable AIOS module library.
 
+> **OpenTofu vs Terraform:** Prefer **`tofu`** ([OpenTofu](https://opentofu.org/)); commands below use `terraform` where that is the conventional spelling in docs—**`tofu plan`**, **`tofu import`**, etc. work the same.
+
 ## Before You Start
 
-1. Ensure you have `terraform >= 1.5` installed
+1. Ensure you have **OpenTofu or Terraform** `>= 1.5` installed (this repository pins OpenTofu in [`.opentofu-version`]({{ site.github.repository_url }}/blob/main/.opentofu-version) for CI)
 2. Back up your existing Terraform state
 3. Review the [architecture diagram](architecture.md)
 
@@ -17,7 +26,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.0.20"
+      version = ">= 0.1.0"
     }
   }
 }
@@ -135,10 +144,10 @@ If you want to preserve existing resources without recreating them:
 
 ```bash
 # Example: import existing SRE agent
-terraform import 'module.sre.sg_agent.sre_triage' <agent-id>
+terraform import 'module.sre.sg_agent.sre_triage' <agent-id>   # or: tofu import …
 ```
 
-> **Warning**: Resource names must match exactly between old and new state. Run `terraform plan` first to see what Terraform wants to recreate.
+> **Warning**: Resource names must match exactly between old and new state. Run `terraform plan` (or `tofu plan`) first to see what the tool wants to recreate.
 
 ## Module Mapping
 

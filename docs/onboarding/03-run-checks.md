@@ -30,19 +30,19 @@ make fmt
 
 ## 2. Terraform validate (optional here)
 
-`make validate` runs `terraform init` and `terraform validate` in **each** module and example that contains `.tf` files. That requires:
+`make validate` runs **`tofu init`** and **`tofu validate`** in each module and example when OpenTofu is installed; otherwise it uses **`terraform`** (same flags). That requires:
 
 - **Network** access to download providers.
 - A **token** for the StackGen provider registry host **`releases.stackgen.com`** (same as CI).
 
-Set a Terraform-compatible environment variable (hostname uses underscores):
+Set the environment variable (works for **OpenTofu and Terraform**):
 
 ```bash
 export TF_TOKEN_releases_stackgen_com="<your-token>"
 make validate
 ```
 
-Details and alternatives (for example `~/.terraformrc`) are in the repository [README — Local verification]({{ site.github.repository_url }}/blob/main/README.md#local-verification).
+Details and alternatives (for example `~/.terraformrc` / OpenTofu CLI config) are in the repository [README — Local verification]({{ site.github.repository_url }}/blob/main/README.md#local-verification).
 
 ## 3. One-shot “like CI”
 
