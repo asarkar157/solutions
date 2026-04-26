@@ -13,7 +13,7 @@ Use this page as a **map**, not a checklist. Open links only when the topic appl
 ## Repository and layout
 
 - **[README]({{ site.github.repository_url }}/blob/main/README.md)** — module catalog, prerequisites, `Makefile`, CI, registry authentication for local runs.
-- **[Architecture]({% include doc_url.html path="architecture.md" %})** — layer diagram (foundation, integrations, agents, future workflow layer).
+- **[Architecture]({% include doc_url.html path="architecture.md" %})** — StackGen module layers (foundation → integrations → agents → workflows); many bundles are **AIOS**-oriented for faster delivery.
 - **[`examples/complete/`]({{ site.github.repository_url }}/blob/main/examples/complete/)** — large runnable composition; good reference, not the smallest first read.
 
 ## Continuous integration

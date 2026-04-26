@@ -6,7 +6,7 @@ nav_order: 2
 
 # Onboarding
 
-Pick **one step at a time**. Each page is short; you can stop and come back later.
+For **solution engineers** wiring StackGen with Terraform or OpenTofu: pick **one step at a time**. Each page is short; you can stop and come back later.
 
 | Step | What you will do | Time (approx.) |
 |------|-------------------|----------------|

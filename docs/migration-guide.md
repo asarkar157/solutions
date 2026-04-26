@@ -5,9 +5,9 @@ permalink: migration-guide/
 nav_order: 30
 ---
 
-# Migration Guide: Monolithic Guild → AIOS Modules
+# Migration guide: monolithic Terraform → modular StackGen library
 
-This guide walks you through migrating from the monolithic `terraform/guild/main.tf` to the composable AIOS module library.
+This guide walks you through moving from a monolithic `terraform/guild/main.tf` to **composable StackGen modules** in this repository. Module folders use the **`aios-*`** naming where the library targets **AIOS-ready** bundles; the migration is about **structure and provider resources**, not AIOS-only deployments.
 
 > **OpenTofu vs Terraform:** Prefer **`tofu`** ([OpenTofu](https://opentofu.org/)); commands below use `terraform` where that is the conventional spelling in docs—**`tofu plan`**, **`tofu import`**, etc. work the same.
 
@@ -151,7 +151,7 @@ terraform import 'module.sre.sg_agent.sre_triage' <agent-id>   # or: tofu import
 
 ## Module Mapping
 
-| Monolithic Source | AIOS Module |
+| Monolithic source | Module in this repo |
 |------------------|-------------|
 | `main.tf` (secrets, providers, models) | `aios-foundation` |
 | `main.tf` (policies) | `aios-policies` |

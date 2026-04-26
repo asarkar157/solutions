@@ -8,7 +8,7 @@ parent: Onboarding
 
 # Step 4 — Use a module in your Terraform
 
-This step is about **your** Terraform root (separate from cloning this repo). You reference modules by **`source`** and pass **variables**.
+This step is about **your** root module (separate from cloning this repo)—where **solution engineers** typically integrate StackGen. You reference modules by **`source`** and pass **variables**.
 
 ## 1. Minimal pattern
 

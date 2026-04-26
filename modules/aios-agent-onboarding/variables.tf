@@ -5,7 +5,13 @@ variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
 variable "integration_names" {
-  type    = map(string)
+  description = "Guild integration names to attach (slack, github, linear, google). Empty string or omitted keys are skipped."
+  type = object({
+    slack  = optional(string, "")
+    github = optional(string, "")
+    linear = optional(string, "")
+    google = optional(string, "")
+  })
   default = {}
 }
 variable "agent_budget" {

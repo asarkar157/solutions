@@ -10,7 +10,7 @@ parent: Onboarding
 
 ## What is this repository?
 
-**AIOS Modules** is a collection of **Terraform modules** used to configure **AIOS** (AI operations) on the **StackGen** platform: agents, integrations, policies (Rego), and related resources. Modules are composed in layers (foundation → integrations → agents; see [Architecture]({% include doc_url.html path="architecture.md" %})).
+This monorepo is a **Terraform/OpenTofu module library for StackGen**: provider-backed resources such as **projects**, **roles**, **secrets**, **integrations**, **policies** (Rego), and **agents**. **AIOS**—StackGen’s AI operating system—is a **strong theme in the catalog** (foundation, integrations, and agent bundles) when you want opinionated, layered stacks; you can still adopt pieces à la carte. Modules compose in layers (foundation → integrations → agents; see [Architecture]({% include doc_url.html path="architecture.md" %})).
 
 ## Two common paths
 

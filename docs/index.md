@@ -4,9 +4,11 @@ title: Home
 nav_order: 1
 ---
 
-# Welcome
+# StackGen modules for solution engineers
 
-This site walks you through **AIOS Modules** in small steps: what the repository is, what to install, how to run checks locally, and how to reference a module from your own **OpenTofu** or **Terraform** root (the CLIs are interchangeable; this repo prefers **OpenTofu**).
+This documentation supports **solution engineers** shipping on **StackGen**: a **library of Terraform/OpenTofu modules** for projects, roles, secrets, integrations, policies, and agent resources you compose in your own roots. **AIOS** (StackGen’s AI operating system) shows up here as a **highlighted accelerator**—opinionated, layered bundles when you are standing up AI-assisted operations—not the only way to use the repo.
+
+Work through it in small steps: what the repository contains, what to install, how to run checks locally, and how to reference a module from your **OpenTofu** or **Terraform** root (the CLIs are interchangeable; this repo prefers **OpenTofu**).
 
 You do **not** need to finish everything at once. Use the steps in order, or jump ahead when you are ready.
 
@@ -22,6 +24,4 @@ You do **not** need to finish everything at once. Use the steps in order, or jum
 | [Architecture]({% include doc_url.html path="architecture.md" %}) | Layer diagram and how modules relate. |
 | [Repository README]({{ site.github.repository_url }}/blob/main/README.md) | Full reference: modules table, CI, `Makefile`, prerequisites. |
 | [Runnable example]({{ site.github.repository_url }}/blob/main/examples/complete/) | Full stack under `examples/complete/`. |
-| [Writing Rego policies]({% include doc_url.html path="rego-policies.md" %}) | Plain-language guide to policy evaluation, sample AIOS `input` JSON, OPA Playground, and repo examples. |
-
-If links or styles look wrong, edit **`baseurl`** and **`url`** in [`_config.yml`]({{ site.github.repository_url }}/blob/main/docs/_config.yml) so they match your org, site type, and repository name.
+| [Writing Rego policies]({% include doc_url.html path="rego-policies.md" %}) | Plain-language guide to policy evaluation, sample evaluation `input` JSON, OPA Playground, and repo examples. |

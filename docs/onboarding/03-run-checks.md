@@ -33,7 +33,6 @@ make fmt
 `make validate` runs **`tofu init`** and **`tofu validate`** in each module and example when OpenTofu is installed; otherwise it uses **`terraform`** (same flags). That requires:
 
 - **Network** access to download providers.
-- A **token** or other credentials for **`releases.stackgen.com`** if your network or registry policy requires them (see the repository README).
 
 Set the environment variable (works for **OpenTofu and Terraform**):
 

@@ -13,10 +13,10 @@ resource "sg_agent" "onboarding_assistant" {
   hitl = { always_allowed = ["web_search", "note", "read_notes"] }
 
   integrations = compact([
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
-    lookup(var.integration_names, "github", "") != "" ? var.integration_names.github : null,
-    lookup(var.integration_names, "linear", "") != "" ? var.integration_names.linear : null,
-    lookup(var.integration_names, "google", "") != "" ? var.integration_names.google : null,
+    var.integration_names.slack != "" ? var.integration_names.slack : null,
+    var.integration_names.github != "" ? var.integration_names.github : null,
+    var.integration_names.linear != "" ? var.integration_names.linear : null,
+    var.integration_names.google != "" ? var.integration_names.google : null,
   ])
 }
 
