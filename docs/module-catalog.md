@@ -17,15 +17,15 @@ permalink: module-catalog/
   <!-- Search + Filter Bar -->
   <div class="catalog-toolbar">
     <div class="catalog-search">
-      <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
-      <input type="text" id="module-search" placeholder="Search modules…" autocomplete="off">
+      <svg class="search-icon" aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+      <input type="text" id="module-search" aria-label="Search modules" placeholder="Search modules…" autocomplete="off">
     </div>
     <div class="tag-typeahead">
       <div class="tag-input-container">
-        <input type="text" id="tag-input" placeholder="Filter by tags (e.g. aws, sre)…" autocomplete="off">
-        <div id="tag-dropdown" class="tag-dropdown hidden"></div>
+        <input type="text" id="tag-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tag-dropdown" aria-label="Filter by tags" placeholder="Filter by tags (e.g. aws, sre)…" autocomplete="off">
+        <div id="tag-dropdown" role="listbox" aria-label="Suggested tags" class="tag-dropdown hidden"></div>
       </div>
-      <div class="active-tags" id="active-tags"></div>
+      <div class="active-tags" id="active-tags" aria-live="polite"></div>
     </div>
   </div>
 
