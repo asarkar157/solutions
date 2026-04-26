@@ -1,0 +1,9 @@
+---
+# Jekyll compiles this to assets/main.css (replaces theme default when present).
+---
+
+// Minima default is 800px — too narrow for wide Mermaid graphs and tables.
+// Use almost the full viewport, capped on very wide monitors.
+$content-width: unquote("min(96vw, 1680px)");
+
+@import "minima";
