@@ -1,6 +1,6 @@
 package policy
 
-default approval_required = false
+default approval_required := false
 
 max_pods_without_approval := 5
 max_nodes_without_approval := 3
@@ -60,6 +60,6 @@ approval_required if {
 	input.context.target_node_count > max_nodes_without_approval
 }
 
-approval_reason = "Blast radius exceeds safe threshold — must target ≤ 5 pods / ≤ 3 nodes / single region without approval" if {
+approval_reason := "Blast radius exceeds safe threshold — must target ≤ 5 pods / ≤ 3 nodes / single region without approval" if {
 	approval_required
 }

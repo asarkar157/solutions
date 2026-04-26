@@ -1,6 +1,6 @@
 package policy
 
-default approval_required = false
+default approval_required := false
 
 # Gate destructive GCP operations
 approval_required if {
@@ -19,6 +19,6 @@ gcp_destructive_pattern(cmd) if contains(cmd, "gcloud iam service-accounts delet
 gcp_destructive_pattern(cmd) if contains(cmd, "kubectl delete")
 gcp_destructive_pattern(cmd) if contains(cmd, "gcloud run services delete")
 
-approval_reason = "Destructive GCP operation requires human approval" if {
+approval_reason := "Destructive GCP operation requires human approval" if {
 	approval_required
 }

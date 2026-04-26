@@ -1,6 +1,6 @@
 package policy
 
-default approval_required = false
+default approval_required := false
 
 # Gate destructive shell patterns: rm -rf, force-delete, terraform destroy, etc.
 # Read-only shell commands are allowed through without HITL.
@@ -25,6 +25,6 @@ destructive_pattern(cmd) if contains(cmd, "truncate ")
 destructive_pattern(cmd) if contains(cmd, "mkfs")
 destructive_pattern(cmd) if contains(cmd, "dd if=")
 
-approval_reason = "Destructive operation requires human approval" if {
+approval_reason := "Destructive operation requires human approval" if {
 	approval_required
 }

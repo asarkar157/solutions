@@ -1,6 +1,6 @@
 package policy
 
-default approval_required = false
+default approval_required := false
 
 rollout_actions := {"rollout_proceed", "canary_promote", "traffic_shift_expand", "scale_up_global"}
 
@@ -52,6 +52,6 @@ post_action_checks_passed if {
 	input.context.observation_minutes >= 10
 }
 
-approval_reason = "Post-action verification required: SLI must be healthy with zero new alerts for ≥ 10 minutes before proceeding to broader rollout" if {
+approval_reason := "Post-action verification required: SLI must be healthy with zero new alerts for ≥ 10 minutes before proceeding to broader rollout" if {
 	approval_required
 }

@@ -1,6 +1,6 @@
 package policy
 
-default approval_required = false
+default approval_required := false
 
 prod_namespaces := {"production", "prod"}
 
@@ -125,6 +125,6 @@ approval_required if {
 	input.tool.arguments.action in {"apply", "deploy", "scale", "restart", "delete", "update", "patch", "create"}
 }
 
-approval_reason = "Production write action requires service-owner or on-call acknowledgement" if {
+approval_reason := "Production write action requires service-owner or on-call acknowledgement" if {
 	approval_required
 }

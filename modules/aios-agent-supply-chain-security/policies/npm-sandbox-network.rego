@@ -2,7 +2,7 @@ package policy
 
 # Block sandbox installs that access non-allowlisted domains.
 
-default approval_required = false
+default approval_required := false
 
 allowlisted_domains := {
 	"registry.npmjs.org",
@@ -27,6 +27,6 @@ allowlisted(domain) if endswith(domain, ".npmjs.org")
 allowlisted(domain) if endswith(domain, ".github.com")
 allowlisted(domain) if endswith(domain, ".sigstore.dev")
 
-approval_reason = "Sandbox detected network calls to non-allowlisted domains" if {
+approval_reason := "Sandbox detected network calls to non-allowlisted domains" if {
 	approval_required
 }
