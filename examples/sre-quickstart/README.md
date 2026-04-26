@@ -8,8 +8,8 @@ Minimal SRE setup with incident response agents. ~20 lines of consumer HCL.
 module "foundation" {
   source = "github.com/stackgen-demo/solutions//modules/aios-foundation"
 
-  guild_url   = "https://guild.example.com"
-  guild_token = var.guild_token
+  stackgen_url   = "https://main.dev.stackgen.com"
+  stackgen_token = var.stackgen_token
   llm_api_keys = {
     openai    = var.openai_key
     anthropic = var.anthropic_key

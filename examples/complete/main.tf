@@ -6,6 +6,17 @@
 
 terraform {
   required_version = ">= 1.5"
+  required_providers {
+    sg = {
+      source  = "releases.stackgen.com/stackgen/stackgen"
+      version = ">= 0.0.20"
+    }
+  }
+}
+
+provider "sg" {
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
 }
 
 # =============================================================================
@@ -15,8 +26,8 @@ terraform {
 module "foundation" {
   source = "../../modules/aios-foundation"
 
-  guild_url   = var.guild_url
-  guild_token = var.guild_token
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
 
   llm_api_keys = {
     openai    = var.openai_api_key

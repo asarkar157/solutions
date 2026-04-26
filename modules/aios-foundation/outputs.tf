@@ -1,7 +1,14 @@
+# The model_names output always includes all 3 keys. If a provider is not
+# configured, its value is an empty string. This satisfies the downstream
+# object({ gpt4o = string, claude_sonnet = string, gemini_flash = string })
+# type constraint without erroring.
+
 output "model_names" {
-  description = "Map of logical model names to their Guild-registered names"
+  description = "Map of logical model names to their Guild-registered names. Empty string if model not configured."
   value = {
-    for k, v in sg_guild_model.models : k => v.name
+    gpt4o         = length(sg_guild_model.gpt4o) > 0 ? sg_guild_model.gpt4o[0].name : ""
+    claude_sonnet = length(sg_guild_model.claude_sonnet) > 0 ? sg_guild_model.claude_sonnet[0].name : ""
+    gemini_flash  = length(sg_guild_model.gemini_flash) > 0 ? sg_guild_model.gemini_flash[0].name : ""
   }
 }
 

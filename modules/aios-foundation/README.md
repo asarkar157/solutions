@@ -1,6 +1,6 @@
 # AIOS Foundation
 
-Provisions the StackGen provider configuration, LLM vault secrets, model providers, and named model instances. This is the base module that every other AIOS module depends on.
+Provisions LLM vault secrets, model providers, and named model instances. The root module must configure the `sg` provider (`stackgen_url` / `stackgen_token`). This is the base module that every other AIOS module depends on.
 
 ## Usage
 
@@ -8,8 +8,8 @@ Provisions the StackGen provider configuration, LLM vault secrets, model provide
 module "foundation" {
   source = "github.com/stackgen-demo/solutions//modules/aios-foundation"
 
-  guild_url   = "https://guild.example.com"
-  guild_token = var.guild_token
+  stackgen_url   = "https://main.dev.stackgen.com"
+  stackgen_token = var.stackgen_token
 
   llm_api_keys = {
     openai    = var.openai_api_key
@@ -31,9 +31,9 @@ module "foundation" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|----------|
-| `guild_url` | Base URL of the StackGen platform | `string` | — | yes |
-| `guild_token` | Bearer token for API authentication | `string` | `""` | no |
-| `guild_insecure` | Allow plaintext HTTP (dev only) | `bool` | `false` | no |
+| `stackgen_url` | Base URL of the StackGen platform | `string` | — | yes |
+| `stackgen_token` | Bearer token for API authentication | `string` | `""` | no |
+| `stackgen_insecure` | Allow plaintext HTTP (dev only) | `bool` | `false` | no |
 | `org_id` | Organization ID | `string` | `""` | no |
 | `llm_api_keys` | LLM provider API keys | `object` | `{}` | no |
 | `models` | Model configuration overrides | `map(object)` | see defaults | no |

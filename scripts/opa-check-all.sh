@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Run opa check on each .rego file (policies are standalone sg_policy artifacts, not one bundle).
+# Run opa check --v1-compatible on each .rego file. Policies are uploaded as separate
+# sg_policy resources (see modules/*/main.tf); checking one directory would merge
+# duplicate package policy defaults and fail. Matches the OPA job in .github/workflows/ci.yml.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

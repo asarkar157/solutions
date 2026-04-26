@@ -3,17 +3,14 @@
 # =============================================================================
 # Provisions LLM secrets, model providers, and named model instances.
 # This is the base module that all other AIOS modules depend on.
-
-# =============================================================================
-# Provider Configuration
-# =============================================================================
-
-provider "sg" {
-  host      = var.guild_url
-  api_token = var.guild_token
-  insecure  = var.guild_insecure
-  org_id    = var.org_id
-}
+#
+# NOTE: This module does NOT define a provider block. The consumer must
+# configure the "sg" provider in their root module:
+#
+#   provider "sg" {
+#     stackgen_url   = var.stackgen_url
+#     stackgen_token = var.stackgen_token
+#   }
 
 # =============================================================================
 # LLM Vault Secrets
@@ -21,7 +18,7 @@ provider "sg" {
 
 resource "sg_secret" "openai" {
   count       = var.llm_api_keys.openai != "" ? 1 : 0
-  name        = "openai-vault"
+  name        = "${var.name_prefix}openai-vault"
   description = "OpenAI API Key"
   category    = "LLM"
   subcategory = "openai"
@@ -32,7 +29,7 @@ resource "sg_secret" "openai" {
 
 resource "sg_secret" "anthropic" {
   count       = var.llm_api_keys.anthropic != "" ? 1 : 0
-  name        = "anthropic-vault"
+  name        = "${var.name_prefix}anthropic-vault"
   description = "Anthropic API Key"
   category    = "LLM"
   subcategory = "anthropic"
@@ -43,7 +40,7 @@ resource "sg_secret" "anthropic" {
 
 resource "sg_secret" "gemini" {
   count       = var.llm_api_keys.gemini != "" ? 1 : 0
-  name        = "gemini-vault"
+  name        = "${var.name_prefix}gemini-vault"
   description = "Gemini API Key"
   category    = "LLM"
   subcategory = "gemini"
@@ -81,11 +78,26 @@ resource "sg_guild_model_provider" "gemini" {
 # Named Model Instances
 # =============================================================================
 
-resource "sg_guild_model" "models" {
-  for_each = var.models
+resource "sg_guild_model" "gpt4o" {
+  count         = var.llm_api_keys.openai != "" ? 1 : 0
+  name          = "gpt-4o"
+  provider_name = sg_guild_model_provider.openai[0].name
+  model_id      = "gpt-4o"
+  good_for_task = "tool_calling"
+}
 
-  name          = each.key == "gpt4o" ? "gpt-4o" : (each.key == "claude_sonnet" ? "claude-sonnet" : (each.key == "gemini_flash" ? "gemini-flash" : each.key))
-  provider_name = each.value.provider_name
-  model_id      = each.value.model_id
-  good_for_task = each.value.good_for_task
+resource "sg_guild_model" "claude_sonnet" {
+  count         = var.llm_api_keys.anthropic != "" ? 1 : 0
+  name          = "claude-sonnet"
+  provider_name = sg_guild_model_provider.anthropic[0].name
+  model_id      = "claude-sonnet-4-6"
+  good_for_task = "planning"
+}
+
+resource "sg_guild_model" "gemini_flash" {
+  count         = var.llm_api_keys.gemini != "" ? 1 : 0
+  name          = "gemini-flash"
+  provider_name = sg_guild_model_provider.gemini[0].name
+  model_id      = "gemini-3-flash-preview"
+  good_for_task = "efficiency"
 }

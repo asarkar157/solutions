@@ -1,0 +1,28 @@
+# Jekyll site for GitHub Pages (source: /docs on default branch).
+# https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+#
+# After your first successful deploy, confirm "baseurl" matches your repository name
+# (the path segment in https://<org>.github.io/<repo>/).
+title: AIOS Modules
+description: Step-by-step onboarding for the AIOS Terraform modules monorepo.
+theme: minima
+
+# Project pages: https://<org>.github.io/<repository-name>/
+# "baseurl" must be "/<repository-name>" (leading slash, no trailing slash).
+# Change url/baseurl/repository if you fork or rename the repo.
+url: "https://stackgen-demo.github.io"
+baseurl: "/solutions"
+
+# Used by jekyll-github-metadata and Liquid (e.g. module source examples).
+repository: stackgen-demo/solutions
+
+plugins:
+  - jekyll-github-metadata
+
+header_pages:
+  - index.md
+  - onboarding/index.md
+  - architecture.md
+
+markdown: kramdown
+permalink: pretty

@@ -1,3 +1,6 @@
+# Local verification and CI entrypoints. Full context: README.md
+# ("Local verification", "Continuous integration").
+
 .PHONY: help fmt fmt-check opa-fmt opa-fmt-check opa-check validate check clean
 
 SHELL := /bin/bash
@@ -5,7 +8,7 @@ SHELL := /bin/bash
 TF_ROOT_SCRIPT := $(CURDIR)/scripts/terraform-validate-all.sh
 
 help:
-	@echo "AIOS modules — common targets"
+	@echo "AIOS modules — common targets (see README: Local verification)"
 	@echo ""
 	@echo "  make fmt            Format all Terraform (.tf) files"
 	@echo "  make fmt-check      Fail if Terraform formatting differs (CI)"

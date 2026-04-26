@@ -1,8 +1,8 @@
-variable "guild_url" {
+variable "stackgen_url" {
   type = string
 }
 
-variable "guild_token" {
+variable "stackgen_token" {
   type      = string
   sensitive = true
 }

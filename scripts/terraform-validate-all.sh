@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run terraform init -backend=false and terraform validate in every directory
 # under modules/ and examples/ that contains at least one .tf file.
+# Same discovery logic as the "Terraform validate" job in .github/workflows/ci.yml.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,0 +1,55 @@
+---
+layout: page
+title: "2 — Your machine"
+permalink: /onboarding/step-2/
+nav_order: 11
+parent: Onboarding
+---
+
+# Step 2 — Your machine
+
+## 1. Install Terraform
+
+Install **Terraform 1.5 or newer** (matching [CI]({{ site.github.repository_url }}/blob/main/.github/workflows/ci.yml) is ideal, e.g. **1.9.x**).
+
+- Official installs: [Terraform downloads](https://developer.hashicorp.com/terraform/install).
+
+Check:
+
+```bash
+terraform version
+```
+
+## 2. (Optional) Install OPA
+
+Only needed if you will edit **`.rego`** policy files or run `make opa-*`.
+
+- [OPA releases](https://github.com/open-policy-agent/opa/releases) — use a recent static binary; CI pins a specific version in the workflow file.
+
+```bash
+opa version
+```
+
+## 3. Clone the repository
+
+```bash
+git clone {{ site.github.repository_url }}.git
+cd aios-modules   # or your checkout folder name
+```
+
+If your clone directory is not `aios-modules`, use that name in the commands below.
+
+## 4. See available commands
+
+This repo includes a **`Makefile`** wrapper around formatting, OPA checks, and Terraform validation.
+
+```bash
+make help
+```
+
+You should see targets such as `fmt`, `fmt-check`, `opa-check`, `validate`, and `check`.
+
+---
+
+**Next:** [Step 3 — Run checks]({% link onboarding/03-run-checks.md %})  
+**Previous:** [Step 1 — Orientation]({% link onboarding/01-orientation.md %})

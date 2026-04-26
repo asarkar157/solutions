@@ -1,0 +1,76 @@
+---
+layout: page
+title: "4 — Use a module"
+permalink: /onboarding/step-4/
+nav_order: 13
+parent: Onboarding
+---
+
+# Step 4 — Use a module in your Terraform
+
+This step is about **your** Terraform root (separate from cloning this repo). You reference modules by **`source`** and pass **variables**.
+
+## 1. Minimal pattern
+
+Modules live under `modules/<name>` in this repository. Example `source` (replace **`ref`** with a tag or commit you trust for production). The URL below uses this site’s GitHub metadata so it tracks your fork after you set `repository` in `_config.yml`:
+
+```hcl
+module "foundation" {
+  source = "git::{{ site.github.repository_url }}.git//modules/aios-foundation?ref=main"
+
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
+  llm_api_keys = {
+    openai    = var.openai_api_key
+    anthropic = var.anthropic_api_key
+  }
+}
+```
+
+You can also use the **GitHub Terraform source** form shown in the root [README]({{ site.github.repository_url }}/blob/main/README.md#-quick-start) (`github.com/ORG/REPO//modules/...`).
+
+## 2. Add policies and an agent (illustrative)
+
+```hcl
+module "policies" {
+  source = "git::{{ site.github.repository_url }}.git//modules/aios-policies?ref=main"
+}
+
+module "sre" {
+  source = "git::{{ site.github.repository_url }}.git//modules/aios-agent-sre?ref=main"
+
+  model_names = module.foundation.model_names
+  policy_ids  = module.policies.policy_ids
+}
+```
+
+Exact variable names differ per module — open the matching **`modules/<name>/variables.tf`** and **`README.md`** in this repo.
+
+## 3. Configure the StackGen provider
+
+Your root module must configure the **`sg`** provider required by these modules (version constraints are in each module’s `terraform` block). Use **`stackgen_url`** and **`stackgen_token`** (or the `host` / `api_token` aliases; avoid deprecated `guild_url` / `guild_token`). For example:
+
+```hcl
+provider "sg" {
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
+}
+```
+
+## 4. Plan
+
+```bash
+terraform init
+terraform plan
+```
+
+Fix any missing variables or provider configuration before apply.
+
+## 5. Full stack reference
+
+For a **large** composition (many integrations and agents), see the runnable example: [`examples/complete/`]({{ site.github.repository_url }}/blob/main/examples/complete/).
+
+---
+
+**Next:** [Step 5 — Go deeper]({% link onboarding/05-go-deeper.md %})  
+**Previous:** [Step 3 — Run checks]({% link onboarding/03-run-checks.md %})
