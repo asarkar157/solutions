@@ -6,7 +6,7 @@ Provisions a GitHub SCM integration for repository operations, PRs, and code ana
 
 ```hcl
 module "github_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-github"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-github"
 
   github_token = var.github_token
 }

@@ -6,7 +6,7 @@ Azure data pipeline SRE agent with ClickHouse diagnostics, storage queue inspect
 
 ```hcl
 module "azure_devops" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-azure-devops"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-azure-devops"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

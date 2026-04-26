@@ -6,7 +6,7 @@ GCP cloud operations SRE agent with GKE diagnostics, Cloud SQL health checks, se
 
 ```hcl
 module "gcp_sre" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-gcp-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-gcp-sre"
 
   model_names      = module.foundation.model_names
   policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

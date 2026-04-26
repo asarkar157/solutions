@@ -6,7 +6,7 @@ Automated compliance auditing agent for SOC2, GDPR, HIPAA, and ISO 27001 framewo
 
 ```hcl
 module "compliance" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-compliance-auditor"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-compliance-auditor"
 
   model_names = module.foundation.model_names
   policy_ids  = {

@@ -6,7 +6,7 @@ Minimal SRE setup with incident response agents. ~20 lines of consumer HCL.
 
 ```hcl
 module "foundation" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-foundation"
+  source = "github.com/appcd-dev/solutions//modules/aios-foundation"
 
   stackgen_url   = "https://main.dev.stackgen.com"
   stackgen_token = var.stackgen_token
@@ -17,11 +17,11 @@ module "foundation" {
 }
 
 module "policies" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-policies"
+  source = "github.com/appcd-dev/solutions//modules/aios-policies"
 }
 
 module "sre" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = module.policies.policy_ids

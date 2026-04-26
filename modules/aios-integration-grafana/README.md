@@ -6,7 +6,7 @@ Provisions a Grafana observability integration with API token stored in Vault.
 
 ```hcl
 module "grafana_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-grafana"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-grafana"
 
   grafana_server = "https://grafana.example.com"
   grafana_token  = var.grafana_api_token

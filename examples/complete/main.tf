@@ -174,8 +174,9 @@ output "sre_workflow_names" {
   value = module.sre_agents.workflow_names
 }
 
-output "marketing_agent_name" {
-  value = module.marketing.agent_name
+output "marketing_agent_names" {
+  description = "Names of marketing agents (multi-persona module)"
+  value         = module.marketing.agent_names
 }
 
 output "compliance_agent_name" {

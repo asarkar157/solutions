@@ -14,7 +14,7 @@ url: "https://stackgen-demo.github.io"
 baseurl: "/solutions"
 
 # Used by jekyll-github-metadata and Liquid (e.g. module source examples).
-repository: stackgen-demo/solutions
+repository: appcd-dev/solutions
 
 plugins:
   - jekyll-github-metadata

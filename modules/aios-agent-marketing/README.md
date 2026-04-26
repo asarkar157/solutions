@@ -6,7 +6,7 @@ AI-powered marketing agent for content operations, campaign analytics, social me
 
 ```hcl
 module "marketing" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-marketing"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-marketing"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

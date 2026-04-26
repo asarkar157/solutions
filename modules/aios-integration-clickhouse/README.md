@@ -6,7 +6,7 @@ Provisions a ClickHouse analytics integration using the Bring Your Own Image (BY
 
 ```hcl
 module "clickhouse_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-clickhouse"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-clickhouse"
 
   clickhouse_host      = "abc123.us-east-1.aws.clickhouse.cloud"
   clickhouse_password  = var.clickhouse_password

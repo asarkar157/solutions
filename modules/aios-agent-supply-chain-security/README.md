@@ -6,7 +6,7 @@ npm supply chain attack detection: SLSA provenance checks, behavioral sandbox, p
 
 ```hcl
 module "supply_chain" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-supply-chain-security"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-supply-chain-security"
 
   model_names  = module.foundation.model_names
   policy_ids   = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

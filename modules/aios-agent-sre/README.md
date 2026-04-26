@@ -6,7 +6,7 @@ Production-ready SRE agent team for incident response, change correlation, auto-
 
 ```hcl
 module "sre_agents" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = module.policies.policy_ids

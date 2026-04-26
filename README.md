@@ -4,7 +4,7 @@
 [![Terraform](https://img.shields.io/badge/Terraform-interchangeable-blue.svg)](https://www.terraform.io/)
 [![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://github.com/stackgen-demo/terraform-provider-stackgen)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![CI](https://github.com/stackgen-demo/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/stackgen-demo/solutions/actions/workflows/ci.yml)
+[![CI](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml)
 
 Production-ready, composable Terraform modules for bootstrapping **AIOS (AI Operations)** solutions — autonomous SRE agents, incident response workflows, software engineering pipelines, and supply chain security scanners.
 
@@ -58,7 +58,7 @@ Each layer depends only on the layers below it. Pick exactly what you need.
 
 ```hcl
 module "foundation" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-foundation"
+  source = "github.com/appcd-dev/solutions//modules/aios-foundation"
 
   stackgen_url   = "https://main.dev.stackgen.com"
   stackgen_token = var.stackgen_token
@@ -69,11 +69,11 @@ module "foundation" {
 }
 
 module "policies" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-policies"
+  source = "github.com/appcd-dev/solutions//modules/aios-policies"
 }
 
 module "sre_agents" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = module.policies.policy_ids

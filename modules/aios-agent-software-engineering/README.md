@@ -6,7 +6,7 @@ Linear + Cursor + GitHub development pipeline: analyze tickets, author code, sub
 
 ```hcl
 module "software_engineering" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-software-engineering"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-software-engineering"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

@@ -6,7 +6,7 @@ Central library of reusable OPA/Rego guardrail policies for AIOS agent governanc
 
 ```hcl
 module "policies" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-policies"
+  source = "github.com/appcd-dev/solutions//modules/aios-policies"
 
   # All policies enabled by default. Disable specific ones:
   create_policies = {

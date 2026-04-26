@@ -6,7 +6,7 @@ Provisions an AWS cloud integration with JIT credentials via Vault IAM role assu
 
 ```hcl
 module "aws_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-aws"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-aws"
 
   aws_role_arn = "arn:aws:iam::123456789012:role/SREReadOnly"
   aws_region   = "us-west-2"

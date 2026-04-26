@@ -6,7 +6,7 @@ Provisions an Azure service principal with Reader role, stores credentials in Va
 
 ```hcl
 module "azure_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-azure"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-azure"
 
   azure_subscription_id = var.azure_subscription_id
   # Optionally scope to a resource group for least privilege:

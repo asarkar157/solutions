@@ -6,7 +6,7 @@ Google Workspace + Slack + Linear triage agent for daily developer workflows and
 
 ```hcl
 module "workspace" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-workspace-assistant"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-workspace-assistant"
 
   model_names = module.foundation.model_names
   policy_ids  = {

@@ -6,7 +6,7 @@ FinOps agent for multi-cloud cost optimization: idle resource detection, rightsi
 
 ```hcl
 module "cost_optimizer" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-cost-optimizer"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-cost-optimizer"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

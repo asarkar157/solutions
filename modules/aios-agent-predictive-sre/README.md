@@ -6,7 +6,7 @@ Cross-domain predictive triage agent that correlates GitHub, Grafana, and AWS si
 
 ```hcl
 module "predictive_sre" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-predictive-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-predictive-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

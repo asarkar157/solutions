@@ -6,7 +6,7 @@ Provisions a Slack ChatOps integration for incident channels, approvals, and not
 
 ```hcl
 module "slack_integration" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-integration-slack"
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-slack"
 
   slack_bot_token      = var.slack_bot_token
   slack_signing_secret = var.slack_signing_secret

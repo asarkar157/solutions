@@ -6,7 +6,7 @@ Self-contained Grafana SRE agent with 8 runbooks following Google SRE and DORA p
 
 ```hcl
 module "grafana_sre" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-grafana-sre"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-grafana-sre"
 
   model_names       = module.foundation.model_names
   policy_ids        = { dangerous_ops = module.policies.policy_ids.dangerous_ops }

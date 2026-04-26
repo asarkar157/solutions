@@ -6,7 +6,7 @@ Provisions LLM vault secrets, model providers, and named model instances. The ro
 
 ```hcl
 module "foundation" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-foundation"
+  source = "github.com/appcd-dev/solutions//modules/aios-foundation"
 
   stackgen_url   = "https://main.dev.stackgen.com"
   stackgen_token = var.stackgen_token

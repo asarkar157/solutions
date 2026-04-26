@@ -6,7 +6,7 @@ Automated developer onboarding agent for environment setup, access provisioning,
 
 ```hcl
 module "onboarding" {
-  source = "github.com/stackgen-demo/solutions//modules/aios-agent-onboarding"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-onboarding"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
