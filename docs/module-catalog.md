@@ -5,7 +5,7 @@ nav_order: 2
 permalink: module-catalog/
 ---
 
-<link rel="stylesheet" href="{{ '/assets/css/module-catalog.css' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/module-catalog.css' | relative_url }}?v={{ site.time | date: '%s' }}">
 
 <div id="catalog-app">
 
@@ -49,5 +49,5 @@ permalink: module-catalog/
 
 </div>
 
-<script src="{{ '/assets/js/module-data.js' | relative_url }}"></script>
-<script src="{{ '/assets/js/module-catalog.js' | relative_url }}"></script>
+<script src="{{ '/assets/js/module-data.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
+<script src="{{ '/assets/js/module-catalog.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
