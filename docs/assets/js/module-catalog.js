@@ -5,7 +5,14 @@ var searchTerm="";
 var allTags=[];
 var tagDropdownIndex=-1;
 
-function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML;}
+function esc(s){
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function copyText(text,btn){
   navigator.clipboard.writeText(text).then(function(){
@@ -27,11 +34,12 @@ function buildCard(m){
   m.tags.forEach(function(t){html+='<span class="card-tag">'+esc(t)+'</span>';});
   html+='</div>';
   // Source URL
-  html+='<div class="card-source"><code>'+esc(src)+'</code><button class="copy-btn" title="Copy source URL" data-src="'+esc(src)+'">📋</button></div>';
+  html+='<div class="card-source"><code>'+esc(src)+'</code><button class="copy-btn" aria-label="Copy source URL" title="Copy source URL" data-src="'+esc(src)+'">📋</button></div>';
   // Toggle
-  html+='<button class="card-toggle"><span class="arrow">▶</span> Variables &amp; Usage</button>';
+  var detailsId = "details-" + m.id;
+  html+='<button class="card-toggle" aria-expanded="false" aria-controls="'+detailsId+'"><span class="arrow" aria-hidden="true">▶</span> Variables &amp; Usage</button>';
   // Details
-  html+='<div class="card-details"><div class="card-details-inner">';
+  html+='<div class="card-details" id="'+detailsId+'"><div class="card-details-inner">';
   if(m.vars.length){
     html+='<div class="detail-section"><h4>Variables</h4><table class="var-table"><tr><th>Name</th><th>Type</th><th></th></tr>';
     reqVars.forEach(function(v){html+='<tr><td><code>'+esc(v.n)+'</code></td><td><code>'+esc(v.t)+'</code></td><td><span class="var-required">required</span></td></tr>';});
@@ -43,7 +51,8 @@ function buildCard(m){
   if(m.outputs.length){
     html+='<div class="detail-section"><h4>Outputs</h4><p style="font-size:.82rem;color:#475569"><code>'+m.outputs.map(esc).join('</code>, <code>')+'</code></p></div>';
   }
-  html+='<div class="detail-section"><h4>Usage</h4><div class="usage-block"><button class="usage-copy" data-usage="'+esc(m.usage)+'">Copy</button><pre>'+esc(m.usage)+'</pre></div></div>';
+  // Remove data-usage and instead get textContent from the sibling <pre> on click
+  html+='<div class="detail-section"><h4>Usage</h4><div class="usage-block"><button class="usage-copy" aria-label="Copy usage snippet">Copy</button><pre class="usage-pre">'+esc(m.usage)+'</pre></div></div>';
   html+='</div></div></div>';
   return html;
 }
@@ -59,6 +68,7 @@ function renderTagDropdown(filter){
   var input=document.getElementById("tag-input");
   if(!filter && document.activeElement!==input){
     dropdown.classList.add("hidden");
+    input.setAttribute("aria-expanded", "false");
     return;
   }
   var f=filter?filter.toLowerCase():"";
@@ -67,21 +77,23 @@ function renderTagDropdown(filter){
   });
   
   if(matches.length===0){
-    dropdown.innerHTML='<div class="tag-dropdown-item" style="color:#94a3b8;cursor:default;">No matching tags</div>';
+    dropdown.innerHTML='<div class="tag-dropdown-item" role="option" aria-disabled="true" style="color:#94a3b8;cursor:default;">No matching tags</div>';
   }else{
     dropdown.innerHTML=matches.map(function(item,index){
-      return '<div class="tag-dropdown-item" data-tag="'+esc(item.tag)+'" data-index="'+index+'">' + 
+      return '<div class="tag-dropdown-item" role="option" id="tag-opt-'+index+'" data-tag="'+esc(item.tag)+'" data-index="'+index+'">' + 
              '<span>'+esc(item.tag)+'</span><span class="count">('+item.count+')</span></div>';
     }).join('');
   }
   dropdown.classList.remove("hidden");
+  input.setAttribute("aria-expanded", "true");
   tagDropdownIndex=-1;
+  input.removeAttribute("aria-activedescendant");
 }
 
 function renderActiveTags(){
   var container=document.getElementById("active-tags");
   container.innerHTML=Array.from(activeTags).map(function(t){
-    return '<span class="active-tag-pill">'+esc(t)+'<button class="remove-tag" data-tag="'+esc(t)+'" title="Remove tag">&times;</button></span>';
+    return '<span class="active-tag-pill">'+esc(t)+'<button class="remove-tag" aria-label="Remove tag '+esc(t)+'" data-tag="'+esc(t)+'" title="Remove tag">&times;</button></span>';
   }).join('');
   applyFilters();
 }
@@ -137,14 +149,20 @@ function init(){
       else if(items.length>0) addTag(items[0].getAttribute("data-tag"));
     }else if(e.key==="Escape"){
       tagDropdown.classList.add("hidden");
+      tagInput.setAttribute("aria-expanded", "false");
       tagInput.blur();
     }
   });
 
   function updateDropdownSelection(items){
     items.forEach(function(item,idx){
-      item.classList.toggle("focused",idx===tagDropdownIndex);
-      if(idx===tagDropdownIndex) item.scrollIntoView({block:"nearest"});
+      var isFocused = idx===tagDropdownIndex;
+      item.classList.toggle("focused", isFocused);
+      item.setAttribute("aria-selected", isFocused ? "true" : "false");
+      if(isFocused){
+        item.scrollIntoView({block:"nearest"});
+        tagInput.setAttribute("aria-activedescendant", item.id);
+      }
     });
   }
 
@@ -155,11 +173,15 @@ function init(){
       renderTagDropdown("");
       renderActiveTags();
       tagDropdown.classList.add("hidden");
+      tagInput.setAttribute("aria-expanded", "false");
     }
   }
 
   document.addEventListener("click",function(e){
-    if(!e.target.closest(".tag-typeahead")) tagDropdown.classList.add("hidden");
+    if(!e.target.closest(".tag-typeahead")){
+      tagDropdown.classList.add("hidden");
+      tagInput.setAttribute("aria-expanded", "false");
+    }
   });
 
   tagDropdown.addEventListener("click",function(e){
@@ -186,7 +208,8 @@ function init(){
     if(copyBtn){copyText(copyBtn.getAttribute("data-src"),copyBtn);return;}
     var usageCopy=e.target.closest(".usage-copy");
     if(usageCopy){
-      var u=usageCopy.getAttribute("data-usage");
+      var pre = usageCopy.nextElementSibling;
+      var u = pre ? pre.textContent : "";
       navigator.clipboard.writeText(u).then(function(){usageCopy.textContent="Copied!";setTimeout(function(){usageCopy.textContent="Copy";},1500);});
       return;
     }
@@ -194,8 +217,16 @@ function init(){
     if(toggle){
       var details=toggle.nextElementSibling;
       var arrow=toggle.querySelector(".arrow");
-      details.classList.toggle("open");
-      arrow.classList.toggle("open");
+      var isOpen=details.classList.contains("open");
+      if(isOpen){
+        details.classList.remove("open");
+        arrow.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
+      }else{
+        details.classList.add("open");
+        arrow.classList.add("open");
+        toggle.setAttribute("aria-expanded", "true");
+      }
     }
   });
 }

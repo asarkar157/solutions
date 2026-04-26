@@ -73,7 +73,8 @@
 
 /* Usage snippet */
 .usage-block{position:relative;background:#0f172a;border-radius:6px;padding:.85rem 1rem;margin-top:.3rem;overflow-x:auto;border:1px solid #334155}
-.usage-block pre{margin:0;color:#f1f5f9;font-size:.8rem;line-height:1.6;white-space:pre;-webkit-text-size-adjust:100%}
+.usage-block pre{margin:0 !important;color:#ffffff !important;font-size:.85rem !important;line-height:1.6 !important;white-space:pre !important;background:transparent !important;border:none !important;padding:0 !important;text-shadow:none !important;}
+.usage-block code{background:transparent !important;color:#ffffff !important;padding:0 !important;border:none !important;text-shadow:none !important;}
 .usage-copy{position:absolute;top:.5rem;right:.5rem;background:rgba(255,255,255,.15);border:none;color:#fff;cursor:pointer;padding:4px 10px;border-radius:4px;font-size:.72rem;font-weight:500}
 .usage-copy:hover{background:rgba(255,255,255,.25)}
 
