@@ -10,20 +10,13 @@ module "marketing" {
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-
-  integration_names = {
-    slack  = module.slack_integration.integration_name
-    google = "google-workspace"
-    linear = "linear-integration"
-  }
 }
 ```
 
 ## What It Creates
 
-- 1 Agent (marketing-ops)
-- 5 Runbook SOPs (content brief, campaign report, social audit, SEO audit, email sequence)
-- 2 Workflows (content-pipeline, campaign-analytics)
+- 4 marketing agents (content, PR, analytics, sales enablement) with budgets and `dangerous_ops` policy attachments
+- Runbook SOPs and workflows for product-launch style go-to-market orchestration
 
 ## Use Cases
 
