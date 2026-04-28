@@ -90,7 +90,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 
 1. **One concern per module block** — prefer adding another `module` block over forking a module’s internals from the consumer root.
 2. **Pin `ref=`** on Git sources for anything beyond local experimentation.
-3. **Run** `terraform fmt` / `tofu fmt` and `validate` after edits.
+3. **Run** `terraform fmt` / `tofu fmt` and `validate` after edits (or `pre-commit install` to mirror CI on every commit; see [README](README.md) and [`.pre-commit-config.yaml`](.pre-commit-config.yaml)).
 4. **Do not** invent `sg_*` resource arguments; if unsure, open the StackGen provider schema or the module’s `main.tf` in this repo.
 
 ## Module inventory (folder → role)

@@ -172,6 +172,8 @@ make check            # fmt-check + opa-fmt-check + opa-check + validate
 make clean            # remove .terraform caches under modules/ and examples/
 ```
 
+**Git pre-commit (optional, same checks as CI):** install [pre-commit](https://pre-commit.com/) (`pip install pre-commit` or `brew install pre-commit`), then run `pre-commit install` in this repository. Each commit runs `make fmt-check`, `make opa-fmt-check`, `make opa-check`, and `make validate`. To skip validation only (for example offline without registry credentials): `SKIP=make-validate git commit`. To bypass hooks entirely: `git commit --no-verify`.
+
 **Registry authentication (for local `make validate` if your environment requires it):** modules download the StackGen provider from `releases.stackgen.com`. CI does not set a GitHub Actions secret for the registry. Locally, if `init` cannot reach the provider, set credentials for that hostname, for example:
 
 - Environment variable: `export TF_TOKEN_releases_stackgen_com="<token>"` — same variable name for **OpenTofu and Terraform** ([OpenTofu credentials](https://opentofu.org/docs/cli/config/config-file/#credentials-1), [Terraform equivalent](https://developer.hashicorp.com/terraform/cli/config/config-file#environment-variables)).

@@ -1,0 +1,33 @@
+# Mirrors .github/workflows/ci.yml — run "pre-commit install" once, then commits invoke these checks.
+# Skip one hook: SKIP=make-validate git commit
+# Skip all hooks: git commit --no-verify
+#
+# Requires: make, OpenTofu or Terraform (see Makefile), OPA (make opa-check), registry token for validate when needed.
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: make-fmt-check
+        name: make fmt-check (tofu/terraform fmt -check -recursive)
+        language: system
+        entry: make fmt-check
+        pass_filenames: false
+
+      - id: make-opa-fmt-check
+        name: make opa-fmt-check (OPA Rego format check)
+        language: system
+        entry: make opa-fmt-check
+        pass_filenames: false
+
+      - id: make-opa-check
+        name: make opa-check (opa check per .rego file)
+        language: system
+        entry: make opa-check
+        pass_filenames: false
+
+      - id: make-validate
+        name: make validate (init + validate all module/example roots)
+        language: system
+        entry: make validate
+        pass_filenames: false
