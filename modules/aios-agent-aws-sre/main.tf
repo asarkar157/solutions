@@ -77,6 +77,7 @@ resource "sg_workflow" "k8s_monitoring" {
   name        = "k8s-monitoring"
   domain      = "incident-response"
   description = "Diagnose Kubernetes cluster issues such as CrashLoopBackOff or node pressure."
+  approve     = var.workflow_approve
 
   triggers        = [{ field = "incident_title_contains", values = ["CrashLoopBackOff", "NodeNotReady"], type = "passive" }]
   required_inputs = ["cluster_name"]
@@ -92,6 +93,7 @@ resource "sg_workflow" "aws_unified_audit" {
   name        = "aws-unified-audit"
   domain      = "sre-operations"
   description = "Comprehensive AWS environment audit for security, cost, and compliance."
+  approve     = var.workflow_approve
 
   runbook_refs    = [sg_runbook_sop.aws_security_audit.name, sg_runbook_sop.aws_cost_analysis.name, sg_runbook_sop.aws_tags_sanity.name]
   example_queries = ["Run a security check on S3 buckets", "Find idle EBS volumes", "Validate tagging compliance"]

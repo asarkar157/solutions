@@ -67,3 +67,9 @@ variable "linear_mcp_integration_name" {
   type        = string
   default     = ""
 }
+
+variable "workflow_approve" {
+  description = "When true, Guild approves workflow drafts via API after apply."
+  type        = bool
+  default     = true
+}

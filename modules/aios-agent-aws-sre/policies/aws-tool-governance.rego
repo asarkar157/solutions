@@ -13,13 +13,27 @@ allow if {
 	is_read_only(cmd)
 }
 
+# Allow _execute_parallel when ALL commands are read-only
+allow if {
+	endswith(input.tool.name, "_execute_parallel")
+	commands := input.tool.arguments.commands
+	count(commands) > 0
+	every c in commands {
+		is_read_only(c.command)
+	}
+}
+
 allow if {
 	input.tool.name == "kubectl_execute_command"
 	cmd := input.tool.arguments.command
 	is_read_only(cmd)
 }
 
-# Require intervention for destructive actions
+is_shell_tool if {
+	endswith(input.tool.name, "_execute_parallel")
+}
+
+# Require intervention for destructive single commands
 approval_required if {
 	input.tool.name == "aws_execute_command"
 	cmd := input.tool.arguments.command
@@ -32,7 +46,21 @@ approval_required if {
 	not is_read_only(cmd)
 }
 
+# Require intervention for parallel commands when any command is destructive
+approval_required if {
+	endswith(input.tool.name, "_execute_parallel")
+	commands := input.tool.arguments.commands
+	some c in commands
+	not is_read_only(c.command)
+}
+
 approval_reason := sprintf("Destructive command requires approval: '%s'", [input.tool.arguments.command]) if {
+	endswith(input.tool.name, "_execute_command")
+	approval_required
+}
+
+approval_reason := sprintf("Parallel batch contains destructive command(s) requiring approval") if {
+	endswith(input.tool.name, "_execute_parallel")
 	approval_required
 }
 

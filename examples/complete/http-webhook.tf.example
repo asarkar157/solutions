@@ -1,0 +1,10 @@
+# Copy optional snippets into your root module after enabling HTTP webhooks in the StackGen provider.
+# Rename to http-webhook.tf (drop .example). Requires provider support for sg_webhook and optional project_id on provider "sg".
+#
+# resource "sg_webhook" "sre_incident_http" {
+#   name        = "complete-example-sre-incident"
+#   target_type = "agent"
+#   target_name = module.sre_agents.agent_names.sre_incident
+#   action      = "Triage the POSTed incident payload; correlate with recent changes and suggest remediation."
+#   enabled     = true
+# }

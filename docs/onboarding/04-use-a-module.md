@@ -54,6 +54,8 @@ Your root module must configure the **`sg`** provider required by these modules 
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  # Optional default org scope for Guild (e.g. webhooks, knowledge):
+  # project_id = var.stackgen_project_id
 }
 ```
 

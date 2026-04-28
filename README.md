@@ -87,6 +87,8 @@ In the same root module, configure the **`sg`** provider (values should match `s
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  # Optional: default project/org scope for Guild (webhooks, knowledge). Prefer project_id over deprecated org_id.
+  # project_id = var.stackgen_project_id
 }
 ```
 

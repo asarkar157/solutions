@@ -150,6 +150,7 @@ resource "sg_workflow" "product_launch" {
   name        = "product-launch"
   domain      = "marketing"
   description = "Orchestrates a full go-to-market launch: conducts competitive research, produces messaging and content in parallel with sales enablement materials, coordinates embargo-aware press and social media distribution on launch day, and tracks post-launch KPIs across traffic, sign-ups, pipeline, and press coverage."
+  approve     = var.workflow_approve
 
   triggers = [
     { field = "campaign_type", values = ["product_launch", "feature_launch", "go_to_market"], type = "passive" },

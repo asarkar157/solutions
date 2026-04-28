@@ -7,6 +7,18 @@ variable "stackgen_token" {
   sensitive = true
 }
 
+variable "stackgen_project_id" {
+  description = "Optional default project ID for Guild APIs that send org scope (webhooks, knowledge)."
+  type        = string
+  default     = ""
+}
+
+variable "guild_integration_scope" {
+  description = "Passed to aios-foundation: TENANT, PROJECT, or USER for LLM providers/models."
+  type        = string
+  default     = "TENANT"
+}
+
 variable "openai_api_key" {
   type      = string
   sensitive = true

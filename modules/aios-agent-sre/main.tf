@@ -385,6 +385,7 @@ resource "sg_workflow" "incident_response" {
   name        = "incident-response"
   domain      = "incident-response"
   description = "End-to-end production incident response: triages alerts, correlates with recent changes, evaluates blast radius, classifies severity, and recommends or auto-executes remediation — with human-in-the-loop approval for high-risk actions."
+  approve     = var.workflow_approve
 
   triggers = [
     { field = "incident_title_contains", values = ["outage", "degradation", "p1", "sev1", "sev2"], type = "passive" },
@@ -435,6 +436,7 @@ resource "sg_workflow" "incident_quick_triage" {
   name        = "incident-triage"
   domain      = "incident-response"
   description = "Fast-track triage for Sev-3/Sev-4 alerts: collects key metrics, identifies probable root cause, and recommends a fix."
+  approve     = var.workflow_approve
 
   triggers = [
     { field = "incident_title_contains", values = ["warning", "degradation", "p3", "p4", "sev3", "sev4"], type = "passive" },

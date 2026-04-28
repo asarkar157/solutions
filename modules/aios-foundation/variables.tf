@@ -16,10 +16,22 @@ variable "stackgen_insecure" {
   default     = false
 }
 
-variable "org_id" {
-  description = "Organization ID for StackGen. Must match the root provider \"sg\" org_id if set."
+variable "project_id" {
+  description = "Default project (organization) ID for scoped Guild/API calls. Must match the root provider \"sg\" project_id when set (preferred over deprecated org_id)."
   type        = string
   default     = ""
+}
+
+variable "org_id" {
+  description = "Deprecated: use project_id on the root provider \"sg\" instead. Retained for backward compatibility with older root modules."
+  type        = string
+  default     = ""
+}
+
+variable "guild_integration_scope" {
+  description = "Guild IntegrationScope applied to LLM model providers and models (TENANT, PROJECT, or USER)."
+  type        = string
+  default     = "TENANT"
 }
 
 variable "llm_api_keys" {

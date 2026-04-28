@@ -15,3 +15,9 @@ variable "agent_budget" {
   type    = number
   default = 20
 }
+
+variable "workflow_approve" {
+  description = "When true, Guild approves workflow drafts via API after apply."
+  type        = bool
+  default     = true
+}

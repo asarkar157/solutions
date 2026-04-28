@@ -34,7 +34,9 @@ module "foundation" {
 | `stackgen_url` | Base URL of the StackGen platform | `string` | — | yes |
 | `stackgen_token` | Bearer token for API authentication | `string` | `""` | no |
 | `stackgen_insecure` | Allow plaintext HTTP (dev only) | `bool` | `false` | no |
-| `org_id` | Organization ID | `string` | `""` | no |
+| `project_id` | Aligns with root `provider "sg" { project_id = ... }` (default org scope) | `string` | `""` | no |
+| `org_id` | Deprecated; use `project_id` on the root provider | `string` | `""` | no |
+| `guild_integration_scope` | `TENANT`, `PROJECT`, or `USER` for model providers and models | `string` | `"TENANT"` | no |
 | `llm_api_keys` | LLM provider API keys | `object` | `{}` | no |
 | `name_prefix` | Prefix for resource names | `string` | `""` | no |
 

@@ -48,6 +48,7 @@ resource "sg_workflow" "predictive_triage" {
   name        = "predictive-incident-triage"
   domain      = "incident-response"
   description = "Cross-domain predictive triage: code context, metrics context, infrastructure context, and predictive synthesis."
+  approve     = var.workflow_approve
 
   triggers        = [{ field = "incident_title_contains", values = ["degradation", "OOM", "latency creep", "memory leak"], type = "passive" }]
   required_inputs = ["service_name"]

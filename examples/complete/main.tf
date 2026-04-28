@@ -17,6 +17,7 @@ terraform {
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id != "" ? var.stackgen_project_id : null
 }
 
 # =============================================================================
@@ -34,6 +35,8 @@ module "foundation" {
     anthropic = var.anthropic_api_key
     gemini    = var.gemini_api_key
   }
+
+  guild_integration_scope = var.guild_integration_scope
 }
 
 module "policies" {

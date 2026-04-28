@@ -77,6 +77,7 @@ resource "sg_workflow" "gcp_unified_audit" {
   name        = "gcp-unified-audit"
   domain      = "sre-operations"
   description = "Comprehensive GCP environment audit for security, cost, and compliance."
+  approve     = var.workflow_approve
 
   runbook_refs    = [sg_runbook_sop.gcp_security_audit.name, sg_runbook_sop.gcp_cost_analysis.name]
   example_queries = ["Audit our GCP project for security issues", "Find idle GCP resources to save costs", "Check for public Cloud Storage buckets"]
@@ -98,6 +99,7 @@ resource "sg_workflow" "gke_incident_response" {
   name        = "gke-incident-response"
   domain      = "incident-response"
   description = "GKE cluster incident response: diagnose node issues, pod failures, and Cloud SQL dependencies."
+  approve     = var.workflow_approve
 
   triggers        = [{ field = "incident_title_contains", values = ["gke", "gcp", "cloud sql", "cloud run"], type = "passive" }]
   required_inputs = ["cluster_name"]

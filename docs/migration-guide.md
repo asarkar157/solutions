@@ -34,6 +34,7 @@ terraform {
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  # project_id = var.stackgen_project_id  # optional; prefer over deprecated org_id
 }
 ```
 
@@ -59,8 +60,13 @@ module "foundation" {
     anthropic = var.anthropic_api_key
     gemini    = var.gemini_api_key
   }
+
+  # Optional: TENANT / PROJECT / USER — sets scope on model providers and models
+  # guild_integration_scope = "TENANT"
 }
 ```
+
+**HTTP webhooks (Guild):** To trigger an agent or workflow from an external HTTP caller, add a root-level `sg_webhook` (distinct from `sg_webhook_key`). Set `provider "sg" { project_id = ... }` when your tenancy requires org scope on those APIs.
 
 ## Step 3: Replace Inline Policies with Policies Module
 
