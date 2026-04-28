@@ -14,9 +14,9 @@ variable "stackgen_project_id" {
 }
 
 variable "guild_integration_scope" {
-  description = "Passed to aios-foundation: TENANT, PROJECT, or USER for LLM providers/models."
+  description = "Passed to aios-foundation. Empty uses platform default; set to TENANT, PROJECT, or USER only when you need an explicit scope."
   type        = string
-  default     = "TENANT"
+  default     = ""
 }
 
 variable "openai_api_key" {

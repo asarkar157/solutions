@@ -36,7 +36,7 @@ module "foundation" {
 | `stackgen_insecure` | Allow plaintext HTTP (dev only) | `bool` | `false` | no |
 | `project_id` | Aligns with root `provider "sg" { project_id = ... }` (default org scope) | `string` | `""` | no |
 | `org_id` | Deprecated; use `project_id` on the root provider | `string` | `""` | no |
-| `guild_integration_scope` | `TENANT`, `PROJECT`, or `USER` for model providers and models | `string` | `"TENANT"` | no |
+| `guild_integration_scope` | When non-empty, sets scope on model providers and models (`TENANT`, `PROJECT`, `USER`). Empty uses the platform default. | `string` | `""` | no |
 | `llm_api_keys` | LLM provider API keys | `object` | `{}` | no |
 | `name_prefix` | Prefix for resource names | `string` | `""` | no |
 

@@ -29,9 +29,9 @@ variable "org_id" {
 }
 
 variable "guild_integration_scope" {
-  description = "Guild IntegrationScope applied to LLM model providers and models (TENANT, PROJECT, or USER)."
+  description = "When set to a non-empty value, applies that Guild IntegrationScope to LLM model providers and models (TENANT, PROJECT, or USER). Leave empty (default) to use the platform default and avoid forcing tenant-level scope."
   type        = string
-  default     = "TENANT"
+  default     = ""
 }
 
 variable "llm_api_keys" {

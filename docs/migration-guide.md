@@ -61,8 +61,8 @@ module "foundation" {
     gemini    = var.gemini_api_key
   }
 
-  # Optional: TENANT / PROJECT / USER — sets scope on model providers and models
-  # guild_integration_scope = "TENANT"
+  # Optional: set only if you need an explicit scope (else platform default)
+  # guild_integration_scope = "PROJECT"
 }
 ```
 
