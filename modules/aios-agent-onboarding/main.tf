@@ -51,7 +51,6 @@ resource "sg_workflow" "developer_onboarding" {
   name        = "developer-onboarding"
   domain      = "people-ops"
   description = "Automated developer onboarding pipeline: environment setup, access provisioning, and codebase orientation."
-  approve     = var.workflow_approve
 
   required_inputs = ["developer_name", "team"]
   optional_inputs = ["role", "start_date"]

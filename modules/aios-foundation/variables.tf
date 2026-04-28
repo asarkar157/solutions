@@ -28,12 +28,6 @@ variable "org_id" {
   default     = ""
 }
 
-variable "guild_integration_scope" {
-  description = "When set to a non-empty value, applies that Guild IntegrationScope to LLM model providers and models (TENANT, PROJECT, or USER). Leave empty (default) to use the platform default and avoid forcing tenant-level scope."
-  type        = string
-  default     = ""
-}
-
 variable "llm_api_keys" {
   description = "LLM provider API keys for vault secrets"
   type = object({

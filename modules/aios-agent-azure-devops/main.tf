@@ -114,7 +114,6 @@ resource "sg_workflow" "azure_devops_full_triage" {
   name        = "azure-devops-full-triage"
   domain      = "incident-response"
   description = "Full triage: ClickHouse diagnostics, queue inspection, function health checks → correlate → remediate."
-  approve     = var.workflow_approve
 
   triggers = [
     { field = "incident_title_contains", values = ["poison queue", "clickhouse", "azure function", "ingestion failure"], type = "passive" },

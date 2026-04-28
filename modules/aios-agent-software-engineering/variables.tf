@@ -13,8 +13,3 @@ variable "linear_readonly_tools" {
   default = []
 }
 
-variable "workflow_approve" {
-  description = "When true, Guild approves the workflow draft via API after apply."
-  type        = bool
-  default     = true
-}

@@ -59,7 +59,7 @@ approval_reason := sprintf("Destructive command requires approval: '%s'", [input
 	approval_required
 }
 
-approval_reason := sprintf("Parallel batch contains destructive command(s) requiring approval") if {
+approval_reason := "Parallel batch contains destructive command(s) requiring approval" if {
 	endswith(input.tool.name, "_execute_parallel")
 	approval_required
 }

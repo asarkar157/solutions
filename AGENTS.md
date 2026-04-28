@@ -78,7 +78,6 @@ For a working full graph, start from `examples/complete/main.tf`.
 
 - **`model_names`**: Almost always `module.foundation.model_names` (object with keys like `gpt4o`, `claude_sonnet`, `gemini_flash`).
 - **`policy_ids`**: A **map** keyed by logical names; each agent module documents which keys it needs in its `variables.tf` / README. Source: `module.policies.policy_ids`.
-- **`workflow_approve`**: Agent modules that define `sg_workflow` expose this (default `true`) so Guild can approve workflow drafts via API after apply instead of leaving them pending in the UI.
 - **Integrations**: Some modules take `integration_name` (string), others `integration_names` (map). Match the **exact** variable type of the module you are calling.
 - **Secrets / tokens**: Prefer root-level sensitive variables and pass into modules; never commit credentials.
 

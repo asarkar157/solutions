@@ -82,7 +82,6 @@ resource "sg_workflow" "compliance_assessment" {
   name        = "compliance-assessment"
   domain      = "compliance"
   description = "Multi-framework compliance assessment with automated evidence collection and finding classification."
-  approve     = var.workflow_approve
 
   required_inputs = ["framework"]
   optional_inputs = ["scope", "specific_controls"]

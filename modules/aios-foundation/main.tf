@@ -59,7 +59,6 @@ resource "sg_guild_model_provider" "openai" {
   name            = "openai"
   provider_type   = "openai"
   token_reference = sg_secret.openai[0].name
-  scope           = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }
 
 resource "sg_guild_model_provider" "anthropic" {
@@ -67,7 +66,6 @@ resource "sg_guild_model_provider" "anthropic" {
   name            = "anthropic"
   provider_type   = "anthropic"
   token_reference = sg_secret.anthropic[0].name
-  scope           = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }
 
 resource "sg_guild_model_provider" "gemini" {
@@ -75,7 +73,6 @@ resource "sg_guild_model_provider" "gemini" {
   name            = "gemini"
   provider_type   = "gemini"
   token_reference = sg_secret.gemini[0].name
-  scope           = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }
 
 # =============================================================================
@@ -88,7 +85,6 @@ resource "sg_guild_model" "gpt4o" {
   provider_name = sg_guild_model_provider.openai[0].name
   model_id      = "gpt-4o"
   good_for_task = "tool_calling"
-  scope         = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }
 
 resource "sg_guild_model" "claude_sonnet" {
@@ -97,7 +93,6 @@ resource "sg_guild_model" "claude_sonnet" {
   provider_name = sg_guild_model_provider.anthropic[0].name
   model_id      = "claude-sonnet-4-6"
   good_for_task = "planning"
-  scope         = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }
 
 resource "sg_guild_model" "gemini_flash" {
@@ -106,5 +101,4 @@ resource "sg_guild_model" "gemini_flash" {
   provider_name = sg_guild_model_provider.gemini[0].name
   model_id      = "gemini-3-flash-preview"
   good_for_task = "efficiency"
-  scope         = var.guild_integration_scope != "" ? var.guild_integration_scope : null
 }

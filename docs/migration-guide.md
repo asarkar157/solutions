@@ -60,13 +60,10 @@ module "foundation" {
     anthropic = var.anthropic_api_key
     gemini    = var.gemini_api_key
   }
-
-  # Optional: set only if you need an explicit scope (else platform default)
-  # guild_integration_scope = "PROJECT"
 }
 ```
 
-**HTTP webhooks (Guild):** To trigger an agent or workflow from an external HTTP caller, add a root-level `sg_webhook` (distinct from `sg_webhook_key`). Set `provider "sg" { project_id = ... }` when your tenancy requires org scope on those APIs.
+**HTTP webhooks (Guild):** Newer StackGen provider versions support `sg_webhook` (incoming HTTP triggers) and optional `project_id` / model `scope` on the provider and foundation resources; pin a provider version that includes those features when you need them.
 
 ## Step 3: Replace Inline Policies with Policies Module
 

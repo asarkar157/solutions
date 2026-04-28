@@ -86,7 +86,6 @@ resource "sg_workflow" "feature_development" {
   name        = "feature-development"
   domain      = "software-engineering"
   description = "Full lifecycle code authoring pipeline: Linear ticket → Cursor implementation → GitHub Pull Request."
-  approve     = var.workflow_approve
 
   required_inputs = ["linear_issue_id", "repository"]
   optional_inputs = ["branch"]

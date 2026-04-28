@@ -64,7 +64,6 @@ resource "sg_workflow" "finops_review" {
   name        = "finops-review"
   domain      = "finops"
   description = "Comprehensive multi-cloud FinOps review: idle resources, rightsizing, commitment optimization, and anomaly detection."
-  approve     = var.workflow_approve
 
   example_queries = [
     "How much are we wasting on idle AWS resources?",

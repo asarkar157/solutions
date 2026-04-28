@@ -61,7 +61,6 @@ resource "sg_workflow" "developer_daily_triage" {
   name        = "developer-daily-triage"
   domain      = "workspace-assistant"
   description = "A daily triage workflow mapping Linear, Slack, and Gmail context into a structured to-do list."
-  approve     = var.workflow_approve
 
   example_queries = [
     "what are the things pending on my side",

@@ -118,7 +118,6 @@ resource "sg_workflow" "supply_chain_scan" {
   name        = "supply-chain-security-analyst"
   domain      = "security"
   description = "5-stage supply chain security scan: integrity check, behavioral sandbox, manifest anomaly, correlation, remediation."
-  approve     = var.workflow_approve
 
   triggers = [
     { field = "incident_title_contains", values = ["supply chain", "npm", "malicious package", "provenance"], type = "passive" },

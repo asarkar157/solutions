@@ -267,7 +267,6 @@ resource "sg_workflow" "release_pipeline" {
   name        = "release-pipeline"
   domain      = "release-pipeline"
   description = "Builds, scans, tests, and deploys a service from a Git ref to production — with parallel security scanning and integration testing, progressive canary rollout, automatic rollback on failure, and human-in-the-loop approval before production promotion."
-  approve     = var.workflow_approve
 
   triggers = []
 
@@ -378,7 +377,6 @@ resource "sg_workflow" "developer_request_intake" {
   name        = "developer-request-intake"
   domain      = "developer-services"
   description = "Handles developer service requests submitted through Jira, Slack, or the self-service portal. Analyses the request, creates a tracking issue, evaluates Rego governance policies, processes the approved action, and closes the tracking issue."
-  approve     = var.workflow_approve
 
   triggers = [
     { field = "channel", values = ["jira", "slack", "web"], type = "passive" },
