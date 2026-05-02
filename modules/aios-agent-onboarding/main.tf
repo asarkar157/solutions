@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -34,23 +34,24 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "environment_setup" {
   name        = "developer-environment-setup"
-  description = "Guide new developer through local env setup. Steps: 1) Verify prerequisites (Git, Docker, Node/Go), 2) Clone required repos, 3) Configure environment variables, 4) Run bootstrap scripts, 5) Verify build and tests pass, 6) Setup IDE extensions."
+  description = trimspace(templatefile("${path.module}/templates/developer-environment-setup.md", {}))
 }
 
 resource "sg_runbook_sop" "access_provisioning" {
   name        = "access-provisioning-checklist"
-  description = "Verify and provision developer access. Steps: 1) Check GitHub org membership, 2) Verify repo access, 3) Check cloud console access, 4) Verify monitoring dashboard access, 5) Confirm Slack channel membership, 6) Create access requests for missing permissions."
+  description = trimspace(templatefile("${path.module}/templates/access-provisioning-checklist.md", {}))
 }
 
 resource "sg_runbook_sop" "codebase_orientation" {
   name        = "codebase-orientation"
-  description = "Orient developer to the codebase. Steps: 1) Explain high-level architecture and service boundaries, 2) Walk through key directories and modules, 3) Explain deployment pipeline and environments, 4) Review coding standards and PR process, 5) Identify relevant documentation."
+  description = trimspace(templatefile("${path.module}/templates/codebase-orientation.md", {}))
 }
 
 resource "sg_workflow" "developer_onboarding" {
   name        = "developer-onboarding"
   domain      = "people-ops"
-  description = "Automated developer onboarding pipeline: environment setup, access provisioning, and codebase orientation."
+  description = trimspace(templatefile("${path.module}/templates/workflow-developer-onboarding.md", {}))
+  approve     = true
 
   required_inputs = ["developer_name", "team"]
   optional_inputs = ["role", "start_date"]

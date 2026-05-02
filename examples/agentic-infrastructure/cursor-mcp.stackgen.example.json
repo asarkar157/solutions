@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "stackgen-admin": {
+      "type": "streamable_http",
+      "url": "https://main.dev.stackgen.com/api/mcp/admin",
+      "headers": {
+        "authorization": "Bearer REPLACE_WITH_STACKGEN_PAT"
+      }
+    },
+    "stackgen-user": {
+      "type": "streamable_http",
+      "url": "https://main.dev.stackgen.com/api/mcp/user",
+      "headers": {
+        "authorization": "Bearer REPLACE_WITH_STACKGEN_PAT"
+      }
+    }
+  }
+}

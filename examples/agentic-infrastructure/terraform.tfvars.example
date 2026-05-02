@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars (never commit secrets).
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "REPLACE_WITH_STACKGEN_TOKEN"
+stackgen_project_id = "REPLACE_WITH_PROJECT_UUID"
+
+openai_api_key    = ""
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+aws_region = "us-east-1"
+
+# Required for IAM: principal ARN(s) StackGen uses to assume your role, or a full trust JSON string.
+aws_stackgen_trust_arns = ["arn:aws:iam::999999999999:role/REPLACE_WITH_STACKGEN_CONNECT_PRINCIPAL"]
+# Or use full JSON (set in .tfvars via heredoc or relative path from apply cwd): aws_integration_assume_role_policy_json = file("trust-policy.json")
+
+# Optional: non-empty PAT registers GitHub Guild integration + repo-to-iac workflows (repository-to-iac, repo-scan-appstack-github-export); SDLC GitHub SCM paths use it too. Empty skips GitHub + repo-to-iac modules.
+github_token = ""
+
+# Optional: set false to skip the single sg_secret + sg_guild_integration StackGen MCP resources.
+# create_stackgen_mcp_integrations = false
+
+# Optional SDLC Guild integrations (must already exist in the project): linear-integration, google-integration, slack-integration
+# linear_integration_name = "linear-integration"
+# gcp_integration_name    = "google-integration"
+# slack_integration_name  = "slack-integration"

@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -69,23 +69,24 @@ resource "sg_agent_policy_attachment" "developer_shell_hitl" {
 
 resource "sg_runbook_sop" "linear_ticket_analysis" {
   name        = "linear-ticket-analysis"
-  description = "Evaluate Linear ticket and map into technical AC. Steps: 1) Retrieve issue, 2) Extract requirements, 3) Identify implicit technical needs, 4) Update status, 5) Hand off to Cursor Developer Agent."
+  description = trimspace(templatefile("${path.module}/templates/linear-ticket-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cursor_code_authoring" {
   name        = "cursor-code-authoring"
-  description = "Use Cursor tool for implementing code changes. Steps: 1) Determine target repo and branch, 2) Launch Cursor agent, 3) Wait for completion via status polling."
+  description = trimspace(templatefile("${path.module}/templates/cursor-code-authoring.md", {}))
 }
 
 resource "sg_runbook_sop" "github_pr_submission" {
   name        = "github-pr-submission"
-  description = "Submit changes as a PR. Steps: 1) Push branch, 2) Create PR with autoCreatePr, 3) Poll status, 4) Notify #engineering Slack channel."
+  description = trimspace(templatefile("${path.module}/templates/github-pr-submission.md", {}))
 }
 
 resource "sg_workflow" "feature_development" {
   name        = "feature-development"
   domain      = "software-engineering"
-  description = "Full lifecycle code authoring pipeline: Linear ticket → Cursor implementation → GitHub Pull Request."
+  description = trimspace(templatefile("${path.module}/templates/workflow-feature-development.md", {}))
+  approve     = true
 
   required_inputs = ["linear_issue_id", "repository"]
   optional_inputs = ["branch"]

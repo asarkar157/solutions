@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -9,23 +9,27 @@ terraform {
 # Supply Chain Security Agent Module
 # =============================================================================
 
+locals {
+  github_integration_attached = var.github_integration_name != "" ? var.github_integration_name : (var.github_token != "" ? "github-integration" : "")
+}
+
 resource "sg_policy" "npm_integrity_check" {
   name        = "npm-integrity-check"
-  description = "Require approval when npm packages lack OIDC/SLSA provenance"
+  description = trimspace(templatefile("${path.module}/templates/policy-npm-integrity-check.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/npm-integrity-check.rego")
 }
 
 resource "sg_policy" "npm_sandbox_network" {
   name        = "npm-sandbox-network"
-  description = "Block sandbox installs accessing non-allowlisted domains"
+  description = trimspace(templatefile("${path.module}/templates/policy-npm-sandbox-network.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/npm-sandbox-network.rego")
 }
 
 resource "sg_policy" "phantom_dependency" {
   name        = "phantom-dependency-detection"
-  description = "Flag dependencies declared but never imported"
+  description = trimspace(templatefile("${path.module}/templates/policy-phantom-dependency-detection.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/phantom-dependency-detection.rego")
 }
@@ -37,13 +41,7 @@ resource "sg_agent" "supply_chain_analyst" {
 
   hitl = { always_allowed = ["github-integration_test_connection"] }
 
-  integrations = var.github_token != "" ? ["github-integration"] : []
-
-  runtime = {
-    type  = "docker"
-    image = { name = "ghcr.io/stackgenhq/node-gh:20" }
-    env   = { NODE_ENV = "production", GITHUB_TOKEN = var.github_token }
-  }
+  integrations = local.github_integration_attached != "" ? [local.github_integration_attached] : []
 }
 
 resource "sg_agent_budget" "supply_chain" {
@@ -78,22 +76,22 @@ resource "sg_agent_policy_attachment" "phantom_dep" {
 
 resource "sg_runbook_sop" "npm_integrity_check" {
   name        = "npm-integrity-check"
-  description = file("${path.module}/templates/runbook-npm-integrity-check.md")
+  description = trimspace(templatefile("${path.module}/templates/runbook-npm-integrity-check.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_behavioral_sandbox" {
   name        = "npm-behavioral-sandbox"
-  description = file("${path.module}/templates/runbook-npm-behavioral-sandbox.md")
+  description = trimspace(templatefile("${path.module}/templates/runbook-npm-behavioral-sandbox.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_manifest_anomaly" {
   name        = "npm-manifest-anomaly-scan"
-  description = file("${path.module}/templates/runbook-npm-manifest-anomaly-scan.md")
+  description = trimspace(templatefile("${path.module}/templates/runbook-npm-manifest-anomaly-scan.md", {}))
 }
 
 resource "sg_remediation_pattern" "block_unverified_package" {
   name              = "block-unverified-package"
-  description       = "Block npm package lacking OIDC/SLSA provenance."
+  description       = trimspace(templatefile("${path.module}/templates/remediation-block-unverified-package.md", {}))
   version           = 1
   risk_level        = "medium"
   blast_radius      = "single-repo"
@@ -102,7 +100,7 @@ resource "sg_remediation_pattern" "block_unverified_package" {
 
 resource "sg_remediation_pattern" "quarantine_phantom" {
   name              = "quarantine-phantom-dependency"
-  description       = "Remove phantom dependency from package.json and lockfile."
+  description       = trimspace(templatefile("${path.module}/templates/remediation-quarantine-phantom-dependency.md", {}))
   version           = 1
   risk_level        = "medium"
   blast_radius      = "single-repo"
@@ -111,13 +109,14 @@ resource "sg_remediation_pattern" "quarantine_phantom" {
 
 resource "sg_evidence_checklist" "supply_chain_incident" {
   name        = "supply-chain-incident-evidence"
-  description = file("${path.module}/templates/evidence-supply-chain-incident.md")
+  description = trimspace(templatefile("${path.module}/templates/evidence-supply-chain-incident-body.md", {}))
 }
 
 resource "sg_workflow" "supply_chain_scan" {
   name        = "supply-chain-security-analyst"
   domain      = "security"
-  description = "5-stage supply chain security scan: integrity check, behavioral sandbox, manifest anomaly, correlation, remediation."
+  description = trimspace(templatefile("${path.module}/templates/workflow-supply-chain-security-analyst.md", {}))
+  approve     = true
 
   triggers = [
     { field = "incident_title_contains", values = ["supply chain", "npm", "malicious package", "provenance"], type = "passive" },

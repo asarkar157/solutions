@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
     azurerm = { source = "hashicorp/azurerm" }
   }
 }
@@ -66,28 +66,28 @@ resource "sg_agent_policy_attachment" "container_shell_hitl" {
 # Runbooks
 resource "sg_runbook_sop" "azure_function_health" {
   name        = "azure-function-health-check"
-  description = "Check Azure Function App health: status, health endpoint, logs, settings, restart if needed."
+  description = trimspace(templatefile("${path.module}/templates/azure-function-health-check.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_diagnostics" {
   name        = "clickhouse-cluster-diagnostics"
-  description = "Diagnose ClickHouse cluster: version, table sizes, running queries, parts count, slow queries, merge backlog."
+  description = trimspace(templatefile("${path.module}/templates/clickhouse-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "storage_queue_inspection" {
   name        = "storage-queue-inspection"
-  description = "Inspect Azure Storage Queues: message backlog, poison queue, peek messages, check RBAC."
+  description = trimspace(templatefile("${path.module}/templates/storage-queue-inspection.md", {}))
 }
 
 resource "sg_runbook_sop" "blob_storage_monitoring" {
   name        = "blob-storage-monitoring"
-  description = "Monitor Blob Storage: volumes, upload rate, Event Grid health, dead-letter."
+  description = trimspace(templatefile("${path.module}/templates/blob-storage-monitoring.md", {}))
 }
 
 # Remediation patterns
 resource "sg_remediation_pattern" "restart_azure_function" {
   name              = "restart-azure-function"
-  description       = "Restart Azure Function App, wait 45s, verify via log tail."
+  description       = trimspace(templatefile("${path.module}/templates/remediation-restart-azure-function.md", {}))
   version           = 1
   risk_level        = "medium"
   blast_radius      = "single-function"
@@ -96,7 +96,7 @@ resource "sg_remediation_pattern" "restart_azure_function" {
 
 resource "sg_remediation_pattern" "redeploy_log_processor" {
   name              = "redeploy-log-processor"
-  description       = "Build and redeploy log-processor Azure Function."
+  description       = trimspace(templatefile("${path.module}/templates/remediation-redeploy-log-processor.md", {}))
   version           = 1
   risk_level        = "high"
   blast_radius      = "data-pipeline"
@@ -106,14 +106,15 @@ resource "sg_remediation_pattern" "redeploy_log_processor" {
 # Evidence checklist
 resource "sg_evidence_checklist" "azure_devops_incident" {
   name        = "azure-devops-incident"
-  description = "Evidence for Azure data pipeline incidents: ClickHouse metrics, function logs, queue counts, storage status."
+  description = trimspace(templatefile("${path.module}/templates/evidence-azure-devops-incident.md", {}))
 }
 
 # Workflow — 5-stage DAG
 resource "sg_workflow" "azure_devops_full_triage" {
   name        = "azure-devops-full-triage"
   domain      = "incident-response"
-  description = "Full triage: ClickHouse diagnostics, queue inspection, function health checks → correlate → remediate."
+  description = trimspace(templatefile("${path.module}/templates/workflow-azure-devops-full-triage.md", {}))
+  approve     = true
 
   triggers = [
     { field = "incident_title_contains", values = ["poison queue", "clickhouse", "azure function", "ingestion failure"], type = "passive" },

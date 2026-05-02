@@ -1,0 +1,1 @@
+Handles developer service requests (Jira, Slack, web). Classifies intent, tracks work, evaluates Rego policies, then fulfills approved infra asks using StackGen Consumer MCP tools (appStacks, resources, snapshots, action runs) plus AWS CLI via the configured cloud integration — without routine platform tickets.

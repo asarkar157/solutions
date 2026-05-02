@@ -20,3 +20,10 @@ output "workflow_names" {
     developer_request_intake = sg_workflow.developer_request_intake.name
   }
 }
+
+output "runbook_names" {
+  description = "SDLC-owned runbook names (e.g. StackGen MCP IaC playbook)"
+  value = {
+    stackgen_mcp_iac = sg_runbook_sop.stackgen_mcp_iac.name
+  }
+}

@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 

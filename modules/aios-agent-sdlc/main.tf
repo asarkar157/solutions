@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -25,7 +25,12 @@ resource "sg_agent" "cloud_infra" {
     always_allowed = ["run_shell"]
   }
 
-  integrations = lookup(var.integration_names, "aws_production", "") != "" ? [var.integration_names.aws_production] : []
+  integrations = compact([
+    lookup(var.integration_names, "aws_production", ""),
+    lookup(var.integration_names, "stackgen_mcp", ""),
+    lookup(var.integration_names, "gcp_production", ""),
+    lookup(var.integration_names, "slack", ""),
+  ])
 }
 
 resource "sg_agent" "k8s_ops" {
@@ -39,7 +44,7 @@ resource "sg_agent" "github_scm" {
   persona     = file("${path.module}/personas/github-scm.md")
   model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
 
-  integrations = var.github_token != "" ? ["github-integration"] : []
+  integrations = var.github_token != "" ? compact([lookup(var.integration_names, "github_scm", "github-integration")]) : []
 }
 
 resource "sg_agent" "qa_testing" {
@@ -81,13 +86,6 @@ resource "sg_agent" "github_pr_reminder" {
 
   hitl = {
     always_allowed = ["run_shell"]
-  }
-
-  runtime = {
-    type = "docker"
-    env = {
-      GITHUB_TOKEN = var.secret_names.gemini_vault != "" ? "vault:${var.secret_names.gemini_vault}:GEMINI_API_KEY" : ""
-    }
   }
 }
 
@@ -155,6 +153,15 @@ resource "sg_agent_budget" "github_pr_reminder" {
   agent_name  = sg_agent.github_pr_reminder.name
   limit_usd   = 5
   period_type = "daily"
+}
+
+# ============================================================================
+# StackGen platform MCP — runbook (tool-aligned with Consumer MCP surface)
+# ============================================================================
+
+resource "sg_runbook_sop" "stackgen_mcp_iac" {
+  name        = "stackgen-mcp-iac"
+  description = trimspace(templatefile("${path.module}/templates/stackgen-mcp-iac.md", {}))
 }
 
 # ============================================================================
@@ -266,7 +273,10 @@ resource "sg_agent_policy_attachment" "github_pr_reminder_org_restriction" {
 resource "sg_workflow" "release_pipeline" {
   name        = "release-pipeline"
   domain      = "release-pipeline"
-  description = "Builds, scans, tests, and deploys a service from a Git ref to production — with parallel security scanning and integration testing, progressive canary rollout, automatic rollback on failure, and human-in-the-loop approval before production promotion."
+  description = trimspace(templatefile("${path.module}/templates/workflow-release-pipeline.md", {}))
+  # Guild `approve`: auto-approve the workflow *definition* draft after apply (provider sg_workflow).
+  # This is not production deploy approval — deploy-production still follows canary + HITL in stage notes.
+  approve = true
 
   triggers = []
 
@@ -376,7 +386,7 @@ resource "sg_workflow" "release_pipeline" {
 resource "sg_workflow" "developer_request_intake" {
   name        = "developer-request-intake"
   domain      = "developer-services"
-  description = "Handles developer service requests submitted through Jira, Slack, or the self-service portal. Analyses the request, creates a tracking issue, evaluates Rego governance policies, processes the approved action, and closes the tracking issue."
+  description = trimspace(templatefile("${path.module}/templates/workflow-developer-request-intake.md", {}))
 
   triggers = [
     { field = "channel", values = ["jira", "slack", "web"], type = "passive" },
@@ -388,6 +398,7 @@ resource "sg_workflow" "developer_request_intake" {
   optional_inputs = ["requester_email", "team", "priority", "jira_project_key", "environment"]
 
   runbook_refs = compact([
+    sg_runbook_sop.stackgen_mcp_iac.name,
     var.sre_runbook_names.deployment_rollback,
   ])
 
@@ -396,6 +407,7 @@ resource "sg_workflow" "developer_request_intake" {
     "Can you grant read access to the production RDS cluster for the analytics team?",
     "Please spin up a dev namespace for the new checkout-v2 service",
     "We need a new S3 bucket with encryption enabled for the data pipeline project",
+    "Create a new appStack from the platform template and add an encrypted S3 resource",
     "Request a VPN certificate for the new contractor starting Monday",
     "Set up CI/CD for the new microservice repo appcd-dev/order-processor",
     "Our team needs access to the Datadog APM dashboard for the search service",
@@ -405,7 +417,7 @@ resource "sg_workflow" "developer_request_intake" {
     {
       stage_id    = "analyze-request"
       description = "Parse the incoming request to determine intent, scope, affected services, and required approvals"
-      note        = "Classify by type (infrastructure provisioning, access grant, environment setup, tooling request). Extract key parameters."
+      note        = "Classify by type (greenfield appStack vs brownfield change vs cloud-only/AWS access). Decide whether work is driven by StackGen MCP (stackgen-mcp_get_appstacks, get_supported_resource_types, …) or AWS CLI via run_shell. Extract project/appstack IDs and parameters."
       required    = true
     },
     {
@@ -423,7 +435,7 @@ resource "sg_workflow" "developer_request_intake" {
     {
       stage_id    = "process-request"
       description = "Execute the approved request: provision infrastructure, grant access, configure services, or set up environments"
-      note        = "Invoke Terraform for infrastructure, kubectl for Kubernetes, AWS IAM for access grants, ArgoCD for deployment config."
+      note        = "Prefer StackGen MCP tools on the integration (stackgen-mcp_create_appstack, stackgen-mcp_add_resource_to_appstack, stackgen-mcp_connect_resources, stackgen-mcp_update_resource, stackgen-mcp_get_current_violations, stackgen-mcp_create_snapshot / restore_snapshot, stackgen-mcp_create_appstack_action_run + get_action_run_logs). Use run_shell + AWS CLI for live AWS accounts where MCP does not cover the operation; follow stackgen-mcp-iac runbook."
       required    = true
     },
     {
@@ -456,8 +468,11 @@ resource "sg_workflow" "developer_request_intake" {
       stage_id         = "process-request"
       agent_ref        = sg_agent.cloud_infra.name
       stage_depends_on = ["check-policy"]
-      runbook_refs     = [var.sre_runbook_names.deployment_rollback]
-      note             = "Cloud-infra agent executes the approved request. Rollback runbook attached."
+      runbook_refs = compact([
+        sg_runbook_sop.stackgen_mcp_iac.name,
+        var.sre_runbook_names.deployment_rollback,
+      ])
+      note = "Cloud-infra agent: StackGen MCP IaC runbook (stackgen-mcp_*) plus AWS integration; SRE rollback runbook if deployment rollback applies."
     },
     {
       stage_id         = "close-tracking-issue"

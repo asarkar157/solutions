@@ -59,7 +59,7 @@ provider "sg" {
 }
 ```
 
-Each module’s `required_providers` pins the StackGen provider at **`~> 0.1.0`** (any **v0.1.x** from `releases.stackgen.com`, not **v0.2** or newer).
+Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.4, < 0.2.0`** (minimum **v0.1.4** from `releases.stackgen.com`; patch upgrades within **v0.1.x** until **v0.2**).
 
 ## 4. Plan
 

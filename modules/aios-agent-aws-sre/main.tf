@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -11,7 +11,7 @@ terraform {
 
 resource "sg_policy" "aws_tool_governance" {
   name        = "aws-tool-governance"
-  description = "Allows read-only AWS CLI and kubectl commands. Blocks destructive operations."
+  description = trimspace(templatefile("${path.module}/templates/policy-aws-tool-governance.md", {}))
   type        = "logic"
   rego_source = file("${path.module}/policies/aws-tool-governance.rego")
 }
@@ -53,22 +53,22 @@ resource "sg_agent_policy_attachment" "aws_tool_governance" {
 
 resource "sg_runbook_sop" "k8s_diagnostics" {
   name        = "k8s-diagnostics"
-  description = "Diagnose Kubernetes pod crashes and node pressure. Steps: 1) Get nodes, 2) Describe failing pods, 3) Check pod logs, 4) Check events."
+  description = trimspace(templatefile("${path.module}/templates/k8s-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_security_audit" {
   name        = "aws-security-audit"
-  description = "Security audit on AWS resources. Steps: 1) List S3 buckets, 2) Check public access block, 3) Check IAM roles, 4) Inspect security groups with 0.0.0.0/0."
+  description = trimspace(templatefile("${path.module}/templates/aws-security-audit.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_cost_analysis" {
   name        = "aws-cost-analysis"
-  description = "Identify idle AWS resources for cost optimization. Steps: 1) Find unattached EBS, 2) Find unassociated Elastic IPs, 3) Find stopped EC2 instances."
+  description = trimspace(templatefile("${path.module}/templates/aws-cost-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_tags_sanity" {
   name        = "aws-tags-sanity"
-  description = "Verify resource tagging compliance. Steps: 1) Check EC2 tags, 2) Check RDS tags, 3) Check for missing required tags."
+  description = trimspace(templatefile("${path.module}/templates/aws-tags-sanity.md", {}))
 }
 
 # --- Workflows ---
@@ -76,7 +76,8 @@ resource "sg_runbook_sop" "aws_tags_sanity" {
 resource "sg_workflow" "k8s_monitoring" {
   name        = "k8s-monitoring"
   domain      = "incident-response"
-  description = "Diagnose Kubernetes cluster issues such as CrashLoopBackOff or node pressure."
+  description = trimspace(templatefile("${path.module}/templates/workflow-k8s-monitoring.md", {}))
+  approve     = true
 
   triggers        = [{ field = "incident_title_contains", values = ["CrashLoopBackOff", "NodeNotReady"], type = "passive" }]
   required_inputs = ["cluster_name"]
@@ -91,7 +92,8 @@ resource "sg_workflow" "k8s_monitoring" {
 resource "sg_workflow" "aws_unified_audit" {
   name        = "aws-unified-audit"
   domain      = "sre-operations"
-  description = "Comprehensive AWS environment audit for security, cost, and compliance."
+  description = trimspace(templatefile("${path.module}/templates/workflow-aws-unified-audit.md", {}))
+  approve     = true
 
   runbook_refs    = [sg_runbook_sop.aws_security_audit.name, sg_runbook_sop.aws_cost_analysis.name, sg_runbook_sop.aws_tags_sanity.name]
   example_queries = ["Run a security check on S3 buckets", "Find idle EBS volumes", "Validate tagging compliance"]

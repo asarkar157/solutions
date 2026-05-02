@@ -27,7 +27,14 @@ variable "secret_names" {
 }
 
 variable "integration_names" {
-  description = "Containerized integration names from the root module"
+  description = <<-EOT
+    Guild integration names keyed for attachment:
+    - aws_production — AWS MCP (e.g. aws-production)
+    - stackgen_mcp — Consumer MCP for stackgen-mcp_* tools (e.g. stackgen-mcp)
+    - gcp_production — GCP / Google gcloud MCP (e.g. google-integration)
+    - slack — Slack MCP (e.g. slack-integration)
+    - github_scm — GitHub SCM (e.g. github-integration); used when github_token is non-empty. Defaults to github-integration if omitted.
+  EOT
   type        = map(string)
   default     = {}
 }

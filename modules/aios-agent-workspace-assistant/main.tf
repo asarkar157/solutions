@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -46,21 +46,14 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "developer_triage_sop" {
   name        = "developer-triage-sop"
-  description = <<-EOT
-    Guidelines for synthesizing a daily developer triage report.
-
-    Steps:
-    1) Linear: Query the board for any incomplete, high-priority, or blocked issues assigned to the active developer.
-    2) Slack: Check unread messages or mentions pointing to escalations, code reviews, or feedback.
-    3) Gmail/Drive: Surface any critical external emails or shared docs linked to pending tasks.
-    4) Output a unified triage report grouping items by urgency and project area.
-  EOT
+  description = trimspace(templatefile("${path.module}/templates/developer-triage-sop.md", {}))
 }
 
 resource "sg_workflow" "developer_daily_triage" {
   name        = "developer-daily-triage"
   domain      = "workspace-assistant"
-  description = "A daily triage workflow mapping Linear, Slack, and Gmail context into a structured to-do list."
+  description = trimspace(templatefile("${path.module}/templates/workflow-developer-daily-triage.md", {}))
+  approve     = true
 
   example_queries = [
     "what are the things pending on my side",

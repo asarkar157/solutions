@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -11,7 +11,7 @@ terraform {
 
 resource "sg_policy" "compliance_data_access" {
   name        = "compliance-data-access"
-  description = "Prevent compliance agents from querying actual PII/PHI data"
+  description = trimspace(templatefile("${path.module}/templates/policy-compliance-data-access.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/compliance-data-access.rego")
 }
@@ -58,22 +58,22 @@ resource "sg_agent_policy_attachment" "data_risk_pii" {
 
 resource "sg_runbook_sop" "soc2_access_review" {
   name        = "soc2-access-review"
-  description = "SOC2 CC6.1 access review. Steps: 1) List all IAM users/roles, 2) Check for unused credentials (>90 days), 3) Verify MFA enforcement, 4) Review cross-account assume-role policies, 5) Flag overly permissive policies (Action: *), 6) Generate evidence report."
+  description = trimspace(templatefile("${path.module}/templates/soc2-access-review.md", {}))
 }
 
 resource "sg_runbook_sop" "soc2_change_management" {
   name        = "soc2-change-management"
-  description = "SOC2 CC8.1 change management audit. Steps: 1) Pull recent PRs and deployment history, 2) Verify all changes have peer review, 3) Check for direct commits to main/production branches, 4) Confirm CI/CD pipeline enforcement, 5) Cross-reference with change request tickets."
+  description = trimspace(templatefile("${path.module}/templates/soc2-change-management.md", {}))
 }
 
 resource "sg_runbook_sop" "gdpr_data_mapping" {
   name        = "gdpr-data-mapping"
-  description = "GDPR Article 30 processing activities audit. Steps: 1) Catalog databases and data stores, 2) Identify tables with personal data fields, 3) Verify encryption at rest and in transit, 4) Check data retention policies, 5) Map cross-border data transfers, 6) Verify consent mechanisms."
+  description = trimspace(templatefile("${path.module}/templates/gdpr-data-mapping.md", {}))
 }
 
 resource "sg_runbook_sop" "audit_log_analysis" {
   name        = "audit-log-analysis"
-  description = "Analyze audit logs for compliance violations. Steps: 1) Query CloudTrail for unauthorized API calls, 2) Check for root account usage, 3) Identify access from unusual locations, 4) Review security group changes, 5) Flag after-hours administrative actions."
+  description = trimspace(templatefile("${path.module}/templates/audit-log-analysis.md", {}))
 }
 
 # --- Workflows ---
@@ -81,7 +81,8 @@ resource "sg_runbook_sop" "audit_log_analysis" {
 resource "sg_workflow" "compliance_assessment" {
   name        = "compliance-assessment"
   domain      = "compliance"
-  description = "Multi-framework compliance assessment with automated evidence collection and finding classification."
+  description = trimspace(templatefile("${path.module}/templates/workflow-compliance-assessment.md", {}))
+  approve     = true
 
   required_inputs = ["framework"]
   optional_inputs = ["scope", "specific_controls"]

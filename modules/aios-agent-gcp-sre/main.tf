@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -11,7 +11,7 @@ terraform {
 
 resource "sg_policy" "gcp_tool_governance" {
   name        = "gcp-tool-governance"
-  description = "Allows read-only gcloud CLI commands. Blocks destructive GCP operations."
+  description = trimspace(templatefile("${path.module}/templates/policy-gcp-tool-governance.md", {}))
   type        = "logic"
   rego_source = file("${path.module}/policies/gcp-tool-governance.rego")
 }
@@ -53,22 +53,22 @@ resource "sg_agent_policy_attachment" "gcp_governance" {
 
 resource "sg_runbook_sop" "gke_diagnostics" {
   name        = "gke-cluster-diagnostics"
-  description = "Diagnose GKE cluster issues. Steps: 1) gcloud container clusters list, 2) kubectl get nodes, 3) kubectl describe node for NotReady nodes, 4) Check pod CrashLoopBackOff, 5) Review container logs."
+  description = trimspace(templatefile("${path.module}/templates/gke-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_security_audit" {
   name        = "gcp-security-audit"
-  description = "GCP security audit. Steps: 1) Check public buckets: gsutil ls -L, 2) Audit IAM: gcloud projects get-iam-policy, 3) Check firewall rules: gcloud compute firewall-rules list --filter='sourceRanges:0.0.0.0/0', 4) Service account key audit."
+  description = trimspace(templatefile("${path.module}/templates/gcp-security-audit.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_cost_analysis" {
   name        = "gcp-cost-analysis"
-  description = "Identify idle GCP resources. Steps: 1) Find stopped VMs, 2) Find unattached disks, 3) Check unused static IPs, 4) Review committed use discount utilization."
+  description = trimspace(templatefile("${path.module}/templates/gcp-cost-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cloud_sql_health" {
   name        = "cloud-sql-health-check"
-  description = "Cloud SQL diagnostics. Steps: 1) gcloud sql instances describe, 2) Check replication lag, 3) Review slow query logs, 4) Verify backup schedule, 5) Check connection count vs limits."
+  description = trimspace(templatefile("${path.module}/templates/cloud-sql-health-check.md", {}))
 }
 
 # --- Workflows ---
@@ -76,7 +76,8 @@ resource "sg_runbook_sop" "cloud_sql_health" {
 resource "sg_workflow" "gcp_unified_audit" {
   name        = "gcp-unified-audit"
   domain      = "sre-operations"
-  description = "Comprehensive GCP environment audit for security, cost, and compliance."
+  description = trimspace(templatefile("${path.module}/templates/workflow-gcp-unified-audit.md", {}))
+  approve     = true
 
   runbook_refs    = [sg_runbook_sop.gcp_security_audit.name, sg_runbook_sop.gcp_cost_analysis.name]
   example_queries = ["Audit our GCP project for security issues", "Find idle GCP resources to save costs", "Check for public Cloud Storage buckets"]
@@ -97,7 +98,8 @@ resource "sg_workflow" "gcp_unified_audit" {
 resource "sg_workflow" "gke_incident_response" {
   name        = "gke-incident-response"
   domain      = "incident-response"
-  description = "GKE cluster incident response: diagnose node issues, pod failures, and Cloud SQL dependencies."
+  description = trimspace(templatefile("${path.module}/templates/workflow-gke-incident-response.md", {}))
+  approve     = true
 
   triggers        = [{ field = "incident_title_contains", values = ["gke", "gcp", "cloud sql", "cloud run"], type = "passive" }]
   required_inputs = ["cluster_name"]

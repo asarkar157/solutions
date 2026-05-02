@@ -4,10 +4,22 @@ variable "model_names" {
 variable "policy_ids" {
   type = object({ dangerous_ops = string, sre_remediation = optional(string, "") })
 }
+
+variable "github_integration_name" {
+  description = <<-EOT
+    Guild GitHub integration name to attach (for example `module.github_integration.integration_name`).
+    When empty and `github_token` is non-empty, the module attaches the legacy default name `github-integration`.
+    Credentials live on the Guild integration / Vault secret — this module does not inject the token into agent runtime.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "github_token" {
-  type      = string
-  sensitive = true
-  default   = ""
+  description = "Legacy gate only: when non-empty and `github_integration_name` is empty, attaches integration named `github-integration`. The token value is not passed to the agent."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 variable "agent_budget" {
   type    = number

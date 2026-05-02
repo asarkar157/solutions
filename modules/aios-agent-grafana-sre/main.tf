@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -13,7 +13,7 @@ terraform {
 
 resource "sg_secret" "grafana_vault" {
   name        = var.vault_secret_name
-  description = "Grafana API credentials for observability SRE agent"
+  description = trimspace(templatefile("${path.module}/templates/secret-grafana-vault.md", {}))
   category    = "CloudProvider"
   subcategory = "grafana"
   metadata = {
@@ -28,7 +28,7 @@ resource "sg_guild_integration" "grafana" {
   scope          = "PROJECT"
   secret_ref_ids = [sg_secret.grafana_vault.id]
   enabled        = true
-  description    = "Grafana observability SRE integration against ${var.grafana_base_url}"
+  description    = trimspace(templatefile("${path.module}/templates/integration-grafana-description.md.tftpl", { grafana_base_url = var.grafana_base_url }))
 
   image = { name = var.integration_image }
 }
@@ -63,40 +63,40 @@ resource "sg_agent_policy_attachment" "data_risk" {
 
 resource "sg_runbook_sop" "service_health_pass" {
   name        = "grafana-service-health-pass"
-  description = "Quick health pass using Grafana dashboards and alerts. Steps: 1) List dashboards matching service, 2) Fetch dashboard JSON and note key panels, 3) Retrieve firing alerts, 4) Summarize overall status."
+  description = trimspace(templatefile("${path.module}/templates/grafana-service-health-pass.md", {}))
 }
 
 resource "sg_runbook_sop" "alert_noise_check" {
   name        = "grafana-alert-noise-check"
-  description = "Assess alert actionability vs noise. Steps: 1) Group alerts by rule name, 2) Flag duplicates, 3) Note sustained vs flapping patterns, 4) Output actionable vs backlog alerts."
+  description = trimspace(templatefile("${path.module}/templates/grafana-alert-noise-check.md", {}))
 }
 
 resource "sg_runbook_sop" "four_golden_signals" {
   name        = "grafana-four-golden-signals"
-  description = "Google SRE golden signals pass (latency, traffic, errors, saturation). Steps: 1) Locate service dashboard, 2-5) Analyze each signal, 6) Output status table."
+  description = trimspace(templatefile("${path.module}/templates/grafana-four-golden-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "slo_error_budget" {
   name        = "grafana-slo-error-budget-review"
-  description = "Review SLI/SLO and error-budget posture. Steps: 1) Find SLO panels, 2) Note compliance and burn, 3) Compare multi-window burn, 4) Cross-check alerts, 5) Output budget health."
+  description = trimspace(templatefile("${path.module}/templates/grafana-slo-error-budget-review.md", {}))
 }
 
 resource "sg_runbook_sop" "dora_visibility" {
   name        = "grafana-dora-delivery-visibility"
-  description = "DORA-aligned visibility: lead time, deployment frequency, change failure rate from Grafana dashboards."
+  description = trimspace(templatefile("${path.module}/templates/grafana-dora-delivery-visibility.md", {}))
 }
 
 resource "sg_runbook_sop" "change_failure_correlation" {
   name        = "grafana-change-failure-correlation"
-  description = "Tie changes to user-observable failure using Grafana views and alerts. Steps: 1) Identify change window, 2) Compare before/after, 3) Map alerts to symptoms, 4) Assess correlation, 5) Output finding."
+  description = trimspace(templatefile("${path.module}/templates/grafana-change-failure-correlation.md", {}))
 }
 
 resource "sg_runbook_sop" "restore_time_signals" {
   name        = "grafana-restore-time-signals"
-  description = "Strengthen MTTR by validating Grafana shows what on-call needs for detection, location, and recovery verification."
+  description = trimspace(templatefile("${path.module}/templates/grafana-restore-time-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "red_use_workload" {
   name        = "grafana-red-use-workload"
-  description = "Structured workload review combining RED (rate, errors, duration) with USE (utilization, saturation, errors) per service."
+  description = trimspace(templatefile("${path.module}/templates/grafana-red-use-workload.md", {}))
 }

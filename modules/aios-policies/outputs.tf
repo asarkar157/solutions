@@ -1,3 +1,21 @@
+output "policy_create_flags" {
+  description = "Effective create_policies booleans (plan-time known). Pass to agent modules so policy attachment counts do not depend on unknown policy IDs."
+  value = {
+    dangerous_ops            = try(var.create_policies.dangerous_ops, true)
+    sre_remediation          = try(var.create_policies.sre_remediation, true)
+    hitl_approval_evaluation = try(var.create_policies.hitl_approval_evaluation, true)
+    prod_write_gate          = try(var.create_policies.prod_write_gate, true)
+    tier0_service_protection = try(var.create_policies.tier0_service_protection, true)
+    blast_radius_limit       = try(var.create_policies.blast_radius_limit, true)
+    freeze_window            = try(var.create_policies.freeze_window, true)
+    data_risk_pii            = try(var.create_policies.data_risk_pii, true)
+    post_action_verification = try(var.create_policies.post_action_verification, true)
+    azure_tool_governance    = try(var.create_policies.azure_tool_governance, true)
+    google_tool_governance   = try(var.create_policies.google_tool_governance, true)
+    container_shell_hitl     = try(var.create_policies.container_shell_hitl, true)
+  }
+}
+
 output "policy_ids" {
   description = "Map of policy logical names to their IDs. Only includes policies that were created."
   value = {

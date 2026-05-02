@@ -21,6 +21,20 @@ variable "policy_ids" {
   })
 }
 
+variable "policy_create_flags" {
+  description = "Must align with module.policies policy_create_flags (same semantics as create_policies). Used only for Terraform count on optional attachments — avoids unknown counts when policy IDs are (known after apply). An attachment is created only when the matching flag is true and the corresponding policy_ids field is non-empty."
+  type = object({
+    sre_remediation          = optional(bool, true)
+    prod_write_gate          = optional(bool, true)
+    tier0_service_protection = optional(bool, true)
+    blast_radius_limit       = optional(bool, true)
+    freeze_window            = optional(bool, true)
+    data_risk_pii            = optional(bool, true)
+    post_action_verification = optional(bool, true)
+  })
+  default = {}
+}
+
 variable "integration_names" {
   description = "Map of integration names to connect to agents (grafana, slack, linear)"
   type        = map(string)

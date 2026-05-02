@@ -1,0 +1,1 @@
+Scan a GitHub repository, infer StackGen resource modules and template/pack choices, create and wire an appStack with env profiles tied to AWS region/context, produce a deployable artifact, then export generated IaC to a target GitHub repository via StackGen Export.

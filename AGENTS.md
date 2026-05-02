@@ -19,7 +19,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = "~> 0.1.0"
+      version = ">= 0.1.4, < 0.2.0"
     }
   }
 }
@@ -65,12 +65,14 @@ Do not invert dependencies between layers.
 | 0 | `aios-policies` | Shared `sg_policy` resources; exposes `policy_ids` map |
 | 1 | `aios-integration-*` | Cloud/tool integrations; exposes `integration_name` or similar |
 | 2 | `aios-agent-*` | Agents, workflows, attachments; consume `module.foundation.model_names`, `module.policies.policy_ids`, and integration outputs |
+| 2 | `aios-agent-schedules` | Optional companion: `sg_agent_schedule` cron prompts; set `agent_name` from any agent module output (`*_agent_name`, `agent_name`, etc.) |
 
 **Typical wiring:**
 
 1. Instantiate `aios-foundation` and `aios-policies` once per stack (or per env).
 2. Instantiate only the **integrations** the customer uses (each module is optional).
 3. Instantiate **agent** modules; pass `model_names`, the **subset** of `policy_ids` that module expects, and integration identifiers as required by that module’s variables.
+4. Optionally instantiate **`aios-agent-schedules`** beside an agent to attach Guild cron schedules (`sg_agent_schedule`); see `modules/aios-agent-schedules/README.md` and `examples/complete/main.tf`.
 
 For a working full graph, start from `examples/complete/main.tf`.
 
@@ -115,6 +117,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-grafana-sre` | Grafana-focused SRE |
 | `modules/aios-agent-predictive-sre` | Predictive triage workflow |
 | `modules/aios-agent-software-engineering` | Feature development workflow |
+| `modules/aios-agent-repo-to-iac` | GitHub repo URL → IaC via StackGen MCP (`repository-to-iac` workflow) |
 | `modules/aios-agent-supply-chain-security` | Supply chain scan workflow and policies |
 | `modules/aios-agent-compliance-auditor` | Compliance assessment workflow |
 | `modules/aios-agent-cost-optimizer` | FinOps / cost workflow |
@@ -125,6 +128,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-workspace-assistant` | Workspace assistant workflow |
 | `modules/aios-agent-ubuntu-cli` | Ubuntu CLI-oriented agent |
 | `modules/aios-agent-clickhouse-inspector` | ClickHouse inspection |
+| `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent |
 
 ## IDE tips (no agent file required)
 

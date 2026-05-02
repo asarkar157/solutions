@@ -9,7 +9,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = "~> 0.1.0"
+      version = ">= 0.1.4, < 0.2.0"
     }
   }
 }
@@ -73,6 +73,16 @@ module "slack_integration" {
 module "sre_agents" {
   source = "../../modules/aios-agent-sre"
 
+  policy_create_flags = {
+    sre_remediation          = module.policies.policy_create_flags.sre_remediation
+    prod_write_gate          = module.policies.policy_create_flags.prod_write_gate
+    tier0_service_protection = module.policies.policy_create_flags.tier0_service_protection
+    blast_radius_limit       = module.policies.policy_create_flags.blast_radius_limit
+    freeze_window            = module.policies.policy_create_flags.freeze_window
+    data_risk_pii            = module.policies.policy_create_flags.data_risk_pii
+    post_action_verification = module.policies.policy_create_flags.post_action_verification
+  }
+
   model_names = module.foundation.model_names
   policy_ids = {
     dangerous_ops            = module.policies.policy_ids.dangerous_ops
@@ -96,6 +106,21 @@ module "aws_sre" {
   model_names      = module.foundation.model_names
   policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
   integration_name = module.aws_integration.integration_name
+}
+
+# Example: attach Guild cron schedules to any agent via the composable schedules module.
+module "aws_sre_schedules" {
+  source = "../../modules/aios-agent-schedules"
+
+  agent_name = module.aws_sre.aws_sre_agent_name
+
+  schedules = [
+    {
+      name       = "weekly-aws-tag-audit"
+      expression = "0 10 * * 1" # Mondays 10:00 UTC
+      action     = "Run a read-only tagging sanity check on EC2 and RDS in the connected account; list resources missing required tags and summarize."
+    },
+  ]
 }
 
 module "software_engineering" {
@@ -169,6 +194,11 @@ output "sre_agent_names" {
 
 output "aws_sre_agent_name" {
   value = module.aws_sre.aws_sre_agent_name
+}
+
+output "aws_sre_schedule_ids" {
+  description = "Example sg_agent_schedule ids attached to aws_sre (see module aws_sre_schedules)."
+  value       = module.aws_sre_schedules.schedule_ids
 }
 
 output "sre_workflow_names" {

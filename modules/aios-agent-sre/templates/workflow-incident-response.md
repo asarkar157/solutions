@@ -1,0 +1,1 @@
+End-to-end production incident response: triages alerts, correlates with recent changes, evaluates blast radius, classifies severity, and recommends or auto-executes remediation — with human-in-the-loop approval for high-risk actions.

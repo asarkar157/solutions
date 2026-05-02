@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -40,22 +40,22 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "idle_resource_scan" {
   name        = "idle-resource-scan"
-  description = "Multi-cloud idle resource detection. Steps: 1) AWS: Find unattached EBS, stopped EC2, unused EIPs, 2) Azure: Find stopped VMs, unattached disks, 3) GCP: Find stopped instances, unattached persistent disks, 4) Calculate total monthly waste."
+  description = trimspace(templatefile("${path.module}/templates/idle-resource-scan.md", {}))
 }
 
 resource "sg_runbook_sop" "rightsizing_analysis" {
   name        = "rightsizing-analysis"
-  description = "Instance rightsizing recommendations. Steps: 1) Collect CPU/memory utilization over 14 days, 2) Identify instances with avg CPU <15% and peak <40%, 3) Map to optimal instance types, 4) Calculate savings per recommendation, 5) Rank by savings potential."
+  description = trimspace(templatefile("${path.module}/templates/rightsizing-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "savings_plan_review" {
   name        = "savings-plan-review"
-  description = "Reserved instance and savings plan optimization. Steps: 1) Review current commitments and utilization, 2) Analyze on-demand usage eligible for commitment, 3) Calculate breakeven and payback period, 4) Recommend optimal commitment term and payment option."
+  description = trimspace(templatefile("${path.module}/templates/savings-plan-review.md", {}))
 }
 
 resource "sg_runbook_sop" "cost_anomaly_detection" {
   name        = "cost-anomaly-detection"
-  description = "Detect spending anomalies. Steps: 1) Compare daily/weekly spend against 30-day baseline, 2) Flag services exceeding 2x standard deviation, 3) Correlate spikes with deployment or traffic events, 4) Identify root cause (new resources, config change, traffic spike)."
+  description = trimspace(templatefile("${path.module}/templates/cost-anomaly-detection.md", {}))
 }
 
 # --- Workflow ---
@@ -63,7 +63,8 @@ resource "sg_runbook_sop" "cost_anomaly_detection" {
 resource "sg_workflow" "finops_review" {
   name        = "finops-review"
   domain      = "finops"
-  description = "Comprehensive multi-cloud FinOps review: idle resources, rightsizing, commitment optimization, and anomaly detection."
+  description = trimspace(templatefile("${path.module}/templates/workflow-finops-review.md", {}))
+  approve     = true
 
   example_queries = [
     "How much are we wasting on idle AWS resources?",

@@ -6,7 +6,7 @@ Complete SDLC domain module with 9 specialized agents and 2 multi-stage workflow
 
 | Agent | Role | Budget |
 |-------|------|--------|
-| `cloud-infrastructure-engineer` | AWS infra with shell access | $20/day |
+| `cloud-infrastructure-engineer` | AWS CLI (`run_shell`) + optional StackGen Consumer MCP (`stackgen-mcp_*` tools), optional GCP + Slack Guild integrations | $20/day |
 | `kubernetes-operator` | K8s cluster operations | $15/day |
 | `github-scm-manager` | SCM + policy evaluation | $10/day |
 | `qa-test-engineer` | Integration test orchestration | $10/day |
@@ -22,7 +22,7 @@ Complete SDLC domain module with 9 specialized agents and 2 multi-stage workflow
 Full CI/CD: build → security scan ∥ integration tests → staging → smoke tests → canary → production (with parallel fan-out and cross-module SRE agent references).
 
 ### `developer-request-intake`
-Multi-channel request processing (Jira/Slack/Web): analyze → create tracking issue → check governance policy → process request → close issue.
+Multi-channel request processing (Jira/Slack/Web): analyze → create tracking issue → check governance policy → process request → close issue. The process stage is aligned with the **`stackgen-mcp-iac`** runbook (Consumer MCP tools: appStacks, resources, violations, snapshots, action runs) plus the AWS integration; SRE **deployment_rollback** remains attached for rollback-style operations.
 
 ## Usage
 
@@ -50,6 +50,13 @@ module "sdlc" {
 
   integration_names = {
     aws_production = module.aws_integration.integration_name
+    # Optional Guild names (examples): stackgen-mcp, google-integration, slack-integration
+    # stackgen_mcp    = "stackgen-mcp"
+    # gcp_production  = "google-integration"
+    # slack           = "slack-integration"
+    # github_scm      = "github-integration" # default when omitted; set when your Guild name differs
   }
+
+  linear_mcp_integration_name = "linear-integration" # optional; empty skips Linear on project-manager
 }
 ```

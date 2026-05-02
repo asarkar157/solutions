@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = "~> 0.1.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.4, < 0.2.0" }
   }
 }
 
@@ -36,18 +36,19 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "cross_domain_correlation" {
   name        = "cross-domain-correlation"
-  description = "Correlate GitHub deployments, AWS K8s stability, and Grafana trends. Steps: 1) Query Grafana, 2) Query GitHub PRs, 3) Check K8s, 4) Synthesize timeline."
+  description = trimspace(templatefile("${path.module}/templates/cross-domain-correlation.md", {}))
 }
 
 resource "sg_runbook_sop" "predictive_degradation" {
   name        = "predictive-degradation-analysis"
-  description = "Predict infrastructure failures. Steps: 1) Read 72h CPU/Memory trends, 2) Map slope, 3) Determine limits, 4) Calculate TTF, 5) Correlate, 6) Recommend."
+  description = trimspace(templatefile("${path.module}/templates/predictive-degradation-analysis.md", {}))
 }
 
 resource "sg_workflow" "predictive_triage" {
   name        = "predictive-incident-triage"
   domain      = "incident-response"
-  description = "Cross-domain predictive triage: code context, metrics context, infrastructure context, and predictive synthesis."
+  description = trimspace(templatefile("${path.module}/templates/workflow-predictive-incident-triage.md", {}))
+  approve     = true
 
   triggers        = [{ field = "incident_title_contains", values = ["degradation", "OOM", "latency creep", "memory leak"], type = "passive" }]
   required_inputs = ["service_name"]

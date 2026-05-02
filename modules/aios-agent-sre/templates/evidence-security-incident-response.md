@@ -1,0 +1,1 @@
+Security incident response evidence: detection source, affected resources inventory, blast radius assessment, containment actions, forensic artifacts, credential rotation confirmation, and regulatory notification checklist.
