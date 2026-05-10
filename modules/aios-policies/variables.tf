@@ -13,6 +13,7 @@ variable "create_policies" {
     azure_tool_governance    = optional(bool, true)
     google_tool_governance   = optional(bool, true)
     container_shell_hitl     = optional(bool, true)
+    langfuse_observability   = optional(bool, true)
   })
   default = {}
 }

@@ -87,10 +87,23 @@ In the same root module, configure the **`sg`** provider (values should match `s
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
-  # Optional: default project/org scope for Guild (webhooks, knowledge). Prefer project_id over deprecated org_id.
+  # Optional: default project/org scope for Guild (agents, workflows, webhooks, schedules, knowledge). Prefer project_id over deprecated org_id.
   # project_id = var.stackgen_project_id
+  # Optional: default true — Guild creates may adopt existing objects on HTTP 409/500; set false for strict CI (fail + import instead).
+  # adopt_on_conflict = false
 }
 ```
+
+### StackGen provider reference (humans, IDEs, and automation)
+
+The **provider implementation** (resources, data sources, schema text) lives in the open-source repo **[appcd-dev/terraform-provider-stackgen](https://github.com/appcd-dev/terraform-provider-stackgen)**:
+
+- **[`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md)** — Registry-style index of every `sg_*` resource and data source.
+- **[`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md)** — Contributor guide; `sg:"desc:..."` struct tags are the source of attribute descriptions (IDE hovers, generated docs).
+- **Machine-readable schema:** after `tofu init` / `terraform init`, run `tofu providers schema -json` or `terraform providers schema -json` and read `provider_schemas` under the key matching `required_providers.sg.source` (here: `releases.stackgen.com/stackgen/stackgen`). Use this for tooling, validation, or LLM-assisted config.
+- **Read-only Guild data sources** useful from a root module: `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners` (plus AppCD/Vault sources such as `sg_me`, `sg_roles`, `sg_credential_provider`). These respect provider `project_id` where the upstream API sends `orgId`.
+
+Rendered reference (GitHub Pages): [terraform-provider-stackgen docs](https://appcd-dev.github.io/terraform-provider-stackgen/).
 
 ### Full-Stack SRE with AWS + Grafana
 
@@ -196,7 +209,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 **When consuming these modules in your own stack:**
 
 - **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.5, < 0.2.0` from `releases.stackgen.com` ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
+- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.8, < 0.2.0` from `releases.stackgen.com` ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
 - LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License

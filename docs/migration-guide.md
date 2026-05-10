@@ -26,7 +26,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.5, < 0.2.0"
+      version = ">= 0.1.8, < 0.2.0"
     }
   }
 }
@@ -35,6 +35,7 @@ provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
   # project_id = var.stackgen_project_id  # optional; prefer over deprecated org_id
+  # adopt_on_conflict = false            # optional; default true — disable for strict create semantics
 }
 ```
 
@@ -64,6 +65,10 @@ module "foundation" {
 ```
 
 **HTTP webhooks (Guild):** Newer StackGen provider versions support `sg_webhook` (incoming HTTP triggers) and optional `project_id` / model `scope` on the provider and foundation resources; pin a provider version that includes those features when you need them.
+
+**Read-only lookups:** The provider also ships Guild data sources such as `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, and `sg_agent_diaries` (Insights), plus `sg_remote_runner` / `sg_remote_runners`. Use them in root modules for discovery, outputs, or tooling; set provider `project_id` when the API is org-scoped. See the provider repo [`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md) and `tofu providers schema -json` for the authoritative schema.
+
+**`sg_agent_schedule`:** Current provider versions use `target_type` and `target_name` (agent or workflow), matching `sg_webhook`. The `aios-agent-schedules` module uses `target_name` and optional `target_type` instead of the legacy `agent_name` argument—update module callers accordingly.
 
 ## Step 3: Replace Inline Policies with Policies Module
 

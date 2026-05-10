@@ -54,12 +54,16 @@ Your root module must configure the **`sg`** provider required by these modules 
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
-  # Optional default org scope for Guild (e.g. webhooks, knowledge):
+  # Optional default org scope for Guild (agents, workflows, webhooks, schedules, knowledge):
   # project_id = var.stackgen_project_id
+  # Optional: default true — set false to disable create-time adoption on 409/500 for selected Guild resources.
+  # adopt_on_conflict = false
 }
 ```
 
-Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.5, < 0.2.0`** (minimum **v0.1.5** from `releases.stackgen.com`; patch upgrades within **v0.1.x** until **v0.2**).
+Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.8, < 0.2.0`** from `releases.stackgen.com` (patch upgrades within **v0.1.x** until **v0.2**).
+
+**Read-only data sources** (e.g. `sg_workflow`, `sg_agents`, `sg_agent_diaries`) and the full resource list are documented in the provider repo: [`terraform-provider-stackgen` docs index](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md). For machine-readable attribute descriptions, run `tofu providers schema -json` after `init` and inspect `provider_schemas["releases.stackgen.com/stackgen/stackgen"]`.
 
 ## 4. Plan
 

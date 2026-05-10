@@ -17,7 +17,7 @@ terraform {
     }
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.5, < 0.2.0"
+      version = ">= 0.1.8, < 0.2.0"
     }
   }
 }
@@ -30,6 +30,8 @@ provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
   project_id     = var.stackgen_project_id
+  # Default true: Guild may adopt existing objects on some Create 409/500 responses.
+  # adopt_on_conflict = false
 }
 
 locals {
@@ -50,6 +52,7 @@ module "foundation" {
 
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id
 
   llm_api_keys = {
     openai    = var.openai_api_key

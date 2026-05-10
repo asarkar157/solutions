@@ -9,7 +9,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.5, < 0.2.0"
+      version = ">= 0.1.8, < 0.2.0"
     }
   }
 }
@@ -17,6 +17,10 @@ terraform {
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  # When non-empty, scopes Guild data sources and resources that send orgId (agents, workflows, webhooks, schedules).
+  project_id = var.stackgen_project_id != "" ? var.stackgen_project_id : null
+  # Default true: some Guild resources may adopt an existing remote object after Create returns 409/500.
+  # adopt_on_conflict = false
 }
 
 # =============================================================================
@@ -28,6 +32,7 @@ module "foundation" {
 
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id
 
   llm_api_keys = {
     openai    = var.openai_api_key
@@ -112,7 +117,7 @@ module "aws_sre" {
 module "aws_sre_schedules" {
   source = "../../modules/aios-agent-schedules"
 
-  agent_name = module.aws_sre.aws_sre_agent_name
+  target_name = module.aws_sre.aws_sre_agent_name
 
   schedules = [
     {
@@ -183,6 +188,30 @@ module "onboarding" {
     github = module.github_integration.integration_name
   }
 }
+
+# =============================================================================
+# Optional: Guild read-only data sources (StackGen provider)
+# =============================================================================
+# Uncomment after a successful apply if you want Terraform to refresh lists of
+# remote agents/workflows (useful for outputs, debugging, or downstream modules).
+# Set provider project_id above when the Guild API requires org scope.
+#
+# data "sg_workflows" "guild" {
+#   # limit    = 100
+#   # offset   = 0
+#   # include_drafts = false
+#   # latest_only    = true
+# }
+#
+# data "sg_agents" "guild" {}
+#
+# output "guild_workflow_names" {
+#   value = [for w in data.sg_workflows.guild.workflows : w.name]
+# }
+#
+# output "guild_agent_count" {
+#   value = length(data.sg_agents.guild.agents)
+# }
 
 # =============================================================================
 # Outputs

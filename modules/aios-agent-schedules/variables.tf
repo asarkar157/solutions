@@ -1,5 +1,16 @@
-variable "agent_name" {
-  description = "Guild agent name (must match an existing sg_agent.name from another module)."
+variable "target_type" {
+  description = "Guild schedule target: agent (sg_agent.name) or workflow (sg_workflow.name). Same semantics as sg_webhook."
+  type        = string
+  default     = "agent"
+
+  validation {
+    condition     = contains(["agent", "workflow"], var.target_type)
+    error_message = "target_type must be \"agent\" or \"workflow\"."
+  }
+}
+
+variable "target_name" {
+  description = "Name of the agent or workflow this cron schedule invokes (must match an existing sg_agent or sg_workflow)."
   type        = string
 }
 

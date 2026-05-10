@@ -25,6 +25,12 @@ Use this page as a **map**, not a checklist. Open links only when the topic appl
 - **Source:** `/docs` on your default branch ([`_config.yml`]({{ site.github.repository_url }}/blob/main/docs/_config.yml)).
 - **Forks / renames:** update `url`, `baseurl`, and `repository` in `_config.yml` so links and assets resolve (see [Home — Enable this site]({% include doc_url.html path="index.md" %}) for the Pages settings path).
 
+## StackGen Terraform provider
+
+- **Source & schema:** [appcd-dev/terraform-provider-stackgen](https://github.com/appcd-dev/terraform-provider-stackgen) — [`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md) lists every `sg_*` resource and data source; [`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md) documents `sg` struct tags and provider architecture.
+- **Rendered docs:** [GitHub Pages reference](https://appcd-dev.github.io/terraform-provider-stackgen/) (when published).
+- **Automation / LLMs:** after `tofu init`, `tofu providers schema -json` exports descriptions; use the `provider_schemas` key that matches your root `required_providers.sg.source` (typically `releases.stackgen.com/stackgen/stackgen`).
+
 ## Policies (Rego)
 
 - Policies live under `modules/*/policies` and `modules/aios-policies/policies/`.

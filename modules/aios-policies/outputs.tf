@@ -13,6 +13,7 @@ output "policy_create_flags" {
     azure_tool_governance    = try(var.create_policies.azure_tool_governance, true)
     google_tool_governance   = try(var.create_policies.google_tool_governance, true)
     container_shell_hitl     = try(var.create_policies.container_shell_hitl, true)
+    langfuse_observability   = try(var.create_policies.langfuse_observability, true)
   }
 }
 
@@ -31,6 +32,7 @@ output "policy_ids" {
     azure_tool_governance    = length(sg_policy.azure_tool_governance) > 0 ? sg_policy.azure_tool_governance[0].id : ""
     google_tool_governance   = length(sg_policy.google_tool_governance) > 0 ? sg_policy.google_tool_governance[0].id : ""
     container_shell_hitl     = length(sg_policy.container_shell_hitl) > 0 ? sg_policy.container_shell_hitl[0].id : ""
+    langfuse_observability   = length(sg_policy.langfuse_observability) > 0 ? sg_policy.langfuse_observability[0].id : ""
   }
 }
 
@@ -49,5 +51,6 @@ output "policy_names" {
     azure_tool_governance    = length(sg_policy.azure_tool_governance) > 0 ? sg_policy.azure_tool_governance[0].name : ""
     google_tool_governance   = length(sg_policy.google_tool_governance) > 0 ? sg_policy.google_tool_governance[0].name : ""
     container_shell_hitl     = length(sg_policy.container_shell_hitl) > 0 ? sg_policy.container_shell_hitl[0].name : ""
+    langfuse_observability   = length(sg_policy.langfuse_observability) > 0 ? sg_policy.langfuse_observability[0].name : ""
   }
 }

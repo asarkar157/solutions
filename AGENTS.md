@@ -19,7 +19,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.5, < 0.2.0"
+      version = ">= 0.1.8, < 0.2.0"
     }
   }
 }
@@ -27,11 +27,26 @@ terraform {
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
-  # Optional: project_id = var.stackgen_project_id  (deprecated alias: org_id)
+  # Optional: default org scope for Guild APIs that send orgId (agents, workflows, webhooks, schedules).
+  # project_id = var.stackgen_project_id  # deprecated alias on provider: org_id
+  # Optional: default true — some Guild resources adopt an existing object after Create returns 409/500.
+  # adopt_on_conflict = false  # use for strict pipelines (fail + terraform import instead)
 }
 ```
 
 Use **OpenTofu** (`tofu`) or **Terraform** interchangeably for `fmt`, `init`, `validate`, `plan`, `apply`.
+
+## Provider source documentation (keep current with upstream)
+
+This repo consumes the **`sg`** provider from `releases.stackgen.com`; it does **not** vendor the provider code. When adding or changing `sg_*` usage, align with the upstream project **[appcd-dev/terraform-provider-stackgen](https://github.com/appcd-dev/terraform-provider-stackgen)**:
+
+| Artifact | Purpose |
+|----------|---------|
+| [`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md) | Human-readable index of resources and data sources |
+| [`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md) | Schema tag conventions (`sg:"..."`) and implementation patterns |
+| `tofu providers schema -json` / `terraform providers schema -json` | Full machine-readable schema (key = your `required_providers.sg.source`) |
+
+**Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
 
 ## Module source (how customers reference this repo)
 
@@ -65,14 +80,14 @@ Do not invert dependencies between layers.
 | 0 | `aios-policies` | Shared `sg_policy` resources; exposes `policy_ids` map |
 | 1 | `aios-integration-*` | Cloud/tool integrations; exposes `integration_name` or similar |
 | 2 | `aios-agent-*` | Agents, workflows, attachments; consume `module.foundation.model_names`, `module.policies.policy_ids`, and integration outputs |
-| 2 | `aios-agent-schedules` | Optional companion: `sg_agent_schedule` cron prompts; set `agent_name` from any agent module output (`*_agent_name`, `agent_name`, etc.) |
+| 2 | `aios-agent-schedules` | Optional companion: `sg_agent_schedule` cron prompts; set `target_name` (and optional `target_type`) from agent or workflow module outputs — same pairing as `sg_webhook` |
 
 **Typical wiring:**
 
 1. Instantiate `aios-foundation` and `aios-policies` once per stack (or per env).
 2. Instantiate only the **integrations** the customer uses (each module is optional).
 3. Instantiate **agent** modules; pass `model_names`, the **subset** of `policy_ids` that module expects, and integration identifiers as required by that module’s variables.
-4. Optionally instantiate **`aios-agent-schedules`** beside an agent to attach Guild cron schedules (`sg_agent_schedule`); see `modules/aios-agent-schedules/README.md` and `examples/complete/main.tf`.
+4. Optionally instantiate **`aios-agent-schedules`** beside an agent or workflow to attach Guild cron schedules (`sg_agent_schedule` uses `target_type` / `target_name`); see `modules/aios-agent-schedules/README.md` and `examples/complete/main.tf`.
 
 For a working full graph, start from `examples/complete/main.tf`.
 
@@ -128,7 +143,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-workspace-assistant` | Workspace assistant workflow |
 | `modules/aios-agent-ubuntu-cli` | Ubuntu CLI-oriented agent |
 | `modules/aios-agent-clickhouse-inspector` | ClickHouse inspection |
-| `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent |
+| `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent or workflow |
 
 ## IDE tips (no agent file required)
 

@@ -108,6 +108,14 @@ resource "sg_policy" "google_tool_governance" {
   rego_source = file("${path.module}/policies/google-tool-governance.rego")
 }
 
+resource "sg_policy" "langfuse_observability" {
+  count       = var.create_policies.langfuse_observability ? 1 : 0
+  name        = "langfuse-observability"
+  description = "Enforces read-only access for Langfuse observer agents — blocks create/update/delete/archive mutations and shell exec"
+  type        = "logic"
+  rego_source = file("${path.module}/policies/langfuse-observability.rego")
+}
+
 # =============================================================================
 # Policy Bundle
 # =============================================================================

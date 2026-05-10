@@ -1,7 +1,7 @@
 # Local verification and CI entrypoints. Full context: README.md
 # ("Local verification", "Continuous integration").
 
-.PHONY: help fmt fmt-check opa-fmt opa-fmt-check opa-check validate check clean
+.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate check clean
 
 SHELL := /bin/bash
 
@@ -15,8 +15,8 @@ help:
 	@echo ""
 	@echo "  TF=$(TF)  (default: tofu if installed, else terraform — set TF= to override)"
 	@echo ""
-	@echo "  make fmt            Format all .tf via $(TF)"
-	@echo "  make fmt-check      CI-style format check ($(TF) fmt -check)"
+	@echo "  make fmt | fix-fmt  Format all .tf ($(TF) fmt -recursive; fixes fmt-check failures)"
+	@echo "  make fmt-check      CI-style format check ($(TF) fmt -check -recursive)"
 	@echo "  make opa-fmt        Format all Rego (.rego) files"
 	@echo "  make opa-fmt-check  Fail if Rego formatting differs (CI)"
 	@echo "  make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
@@ -26,7 +26,7 @@ help:
 	@echo ""
 	@echo "validate needs network; see README if dev_overrides force a minimal CLI config (then set TF_TOKEN_releases_stackgen_com)."
 
-fmt:
+fmt fix-fmt:
 	$(TF) fmt -recursive
 
 fmt-check:
