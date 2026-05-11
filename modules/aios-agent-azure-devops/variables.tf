@@ -24,5 +24,17 @@ variable "clickhouse_inspector_agent_name" {
 variable "agent_budget" {
   type    = number
   default = 20
+}variable "secret_names" {
+  type    = map(string)
+  default = {}
 }
 
+variable "reader_principal_id" {
+  type    = string
+  default = ""
+}
+
+variable "azure_role_scope" {
+  type    = string
+  default = ""
+}

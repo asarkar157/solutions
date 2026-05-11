@@ -146,3 +146,39 @@ resource "sg_workflow" "azure_devops_full_triage" {
     { stage_id = "remediate", agent_ref = sg_agent.azure_devops_sre.name, stage_depends_on = ["correlate"] },
   ]
 }
+
+# ============================================================================
+# Role Assignments
+# ============================================================================
+
+# Assign Storage Queue Data Reader for data-plane queue access to the reader instance
+resource "azurerm_role_assignment" "storage_queue_reader" {
+  count                = var.reader_principal_id != "" && var.azure_role_scope != "" ? 1 : 0
+  scope                = var.azure_role_scope
+  role_definition_name = "Storage Queue Data Reader"
+  principal_id         = var.reader_principal_id
+}
+
+# Assign Function App configuration reader for diagnostic access
+resource "azurerm_role_definition" "function_config_reader" {
+  count       = var.reader_principal_id != "" && var.azure_role_scope != "" ? 1 : 0
+  name        = "SRE Function Config Reader - ${var.reader_principal_id}"
+  scope       = var.azure_role_scope
+  description = "Allows reading Function App configuration (connection strings, etc.) for diagnostics"
+
+  permissions {
+    actions     = ["Microsoft.Web/sites/config/list/action"]
+    not_actions = []
+  }
+
+  assignable_scopes = [
+    var.azure_role_scope
+  ]
+}
+
+resource "azurerm_role_assignment" "function_config_reader_assignment" {
+  count              = var.reader_principal_id != "" && var.azure_role_scope != "" ? 1 : 0
+  scope              = var.azure_role_scope
+  role_definition_id = azurerm_role_definition.function_config_reader[0].role_definition_resource_id
+  principal_id       = var.reader_principal_id
+}
