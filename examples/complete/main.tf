@@ -71,6 +71,10 @@ module "slack_integration" {
   slack_webhook_url    = var.slack_webhook_url
 }
 
+module "ubuntu_integration" {
+  source = "../../modules/aios-integration-ubuntu"
+}
+
 # =============================================================================
 # Layer 2 — Agents
 # =============================================================================
@@ -189,6 +193,18 @@ module "onboarding" {
   }
 }
 
+module "terraform_bot" {
+  source = "../../modules/aios-agent-terraform-bot"
+
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    github     = module.github_integration.integration_name
+    ubuntu_cli = module.ubuntu_integration.integration_name
+  }
+}
+
 # =============================================================================
 # Optional: Guild read-only data sources (StackGen provider)
 # =============================================================================
@@ -241,4 +257,13 @@ output "marketing_agent_names" {
 
 output "compliance_agent_name" {
   value = module.compliance_auditor.agent_name
+}
+
+output "terraform_bot_webhook" {
+  description = "Webhook endpoint for Terraform Module Bot ingress from GitHub"
+  value = {
+    id    = module.terraform_bot.webhook_id
+    token = module.terraform_bot.webhook_token
+  }
+  sensitive = true
 }

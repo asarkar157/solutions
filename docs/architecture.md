@@ -5,7 +5,7 @@ permalink: architecture/
 nav_order: 20
 ---
 
-How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots. For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
+How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots. The **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** is the authoritative list of every shipped module (inputs, outputs, and copy-paste snippets). For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
 
 ## Layered dependency graph
 
@@ -31,12 +31,17 @@ graph TD
         A_FO["aios-agent-cost-optimizer"]
         A_OB["aios-agent-onboarding"]
         A_PS["aios-agent-predictive-sre"]
+        A_LFO["aios-agent-langfuse-observer"]
+        A_SOC["aios-agent-soc-analyst"]
+        A_TFB["aios-agent-terraform-bot"]
     end
 
     subgraph "Layer 1 — Integrations"
         I_AWS["aios-integration-aws"]
         I_AZ["aios-integration-azure"]
+        I_GCP["aios-integration-gcp"]
         I_GR["aios-integration-grafana"]
+        I_LF["aios-integration-langfuse"]
         I_SL["aios-integration-slack"]
         I_GH["aios-integration-github"]
         I_CH["aios-integration-clickhouse"]
@@ -44,7 +49,7 @@ graph TD
 
     subgraph "Layer 0 — Foundation"
         F["aios-foundation<br/>(models, secrets)"]
-        P["aios-policies<br/>(12 guardrail policies)"]
+        P["aios-policies<br/>(shared guardrails)"]
     end
 
     %% Layer 3 → Layer 2
@@ -54,7 +59,7 @@ graph TD
 
     %% Layer 2 → Layer 1
     A_AWS --> I_AWS
-    A_GCP -.- I_AWS
+    A_GCP --> I_GCP
     A_AZ --> I_AZ
     A_GR --> I_GR
     A_SE --> I_GH
@@ -64,6 +69,8 @@ graph TD
     A_PS --> I_GH
     A_PS --> I_GR
     A_PS --> I_AWS
+    A_LFO --> I_LF
+    A_TFB --> I_GH
 
     %% Layer 2 → Layer 0
     A_SRE --> F
@@ -72,16 +79,26 @@ graph TD
     A_AWS --> P
     A_GCP --> F
     A_GCP --> P
+    A_LFO --> F
+    A_LFO --> P
+    A_SOC --> F
+    A_SOC --> P
+    A_TFB --> F
+    A_TFB --> P
 
     %% Layer 1 → Layer 0
     I_AWS --> F
     I_AZ --> F
+    I_GCP --> F
     I_GR --> F
+    I_LF --> F
     I_SL --> F
     I_GH --> F
 ```
 
 ## Resource Inventory by Module
+
+The table below is a **snapshot** of several heavily used agent modules (agent / runbook / workflow counts are approximate). For **every** integration and agent module—including **Langfuse**, **StackGen MCP guardrails**, **SDLC**, **Repo to IaC**, **schedules**, **SOC Analyst**, **DB optimizer**, **drift detective**, **incident commander**, and others—use the **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** and the module `README.md` under `modules/`.
 
 <details markdown="1">
 <summary>Show inventory table</summary>
@@ -101,7 +118,18 @@ graph TD
 | aios-agent-cost-optimizer | 1 | 4 | 1 | — | — |
 | aios-agent-onboarding | 1 | 3 | 1 | — | — |
 | aios-agent-predictive-sre | 1 | 2 | 1 | — | — |
-| **Total** | **18** | **54** | **16** | **6+12** | **12** |
+| aios-agent-repo-to-iac | 1 | 6 | 2 | 1 | — |
+| aios-agent-sdlc | 9 | 1 | 2 | 12+ | — |
+| aios-agent-ubuntu-cli | 1 | 4 | — | 2 | — |
+| aios-agent-clickhouse-inspector | 1 | 5 | — | 3 | — |
+| aios-agent-langfuse-observer | 1 | 4 | 1 | 3 | — |
+| aios-agent-soc-analyst | 1 | 2 | 2 | 1 | — |
+| aios-agent-stackgen-mcp-policy | 1 | — | — | 1 | — |
+| aios-agent-terraform-bot | 1 | — | 1 | 1 | — |
+| aios-agent-db-optimizer | 1 | 1 | 1 | — | — |
+| aios-agent-iac-drift-detective | 1 | 1 | 1 | — | — |
+| aios-agent-sre-incident-commander | 1 | 1 | 1 | — | — |
+| aios-agent-schedules | — | — | — | — | — |
 
 </details>
 
