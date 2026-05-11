@@ -29,6 +29,20 @@ resource "sg_agent" "incident_commander" {
   ])
 }
 
+variable "policy_ids" {
+  type = object({
+    dangerous_ops = optional(string, "")
+  })
+  default = {}
+}
+
+resource "sg_agent_policy_attachment" "dangerous_ops" {
+  count      = lookup(var.policy_ids, "dangerous_ops", "") != "" ? 1 : 0
+  agent_name = sg_agent.incident_commander.name
+  policy_id  = var.policy_ids.dangerous_ops
+  enabled    = true
+}
+
 resource "sg_runbook_sop" "major_incident" {
   name        = "major-incident-response"
   description = trimspace(templatefile("${path.module}/templates/major-incident.md", {}))

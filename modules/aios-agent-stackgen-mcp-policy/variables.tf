@@ -14,3 +14,13 @@ variable "model_names" {
   description = "Map of models available to use"
   type        = map(string)
 }
+
+variable "policy_ids" {
+  type    = map(string)
+  default = {}
+}
+
+variable "integration_names" {
+  type    = map(string)
+  default = {}
+}

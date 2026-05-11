@@ -63,15 +63,23 @@ resource "sg_agent" "stackgen_expert" {
     lookup(var.model_names, "gemini_flash", "")
   ])
 
-  integrations = [
-    sg_guild_integration.stackgen_mcp.name
-  ]
+  integrations = compact([
+    sg_guild_integration.stackgen_mcp.name,
+    lookup(var.integration_names, "stackgen_openapi", "")
+  ])
 }
 
 # 5. Bind Policy to Agent
 resource "sg_agent_policy_attachment" "stackgen_safety" {
   agent_name = sg_agent.stackgen_expert.name
   policy_id  = sg_policy.stackgen_guardrails.id
+  enabled    = true
+}
+
+resource "sg_agent_policy_attachment" "dangerous_ops" {
+  count      = lookup(var.policy_ids, "dangerous_ops", "") != "" ? 1 : 0
+  agent_name = sg_agent.stackgen_expert.name
+  policy_id  = lookup(var.policy_ids, "dangerous_ops", "")
   enabled    = true
 }
 
