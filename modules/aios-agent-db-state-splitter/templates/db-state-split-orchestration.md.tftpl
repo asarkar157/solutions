@@ -1,0 +1,61 @@
+Skill: Orchestration for **multi-cloud monorepo state splitting** — logical grouping (tags / modules / definitions), per-group TF states, **StackGen AppStacks**, convergence loops, and Guild workflow handoff.
+
+Keywords: terraform state split, monorepo, opentofu, tfstate, aws, azure, gcp, azurerm, google, tags, logical groups, appstack, stackgen mcp, state mv, moved block, import, convergence, remote runner, ubuntu cli, guild workflow, orphan module.
+
+## Remote runner vs Ubuntu CLI
+
+${remote_runner_block}
+
+## Third execution surface — StackGen MCP
+
+When the agent has the **StackGen MCP** integration attached, **AppStack** operations (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_from_discovered_resources`, `download-iac`, `create_appstack_action_run`, etc.) run through those **MCP tools** on the lead or a dedicated subagent whose `tool_names` include the StackGen integration — **not** through Ubuntu CLI and **not** through GitHub HTTP.
+
+Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen MCP is **not** attached, skip AppStack materialization (note `stackgen_appstack_map` as `skipped: no_mcp`) but still complete TF-only grouping and plans.
+
+## Canonical note keys (exact strings)
+
+| Key | Purpose |
+|-----|---------|
+| `repo_clone_path` | Local clone for IaC + scripts |
+| `monolith_state_uri` | s3://, gcs://, path, or backend hint for monolith state |
+| `monolith_state_local_path` | Downloaded `terraform.tfstate` or `json` snapshot path |
+| `monolith_resource_count` | Integer: total resource **instances** in monolith (after filters) |
+| `grouping_policy_json` | Optional rules: tag keys, module prefixes, regexes |
+| `logical_group_seeds` | JSON seeds from multi-vendor anchor detection |
+| `logical_group_manifest` | JSON map `group_id -> {cloud_hint, resource_addresses[]}` (**primary**) |
+| `shard_manifest` | **Legacy mirror** of `logical_group_manifest` for backward compatibility |
+| `per_shard_resource_counts` / `per_group_resource_counts` | JSON map `group_id -> int` |
+| `aggregate_shard_resource_count` / `aggregate_group_resource_count` | Sum over groups |
+| `count_reconciliation_ok` | `"true"` / `"false"` |
+| `reverse_iac_summary` | Paths + strategy per group (import vs generate) |
+| `registry_mapping_report` | Markdown: patterns → module source / StackGen types |
+| `stackgen_appstack_map` | JSON: `group_id -> { appstack_id, cloud_provider, project_name }` |
+| `stackgen_mcp_errors` | Tool failures + fixes |
+| `orphans_bundle` | JSON list of addresses + reasons not mapped |
+| `convergence_iteration` | String int; increment when re-looping |
+| `multi_plan_zero_diff_ok` | `"true"` / `"false"` |
+| `orphan_modularization_memory` | How orphans were sorted / modularized |
+| `secondary_workflow_payload` | JSON for `orphan-iac-module-authoring` |
+| `stage_summary:<stage_id>` | One paragraph per stage |
+
+## Loop contracts (max ${max_iterations} outer iterations)
+
+**Loop A — count gate**  
+If `aggregate_group_resource_count != monolith_resource_count`, fix **allocation** (graph closure, shared resources, grouping policy), increment `convergence_iteration`, and **re-run** discovery + allocation **before** reverse-IaC or AppStacks.
+
+**Loop B — plan gate (TF roots + optional StackGen)**  
+If any per-group `tofu plan` is non-empty **or** `create_appstack_action_run` Plan fails / drift, adjust imports, `moved`, MCP resource configs, or env profiles; increment `convergence_iteration`; re-run registry + AppStack stages. Stop after ${max_iterations} iterations and escalate.
+
+## Secondary Guild pipeline
+
+When `orphans_bundle` is non-empty after registry / AppStack mapping, build `secondary_workflow_payload` and **invoke** **`orphan-iac-module-authoring`** — use workflow-start tooling if present; otherwise `notify` with JSON.
+
+## Integration boundaries
+
+- **GitHub integration** — `gh api` / filtered listings only.  
+- **Ubuntu CLI** — state pull, `jq`, `tofu`/`terraform`, local plan matrix, `git`.  
+- **StackGen MCP** — AppStack CRUD, discovery import, `download-iac`, action runs, env profiles.
+
+## Subagent discipline
+
+At most **one** Ubuntu-CLI subagent per atomic shell phase; StackGen MCP calls may batch on the lead when tools are attached. Reuse `repo_clone_path`; never bulk-fetch state via `gh api`.

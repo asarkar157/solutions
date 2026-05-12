@@ -1,0 +1,446 @@
+terraform {
+  required_version = ">= 1.5"
+  required_providers {
+    sg = {
+      source  = "releases.stackgen.com/stackgen/stackgen"
+      version = ">= 0.1.10, < 0.2.0"
+    }
+  }
+}
+
+locals {
+  remote_runner_block = trimspace(var.remote_runner_name) != "" ? trimspace(<<-RUNNER
+    Operator supplied **remote_runner_name** = "${var.remote_runner_name}".
+    When the Guild agent exposes a **remote runner** or delegated execution tool bound to that name, use it for **fan-out** `tofu plan` / heavy `terraform show -json` over many shards so the Ubuntu MCP sandbox does not time out. Persist artifact paths (plan JSON, state snapshots) via `note` keys `remote_runner_artifacts`.
+    If no such tool is available, fall back to Ubuntu CLI and **serialize** plans if needed.
+    RUNNER
+    ) : trimspace(<<-RUNNER
+    No `remote_runner_name` was set on the module. Run **all** shell, `tofu`/`terraform`, `jq`, `git`, and state pulls via **Ubuntu CLI** (`ubuntu-cli_execute_command|series|parallel`) subagents only.
+    RUNNER
+  )
+}
+
+# =============================================================================
+# Agent — DB / monorepo state split architect
+# =============================================================================
+
+resource "sg_agent" "db_state_split_architect" {
+  name        = "db-state-split-architect"
+  persona     = file("${path.module}/personas/db-state-split-architect.md")
+  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+
+  integrations = compact([
+    var.integration_names.github,
+    var.integration_names.ubuntu_cli,
+    trimspace(var.stackgen_mcp_integration_name) != "" ? trimspace(var.stackgen_mcp_integration_name) : null,
+  ])
+}
+
+resource "sg_agent_budget" "db_state_split_architect" {
+  agent_name  = sg_agent.db_state_split_architect.name
+  limit_usd   = 25
+  period_type = "daily"
+}
+
+resource "sg_agent_policy_attachment" "db_state_split_architect_dangerous_ops" {
+  agent_name = sg_agent.db_state_split_architect.name
+  policy_id  = var.policy_ids.dangerous_ops
+  enabled    = true
+}
+
+# =============================================================================
+# Runbooks (Guild skills)
+# =============================================================================
+
+resource "sg_runbook_sop" "db_state_split_orchestration" {
+  name    = "db-state-split-orchestration-sop"
+  approve = true
+  description = trimspace(templatefile("${path.module}/templates/db-state-split-orchestration.md.tftpl", {
+    max_iterations      = var.max_convergence_iterations
+    remote_runner_block = local.remote_runner_block
+  }))
+}
+
+resource "sg_runbook_sop" "terraform_state_shard_extraction" {
+  name        = "terraform-state-shard-extraction-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/terraform-state-shard-extraction.md"))
+}
+
+resource "sg_runbook_sop" "terraform_registry_reverse_iac" {
+  name        = "terraform-registry-reverse-iac-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/terraform-registry-reverse-iac.md"))
+}
+
+resource "sg_runbook_sop" "terraform_substate_convergence" {
+  name        = "terraform-substate-convergence-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/terraform-substate-convergence.md"))
+}
+
+resource "sg_runbook_sop" "orphan_iac_module_bootstrap" {
+  name        = "orphan-iac-module-bootstrap-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/orphan-iac-module-bootstrap.md"))
+}
+
+resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
+  name        = "stackgen-appstack-mcp-playbook-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/stackgen-appstack-mcp-playbook.md"))
+}
+
+# =============================================================================
+# Primary workflow — monorepo state → per-DB TF states + convergence loops
+# =============================================================================
+
+resource "sg_workflow" "db_monorepo_state_split_convergence" {
+  name        = "db-monorepo-state-split-convergence"
+  domain      = "infrastructure-as-code"
+  description = <<-EOT
+    Splits a monolithic Terraform/OpenTofu state across **AWS, Azure, and GCP** into **logical resource groups**
+    (tags, module paths, grouping policy), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
+    reverse-engineered IaC, registry mapping, orphan secondary workflow, and loops until counts match and plans converge.
+  EOT
+  approve     = true
+
+  required_inputs = ["monolith_state_uri", "iac_repository_url"]
+  optional_inputs = [
+    "default_branch",
+    "state_encryption_hint",
+    "remote_runner_name",
+    "max_convergence_iterations",
+    "registry_catalog_url",
+    "grouping_policy_json",
+    "stackgen_project_name",
+    "cloud_discovery_id",
+  ]
+
+  example_queries = [
+    "Split monorepo tfstate s3://acme-tf/prod/terraform.tfstate: group by tag Application, one AppStack per tag value for AWS + Azure resources",
+    "Brownfield infra-live: logical groups by module.networking vs module.data — GCP and AWS — then create_appstack per group",
+    "Use grouping_policy_json to merge all azurerm_* with tag env=prod into one StackGen appstack and empty-plan each",
+  ]
+
+  triggers = [
+    { field = "intent", values = ["db-state-split", "db-monorepo-tfstate-split", "split-db-state", "logical-state-split", "appstack-from-tfstate"], type = "passive" },
+  ]
+
+  runbook_refs = [
+    sg_runbook_sop.db_state_split_orchestration.name,
+    sg_runbook_sop.terraform_state_shard_extraction.name,
+    sg_runbook_sop.terraform_registry_reverse_iac.name,
+    sg_runbook_sop.stackgen_appstack_mcp_playbook.name,
+    sg_runbook_sop.terraform_substate_convergence.name,
+    sg_runbook_sop.orphan_iac_module_bootstrap.name,
+  ]
+
+  stages = [
+    {
+      stage_id    = "ingest-monolith"
+      description = "Clone IaC repo, fetch monolith state to workspace, record monolith_resource_count"
+      note        = "Ubuntu CLI: git clone, backend pull or aws s3 cp state, tofu/terraform state list | wc -l style count; persist monolith_state_local_path."
+      required    = true
+    },
+    {
+      stage_id    = "discover-db-anchors"
+      description = "Multi-cloud: parse state; apply grouping_policy_json; emit logical_group_seeds and db_anchor_inventory (stage id retained)"
+      note        = "terraform-state-shard-extraction-sop §2–3 — AWS/Azure/GCP anchors + tag/module clustering."
+      required    = true
+    },
+    {
+      stage_id    = "allocate-related-resources"
+      description = "Build dependency closures; write logical_group_manifest (mirror shard_manifest) and per-group counts"
+      note        = "Shard-extraction §4–6. Never place aws_* and azurerm_* in the same group."
+      required    = true
+    },
+    {
+      stage_id    = "count-reconcile-loop"
+      description = "Verify aggregate_group_resource_count == monolith_resource_count; if not, iterate allocation"
+      note        = "terraform-substate-convergence-sop § Count check. If false, increment convergence_iteration and return to discover-db-anchors (within iteration budget)."
+      required    = true
+    },
+    {
+      stage_id    = "reverse-engineer-and-registry-map"
+      description = "Generate import/moved IaC per logical group; registry + StackGen type mapping; orphans_bundle"
+      note        = "terraform-registry-reverse-iac-sop. Feeds AppStacks and orphan pipeline."
+      required    = true
+    },
+    {
+      stage_id    = "materialize-stackgen-appstacks"
+      description = "Per logical group: create_appstack (or from discovery), add_resource_to_appstack, connect_resources, env profiles, stackgen_appstack_map"
+      note        = "stackgen-appstack-mcp-playbook-sop Flow A/B. Skip with note if StackGen MCP not attached."
+      required    = true
+    },
+    {
+      stage_id    = "orphans-secondary-pipeline"
+      description = "Trigger orphan-iac-module-authoring with secondary_workflow_payload when orphans_bundle non-empty"
+      note        = "db-state-split-orchestration-sop § Secondary Guild pipeline."
+      required    = true
+    },
+    {
+      stage_id    = "multi-shard-plan-convergence"
+      description = "tofu plan each TF root + StackGen Plan action runs; loop until all empty"
+      note        = "terraform-substate-convergence-sop § Plan matrix + Loop B."
+      required    = true
+    },
+    {
+      stage_id    = "final-gate-and-memory"
+      description = "Confirm counts + zero plans; persist orphan_modularization_memory and handoff summary"
+      note        = "Merge secondary workflow results if any; final notify / PR."
+      required    = true
+    },
+  ]
+
+  stage_bindings = [
+    {
+      stage_id     = "ingest-monolith"
+      agent_ref    = sg_agent.db_state_split_architect.name
+      runbook_refs = [sg_runbook_sop.db_state_split_orchestration.name]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-state-shard-extraction-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::ingest-monolith"], [])
+      )
+      note = <<-EOT
+        Budget: ≤ 2 Ubuntu-CLI subagents, ≤ $2, ≤ 6m.
+        1) read_notes; clone IAC to `repo_clone_path` if missing. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
+        2) Download state from `monolith_state_uri` → `monolith_state_local_path`; compute `monolith_resource_count`.
+        3) note `stage_summary:ingest-monolith`.
+      EOT
+    },
+    {
+      stage_id         = "discover-db-anchors"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["ingest-monolith"]
+      runbook_refs     = [sg_runbook_sop.terraform_state_shard_extraction.name]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-state-shard-extraction-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::discover-db-anchors"], [])
+      )
+      note = <<-EOT
+        One Ubuntu-CLI subagent: apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory`.
+        note `stage_summary:discover-db-anchors`.
+      EOT
+    },
+    {
+      stage_id         = "allocate-related-resources"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["discover-db-anchors"]
+      runbook_refs     = [sg_runbook_sop.terraform_state_shard_extraction.name]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-state-shard-extraction-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::allocate-related-resources"], [])
+      )
+      note = <<-EOT
+        Build `logical_group_manifest` and mirror `shard_manifest`. Emit `per_group_resource_counts`. If shared ambiguity, document under `logical_group_manifest.notes`.
+        note `stage_summary:allocate-related-resources`.
+      EOT
+    },
+    {
+      stage_id         = "count-reconcile-loop"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["allocate-related-resources"]
+      runbook_refs = [
+        sg_runbook_sop.db_state_split_orchestration.name,
+        sg_runbook_sop.terraform_substate_convergence.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-substate-convergence-sop", "terraform-state-shard-extraction-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::count-reconcile-loop"], [])
+      )
+      note = <<-EOT
+        Enforce count equality. If false, loop back (re-invoke allocation subagent) until `max_convergence_iterations` from module — read orchestration SOP Loop A.
+        note `count_reconciliation_ok` and `stage_summary:count-reconcile-loop`.
+      EOT
+    },
+    {
+      stage_id         = "reverse-engineer-and-registry-map"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["count-reconcile-loop"]
+      runbook_refs = [
+        sg_runbook_sop.terraform_registry_reverse_iac.name,
+        sg_runbook_sop.db_state_split_orchestration.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-registry-reverse-iac-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::reverse-engineer-and-registry-map"], [])
+      )
+      note = <<-EOT
+        Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
+        note `stage_summary:reverse-engineer-and-registry-map`.
+      EOT
+    },
+    {
+      stage_id         = "materialize-stackgen-appstacks"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["reverse-engineer-and-registry-map"]
+      runbook_refs = [
+        sg_runbook_sop.stackgen_appstack_mcp_playbook.name,
+        sg_runbook_sop.db_state_split_orchestration.name,
+      ]
+      skill_refs = concat(
+        ["stackgen-appstack-mcp-playbook-sop", "db-state-split-orchestration-sop", "terraform-registry-reverse-iac-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-stackgen-appstacks"], [])
+      )
+      note = <<-EOT
+        If StackGen MCP is attached: for each `logical_group_manifest` entry, run Flow A from playbook (create_appstack → add_resource_to_appstack → connect_resources → create_env_profile when needed → create_appstack_action_run Plan). Persist `stackgen_appstack_map`.
+        If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp`.
+        Optional input `cloud_discovery_id`: when set, prefer Flow B (`create_appstack_from_discovered_resources`) for that discovery id intersected with group resource IDs if your bridge script produced mapping.
+        note `stage_summary:materialize-stackgen-appstacks`.
+      EOT
+    },
+    {
+      stage_id         = "orphans-secondary-pipeline"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["materialize-stackgen-appstacks"]
+      runbook_refs = [
+        sg_runbook_sop.db_state_split_orchestration.name,
+        sg_runbook_sop.orphan_iac_module_bootstrap.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "orphan-iac-module-bootstrap-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::orphans-secondary-pipeline"], [])
+      )
+      note = <<-EOT
+        If `orphans_bundle` empty → note skip. Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
+        note `stage_summary:orphans-secondary-pipeline`.
+      EOT
+    },
+    {
+      stage_id         = "multi-shard-plan-convergence"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["orphans-secondary-pipeline"]
+      runbook_refs = [
+        sg_runbook_sop.terraform_substate_convergence.name,
+        sg_runbook_sop.db_state_split_orchestration.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-substate-convergence-sop", "terraform-registry-reverse-iac-sop", "stackgen-appstack-mcp-playbook-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::multi-shard-plan-convergence"], [])
+      )
+      note = <<-EOT
+        Run TF plan matrix per `logical_group_manifest`; if `stackgen_appstack_map` has entries, run **`create_appstack_action_run`** (Plan) per AppStack and optionally **`download-iac`** + local `tofu plan` for parity. If any drift, Loop B then re-plan until pass or iteration cap.
+        Set `multi_plan_zero_diff_ok`. note `stage_summary:multi-shard-plan-convergence`.
+      EOT
+    },
+    {
+      stage_id         = "final-gate-and-memory"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["multi-shard-plan-convergence"]
+      runbook_refs = [
+        sg_runbook_sop.db_state_split_orchestration.name,
+        sg_runbook_sop.orphan_iac_module_bootstrap.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "orphan-iac-module-bootstrap-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::final-gate-and-memory"], [])
+      )
+      note = <<-EOT
+        Verify `count_reconciliation_ok` and `multi_plan_zero_diff_ok`. Consolidate `orphan_modularization_memory`. Final `notify` / PR comment with tables + PR links.
+        note `stage_summary:final-gate-and-memory`.
+      EOT
+    },
+  ]
+}
+
+# =============================================================================
+# Secondary workflow — orphan resources → new module + memory
+# =============================================================================
+
+resource "sg_workflow" "orphan_iac_module_authoring" {
+  name        = "orphan-iac-module-authoring"
+  domain      = "infrastructure-as-code"
+  description = <<-EOT
+    Guild pipeline that materializes Terraform modules from orphan resource bundles produced by
+    db-monorepo-state-split-convergence, validates them, and records modularization memory for reuse.
+  EOT
+  approve     = true
+
+  required_inputs = ["orphans_bundle", "parent_repository_url"]
+  optional_inputs = ["base_branch", "proposed_module_name_prefix"]
+
+  example_queries = [
+    "Orphans from state split: [...addresses...] — scaffold a shared networking module",
+    "Take orphans_bundle JSON and publish modules/orphan-wrap under parent repo",
+  ]
+
+  triggers = [
+    { field = "intent", values = ["orphan-iac-module-authoring", "db-split-orphan-modules"], type = "passive" },
+  ]
+
+  runbook_refs = [
+    sg_runbook_sop.orphan_iac_module_bootstrap.name,
+    sg_runbook_sop.db_state_split_orchestration.name,
+  ]
+
+  stages = [
+    {
+      stage_id    = "orphan-intake-classify"
+      description = "Parse orphans_bundle; classify and name proposed modules"
+      required    = true
+    },
+    {
+      stage_id    = "scaffold-validate-module"
+      description = "Author module tree, fmt/init/validate/plan, tests"
+      required    = true
+    },
+    {
+      stage_id    = "memory-and-handoff"
+      description = "Write orphan_modularization_memory; PR or notify primary workflow"
+      required    = true
+    },
+  ]
+
+  stage_bindings = [
+    {
+      stage_id  = "orphan-intake-classify"
+      agent_ref = sg_agent.db_state_split_architect.name
+      runbook_refs = [
+        sg_runbook_sop.orphan_iac_module_bootstrap.name,
+        sg_runbook_sop.db_state_split_orchestration.name,
+      ]
+      skill_refs = concat(
+        ["orphan-iac-module-bootstrap-sop", "db-state-split-orchestration-sop"],
+        try(var.secondary_workflow_skill_refs["orphan-iac-module-authoring::orphan-intake-classify"], [])
+      )
+      note = "read_notes for orphans_bundle; emit classification markdown; note stage_summary."
+    },
+    {
+      stage_id         = "scaffold-validate-module"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["orphan-intake-classify"]
+      runbook_refs     = [sg_runbook_sop.orphan_iac_module_bootstrap.name]
+      skill_refs = concat(
+        ["orphan-iac-module-bootstrap-sop"],
+        try(var.secondary_workflow_skill_refs["orphan-iac-module-authoring::scaffold-validate-module"], [])
+      )
+      note = "Ubuntu CLI subagent: scaffold, tofu validate/plan, tests; persist paths."
+    },
+    {
+      stage_id         = "memory-and-handoff"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["scaffold-validate-module"]
+      runbook_refs     = [sg_runbook_sop.orphan_iac_module_bootstrap.name]
+      skill_refs = concat(
+        ["orphan-iac-module-bootstrap-sop"],
+        try(var.secondary_workflow_skill_refs["orphan-iac-module-authoring::memory-and-handoff"], [])
+      )
+      note = "Append orphan_modularization_memory; open PR or notify with summary for primary workflow consumer."
+    },
+  ]
+}
+
+# =============================================================================
+# Optional GitHub webhook → primary workflow
+# =============================================================================
+
+resource "sg_webhook" "github_db_state_split" {
+  count = var.enable_github_webhook ? 1 : 0
+
+  name        = "github-db-state-split-receiver"
+  target_type = "workflow"
+  target_name = sg_workflow.db_monorepo_state_split_convergence.name
+  action      = "GitHub issue or PR about splitting monorepo Terraform state into logical groups and StackGen AppStacks (multi-cloud); triage and run db-monorepo-state-split-convergence with repository_url and state URI from the body."
+  enabled     = true
+}

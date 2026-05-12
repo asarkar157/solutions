@@ -231,6 +231,13 @@ function init(){
   });
 }
 
-if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init);
-else init();
+function bootCatalog(){
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init);
+  else init();
+}
+if(typeof window.onModulesReady==="function"){
+  window.onModulesReady(bootCatalog);
+}else{
+  bootCatalog();
+}
 })();

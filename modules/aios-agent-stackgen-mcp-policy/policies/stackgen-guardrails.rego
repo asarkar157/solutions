@@ -25,6 +25,10 @@ read_only_stackgen_tool(name) if {
 }
 
 read_only_stackgen_tool(name) if {
+	endswith(name, "mcp_me")
+}
+
+read_only_stackgen_tool(name) if {
 	some sfx in allowed_name_suffixes
 	endswith(name, sfx)
 }
@@ -39,7 +43,6 @@ allowed_short_names := {
 
 # Suffixes after integration prefix (stackgen-mcp_*, stackgen-mothership-mcp_*, etc.)
 allowed_name_suffixes := {
-	"_get_me",
 	"_get_appstacks",
 	"_get_application_graph",
 	"_list_resources",
@@ -56,6 +59,22 @@ allowed_name_suffixes := {
 	"_get_current_violations",
 	"_get_action_run",
 	"_get_action_run_logs",
+	"_get_module_versions",
+	"_module_usage_in_appstacks",
+	"_get_policies",
+	"_get_scan_results",
+	"_list_cloud_discoveries",
+	"_get_resources_from_discovery",
+	"_list-git-configuration",
+	"_list-available-secrets",
+	"_get_stackgen_projects",
+	"_get_appstack_tf_variables",
+	"_get_appstack_tf_locals",
+	"_get_appstack_tf_outputs",
+	"_get_appstack_tf_providers",
+	"_get_stackgen_policy_schema",
+	"download-iac",
+	"detect-drift",
 }
 
 deny_reason := sprintf(

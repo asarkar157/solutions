@@ -133,6 +133,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-predictive-sre` | Predictive triage workflow |
 | `modules/aios-agent-software-engineering` | Feature development workflow |
 | `modules/aios-agent-repo-to-iac` | GitHub repo URL → IaC via StackGen MCP (`repository-to-iac` workflow) |
+| `modules/aios-agent-db-state-splitter` | Multi-cloud monorepo TF state → logical groups, optional StackGen AppStacks (MCP), registry mapping, orphan workflow (`db-monorepo-state-split-convergence`) |
 | `modules/aios-agent-supply-chain-security` | Supply chain scan workflow and policies |
 | `modules/aios-agent-compliance-auditor` | Compliance assessment workflow |
 | `modules/aios-agent-cost-optimizer` | FinOps / cost workflow |

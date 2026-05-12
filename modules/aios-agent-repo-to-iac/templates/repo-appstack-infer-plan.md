@@ -1,4 +1,4 @@
-After GitHub discovery: infer StackGen surface area.
+After GitHub discovery: infer StackGen surface area. Use **`stackgen-mcp-consumer-tool-catalog-sop`** for the full Consumer MCP matrix.
 
 ## Steps
 

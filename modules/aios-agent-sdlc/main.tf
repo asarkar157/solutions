@@ -162,7 +162,7 @@ resource "sg_agent_budget" "github_pr_reminder" {
 resource "sg_runbook_sop" "stackgen_mcp_iac" {
   name        = "stackgen-mcp-iac"
   approve     = true
-  description = trimspace(templatefile("${path.module}/templates/stackgen-mcp-iac.md", {}))
+  description = trimspace(file("${path.module}/templates/stackgen-mcp-iac.md"))
 }
 
 # ============================================================================
@@ -444,7 +444,7 @@ resource "sg_workflow" "developer_request_intake" {
     {
       stage_id    = "process-request"
       description = "Execute the approved request: provision infrastructure, grant access, configure services, or set up environments"
-      note        = "Prefer StackGen MCP tools on the integration (stackgen-mcp_create_appstack, stackgen-mcp_add_resource_to_appstack, stackgen-mcp_connect_resources, stackgen-mcp_update_resource, stackgen-mcp_get_current_violations, stackgen-mcp_create_snapshot / restore_snapshot, stackgen-mcp_create_appstack_action_run + get_action_run_logs). Use run_shell + AWS CLI for live AWS accounts where MCP does not cover the operation; follow stackgen-mcp-iac runbook."
+      note        = "Prefer StackGen MCP tools on the integration: follow **`stackgen-mcp-iac`** (expanded catalog: discovery `list_cloud_discoveries` / `create_appstack_from_discovered_resources`, `provision_appstack`, `download-iac`, git push, policies, modules). Use `stackgen-mcp_create_appstack`, `add_resource_to_appstack`, `connect_resources`, `update_resource`, `get_current_violations`, snapshots, `create_appstack_action_run` + logs. Use run_shell + AWS CLI where MCP does not cover the operation; follow **`stackgen-mcp-iac`** and SRE rollback runbook when applicable."
       required    = true
     },
     {

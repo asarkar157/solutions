@@ -205,6 +205,22 @@ module "terraform_bot" {
   }
 }
 
+module "db_state_splitter" {
+  source = "../../modules/aios-agent-db-state-splitter"
+
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    github     = module.github_integration.integration_name
+    ubuntu_cli = module.ubuntu_integration.integration_name
+  }
+
+  stackgen_mcp_integration_name = ""
+
+  enable_github_webhook = false
+}
+
 # =============================================================================
 # Optional: Guild read-only data sources (StackGen provider)
 # =============================================================================
@@ -266,4 +282,9 @@ output "terraform_bot_webhook" {
     token = module.terraform_bot.webhook_token
   }
   sensitive = true
+}
+
+output "db_state_splitter_workflows" {
+  description = "DB monorepo state split + orphan module authoring workflow names"
+  value       = module.db_state_splitter.workflow_names
 }

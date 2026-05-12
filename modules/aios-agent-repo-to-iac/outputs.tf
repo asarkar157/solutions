@@ -22,5 +22,6 @@ output "runbook_names" {
     repo_appstack_infer_plan             = sg_runbook_sop.repo_appstack_infer_plan.name
     repo_appstack_provision_env          = sg_runbook_sop.repo_appstack_provision_env.name
     repo_appstack_artifact_export_github = sg_runbook_sop.repo_appstack_artifact_export_github.name
+    stackgen_mcp_consumer_tool_catalog   = sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name
   }
 }

@@ -49,5 +49,8 @@ permalink: module-catalog/
 
 </div>
 
+<script>
+  window.__MODULES_JSON_URL__ = "{{ '/assets/data/modules.json' | relative_url }}?v={{ site.time | date: '%s' }}";
+</script>
 <script src="{{ '/assets/js/module-data.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>
 <script src="{{ '/assets/js/module-catalog.js' | relative_url }}?v={{ site.time | date: '%s' }}"></script>

@@ -22,7 +22,7 @@ Complete SDLC domain module with 9 specialized agents and 2 multi-stage workflow
 Full CI/CD: build → security scan ∥ integration tests → staging → smoke tests → canary → production (with parallel fan-out and cross-module SRE agent references).
 
 ### `developer-request-intake`
-Multi-channel request processing (Jira/Slack/Web): analyze → create tracking issue → check governance policy → process request → close issue. The process stage is aligned with the **`stackgen-mcp-iac`** runbook (Consumer MCP tools: appStacks, resources, violations, snapshots, action runs) plus the AWS integration; SRE **deployment_rollback** remains attached for rollback-style operations.
+Multi-channel request processing (Jira/Slack/Web): analyze → create tracking issue → check governance policy → process request → close issue. The process stage follows the expanded **`stackgen-mcp-iac`** runbook (discovery, `create_appstack_from_discovered_resources`, `provision_appstack`, `download-iac`, git push, policies, modules, snapshots, action runs). For the **full** MCP matrix in the same org, operators may also register **`stackgen-mcp-consumer-tool-catalog-sop`** from `aios-agent-repo-to-iac` as an extra skill on the workflow. Uses AWS integration where MCP does not cover live APIs; SRE **deployment_rollback** remains attached for rollback-style operations.
 
 ## Usage
 

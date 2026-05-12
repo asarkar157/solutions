@@ -50,6 +50,12 @@ resource "sg_runbook_sop" "stackgen_iac_synthesis" {
   description = trimspace(templatefile("${path.module}/templates/stackgen-iac-synthesis.md", {}))
 }
 
+resource "sg_runbook_sop" "stackgen_mcp_consumer_tool_catalog" {
+  name        = "stackgen-mcp-consumer-tool-catalog-sop"
+  approve     = true
+  description = trimspace(file("${path.module}/templates/stackgen-mcp-consumer-tool-catalog.md"))
+}
+
 resource "sg_runbook_sop" "deliverable_handoff" {
   name        = "repo-to-iac-deliverable-handoff"
   approve     = true
@@ -79,6 +85,13 @@ resource "sg_workflow" "repository_to_iac" {
       type   = "passive"
     },
   ]
+
+  runbook_refs = compact([
+    sg_runbook_sop.repository_discovery.name,
+    sg_runbook_sop.stackgen_iac_synthesis.name,
+    sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+    sg_runbook_sop.deliverable_handoff.name,
+  ])
 
   stages = [
     {
@@ -127,9 +140,15 @@ resource "sg_workflow" "repository_to_iac" {
       stage_id         = "generate-iac-stackgen"
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["analyze-repository"]
-      runbook_refs     = [sg_runbook_sop.stackgen_iac_synthesis.name]
-      skill_refs       = concat(["platform-stackgen-mcp-iac-synthesis"], try(var.workflow_skill_refs["repository-to-iac::generate-iac-stackgen"], []))
-      note             = "Architect drives StackGen MCP tools to emit IaC aligned with the repo."
+      runbook_refs = [
+        sg_runbook_sop.stackgen_iac_synthesis.name,
+        sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+      ]
+      skill_refs = concat(
+        ["platform-stackgen-mcp-iac-synthesis", "stackgen-mcp-consumer-tool-catalog-sop"],
+        try(var.workflow_skill_refs["repository-to-iac::generate-iac-stackgen"], [])
+      )
+      note = "Architect drives StackGen MCP tools per stackgen-mcp-consumer-tool-catalog-sop (exact names from integration)."
     },
     {
       stage_id         = "summarize-deliverables"
@@ -195,6 +214,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
     sg_runbook_sop.repo_appstack_provision_env.name,
     sg_runbook_sop.repo_appstack_artifact_export_github.name,
     sg_runbook_sop.deliverable_handoff.name,
+    sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
   ])
 
   stages = [
@@ -248,33 +268,57 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       stage_id         = "infer-modules-and-appstack-plan"
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["scan-github-repository"]
-      runbook_refs     = [sg_runbook_sop.repo_appstack_infer_plan.name]
-      skill_refs       = concat(["platform-appstack-infer-plan"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::infer-modules-and-appstack-plan"], []))
-      note             = "Architect maps repo to StackGen types, packs, templates."
+      runbook_refs = [
+        sg_runbook_sop.repo_appstack_infer_plan.name,
+        sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+      ]
+      skill_refs = concat(
+        ["platform-appstack-infer-plan", "stackgen-mcp-consumer-tool-catalog-sop"],
+        try(var.workflow_skill_refs["repo-scan-appstack-github-export::infer-modules-and-appstack-plan"], [])
+      )
+      note = "Architect maps repo to StackGen types, packs, templates (full MCP catalog skill)."
     },
     {
       stage_id         = "provision-appstack-and-env"
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["infer-modules-and-appstack-plan"]
-      runbook_refs     = [sg_runbook_sop.repo_appstack_provision_env.name]
-      skill_refs       = concat(["platform-appstack-provision-env"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::provision-appstack-and-env"], []))
-      note             = "Architect creates canvas IaC and env aligned with AWS/region inputs."
+      runbook_refs = [
+        sg_runbook_sop.repo_appstack_provision_env.name,
+        sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+      ]
+      skill_refs = concat(
+        ["platform-appstack-provision-env", "stackgen-mcp-consumer-tool-catalog-sop"],
+        try(var.workflow_skill_refs["repo-scan-appstack-github-export::provision-appstack-and-env"], [])
+      )
+      note = "Architect creates canvas IaC and env aligned with AWS/region inputs."
     },
     {
       stage_id         = "build-deployable-artifact"
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["provision-appstack-and-env"]
-      runbook_refs     = [sg_runbook_sop.repo_appstack_artifact_export_github.name]
-      skill_refs       = concat(["platform-appstack-build-artifact"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::build-deployable-artifact"], []))
-      note             = "Architect runs action pipeline for deployable output."
+      runbook_refs = [
+        sg_runbook_sop.repo_appstack_artifact_export_github.name,
+        sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+      ]
+      skill_refs = concat(
+        ["platform-appstack-build-artifact", "stackgen-mcp-consumer-tool-catalog-sop"],
+        try(var.workflow_skill_refs["repo-scan-appstack-github-export::build-deployable-artifact"], [])
+      )
+      note = "Architect runs action pipeline for deployable output."
     },
     {
       stage_id         = "export-iac-to-github"
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["build-deployable-artifact"]
-      runbook_refs     = [sg_runbook_sop.repo_appstack_artifact_export_github.name]
-      skill_refs       = concat(["platform-stackgen-export-github"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::export-iac-to-github"], []))
-      note             = "Architect executes StackGen Export to export_github_repo."
+      runbook_refs = [
+        sg_runbook_sop.repo_appstack_artifact_export_github.name,
+        sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name,
+      ]
+      skill_refs = concat(
+        ["platform-stackgen-export-github", "stackgen-mcp-consumer-tool-catalog-sop"],
+        try(var.workflow_skill_refs["repo-scan-appstack-github-export::export-iac-to-github"], [])
+      )
+      note = "Architect executes StackGen Export or push-appstack-to-git toward export_github_repo."
     },
     {
       stage_id         = "summarize-handoff"

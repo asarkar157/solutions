@@ -7,7 +7,7 @@ More importantly, it serves as a reference architecture for **Authoring and Enfo
 ## Key Features
 
 1. **MCP integration**: Provisions `sg_guild_integration` with `type = "mcp"` and a Vault MCP secret whose metadata matches the repo’s standard **`transport` / `url` / `headers`** pattern.
-2. **Rego Policy Guardrails**: Defines a custom `sg_policy` using OPA/Rego (`policies/stackgen-guardrails.rego`) that explicitly limits the Agent's MCP interactions to strictly `read-only` tool calls (like `get_application_graph`), preventing it from making destructive API calls.
+2. **Rego Policy Guardrails**: `policies/stackgen-guardrails.rego` allow-lists **read-style** MCP tool suffixes (appStacks, resources, env profiles, action-run logs, discovery list/get, `download-iac`, `detect-drift`, module/policy introspection, etc.) so the audit agent cannot call mutating tools.
 3. **Policy Attachment**: Uses `sg_agent_policy_attachment` to bind the Rego guardrail safely to the `stackgen-expert` agent.
 
 ## Example Usage
