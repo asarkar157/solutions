@@ -52,6 +52,27 @@ resource "sg_runbook_sop" "terraform_module_compliance" {
 }
 
 # ============================================================================
+# StackGen Module Registration SOP
+# ============================================================================
+
+resource "sg_runbook_sop" "stackgen_module_registration" {
+  name        = "stackgen-module-registration-sop"
+  description = <<-EOT
+    Provides instructions for installing the StackGen CLI and registering a Terraform module into the StackGen module catalog.
+
+    Steps:
+    1) Verify if the `stackgen` CLI is installed in the Ubuntu CLI environment (`which stackgen`).
+    2) If not installed, install it using Homebrew since it is available at `stackgenhq/homebrew-stackgen`:
+       `brew tap stackgenhq/stackgen`
+       `brew install stackgen`
+       (If Homebrew is unavailable, fallback to: `curl -fsSL https://docs.stackgen.com/install.sh | bash`)
+    3) Ensure the `STACKGEN_TOKEN` environment variable is available for authentication.
+    4) Use the `stackgen` CLI to register the module in the module's directory.
+    5) Capture the output and report the registered module version in the final GitHub PR comment.
+  EOT
+}
+
+# ============================================================================
 # Terraform Module Update Workflow
 # ============================================================================
 
@@ -65,7 +86,8 @@ resource "sg_workflow" "terraform_module_update" {
   ]
 
   runbook_refs = [
-    sg_runbook_sop.terraform_module_compliance.name
+    sg_runbook_sop.terraform_module_compliance.name,
+    sg_runbook_sop.stackgen_module_registration.name
   ]
 
   required_inputs = ["repository_url", "issue_or_pr_number"]
