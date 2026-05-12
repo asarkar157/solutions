@@ -107,8 +107,8 @@ resource "sg_workflow" "feature_development" {
   ]
 
   stage_bindings = [
-    { stage_id = "analyze-requirements", agent_ref = sg_agent.linear_planner.name, runbook_refs = [sg_runbook_sop.linear_ticket_analysis.id] },
-    { stage_id = "author-and-test-code", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["analyze-requirements"], runbook_refs = [sg_runbook_sop.cursor_code_authoring.id] },
-    { stage_id = "submit-pull-request", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["author-and-test-code"], runbook_refs = [sg_runbook_sop.github_pr_submission.id] },
+    { stage_id = "analyze-requirements", agent_ref = sg_agent.linear_planner.name, runbook_refs = [sg_runbook_sop.linear_ticket_analysis.id], skill_refs = concat(["sdlc-linear-requirements"], try(var.workflow_skill_refs["feature-development::analyze-requirements"], [])) },
+    { stage_id = "author-and-test-code", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["analyze-requirements"], runbook_refs = [sg_runbook_sop.cursor_code_authoring.id], skill_refs = concat(["sdlc-cursor-authoring", "sdlc-local-test-loop"], try(var.workflow_skill_refs["feature-development::author-and-test-code"], [])) },
+    { stage_id = "submit-pull-request", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["author-and-test-code"], runbook_refs = [sg_runbook_sop.github_pr_submission.id], skill_refs = concat(["sdlc-github-pr-flow"], try(var.workflow_skill_refs["feature-development::submit-pull-request"], [])) },
   ]
 }

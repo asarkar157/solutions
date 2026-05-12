@@ -71,9 +71,9 @@ resource "sg_workflow" "predictive_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "code-context", agent_ref = var.agent_names.github_agent },
-    { stage_id = "metrics-context", agent_ref = var.agent_names.grafana_agent },
-    { stage_id = "infrastructure-context", agent_ref = var.agent_names.aws_agent },
-    { stage_id = "predictive-synergy", agent_ref = sg_agent.predictive_analyst.name, stage_depends_on = ["code-context", "metrics-context", "infrastructure-context"], runbook_refs = [sg_runbook_sop.cross_domain_correlation.name, sg_runbook_sop.predictive_degradation.name] },
+    { stage_id = "code-context", agent_ref = var.agent_names.github_agent, skill_refs = concat(["sre-github-deploy-context"], try(var.workflow_skill_refs["predictive-incident-triage::code-context"], [])) },
+    { stage_id = "metrics-context", agent_ref = var.agent_names.grafana_agent, skill_refs = concat(["sre-grafana-metrics-context"], try(var.workflow_skill_refs["predictive-incident-triage::metrics-context"], [])) },
+    { stage_id = "infrastructure-context", agent_ref = var.agent_names.aws_agent, skill_refs = concat(["sre-aws-infra-context"], try(var.workflow_skill_refs["predictive-incident-triage::infrastructure-context"], [])) },
+    { stage_id = "predictive-synergy", agent_ref = sg_agent.predictive_analyst.name, stage_depends_on = ["code-context", "metrics-context", "infrastructure-context"], runbook_refs = [sg_runbook_sop.cross_domain_correlation.name, sg_runbook_sop.predictive_degradation.name], skill_refs = concat(["sre-predictive-correlation", "sre-degradation-forecast"], try(var.workflow_skill_refs["predictive-incident-triage::predictive-synergy"], [])) },
   ]
 }

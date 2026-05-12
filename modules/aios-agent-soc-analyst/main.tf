@@ -77,10 +77,10 @@ resource "sg_workflow" "soc_alert_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "extract-ioc", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name] },
-    { stage_id = "enrich-context", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name] },
-    { stage_id = "log-correlation", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name] },
-    { stage_id = "triage-decision", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["extract-ioc", "enrich-context", "log-correlation"] },
+    { stage_id = "extract-ioc", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name], skill_refs = concat(["soc-ioc-extraction"], try(var.workflow_skill_refs["soc-alert-triage::extract-ioc"], [])) },
+    { stage_id = "enrich-context", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name], skill_refs = concat(["soc-threat-intel-enrichment"], try(var.workflow_skill_refs["soc-alert-triage::enrich-context"], [])) },
+    { stage_id = "log-correlation", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.alert_triage.name], skill_refs = concat(["soc-log-correlation"], try(var.workflow_skill_refs["soc-alert-triage::log-correlation"], [])) },
+    { stage_id = "triage-decision", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["extract-ioc", "enrich-context", "log-correlation"], skill_refs = concat(["soc-alert-disposition"], try(var.workflow_skill_refs["soc-alert-triage::triage-decision"], [])) },
   ]
 }
 
@@ -104,9 +104,9 @@ resource "sg_workflow" "soc_threat_hunt" {
   ]
 
   stage_bindings = [
-    { stage_id = "hypothesis", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.threat_hunt.name] },
-    { stage_id = "execute-queries", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.threat_hunt.name] },
-    { stage_id = "analyze-findings", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["execute-queries"] },
-    { stage_id = "generate-report", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["analyze-findings"] },
+    { stage_id = "hypothesis", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.threat_hunt.name], skill_refs = concat(["soc-threat-hunt-hypothesis"], try(var.workflow_skill_refs["soc-threat-hunt::hypothesis"], [])) },
+    { stage_id = "execute-queries", agent_ref = sg_agent.soc_analyst.name, runbook_refs = [sg_runbook_sop.threat_hunt.name], skill_refs = concat(["soc-siem-hunt-queries"], try(var.workflow_skill_refs["soc-threat-hunt::execute-queries"], [])) },
+    { stage_id = "analyze-findings", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["execute-queries"], skill_refs = concat(["soc-malware-analysis"], try(var.workflow_skill_refs["soc-threat-hunt::analyze-findings"], [])) },
+    { stage_id = "generate-report", agent_ref = sg_agent.soc_analyst.name, stage_depends_on = ["analyze-findings"], skill_refs = concat(["soc-hunt-reporting"], try(var.workflow_skill_refs["soc-threat-hunt::generate-report"], [])) },
   ]
 }

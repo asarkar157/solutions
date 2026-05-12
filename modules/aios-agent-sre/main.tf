@@ -446,11 +446,11 @@ resource "sg_workflow" "incident_response" {
   ]
 
   stage_bindings = [
-    { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name, sg_runbook_sop.memory_pressure_mitigation.name, sg_runbook_sop.grafana_metrics_triage.name], note = "Triage agent gathers initial signal dossier." },
-    { stage_id = "correlate-changes", agent_ref = sg_agent.sre_change_correlation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], note = "Change-correlation agent finds recent mutations." },
-    { stage_id = "assess-blast-radius", agent_ref = sg_agent.sre_risk_posture.name, stage_depends_on = ["collect-signals"], note = "Risk-posture agent sizes impact." },
-    { stage_id = "determine-severity", agent_ref = sg_agent.sre_incident.name, stage_depends_on = ["correlate-changes", "assess-blast-radius"], runbook_refs = [sg_runbook_sop.incident_communications.name], note = "Incident commander classifies severity." },
-    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["determine-severity"], runbook_refs = [sg_runbook_sop.db_failover.name, sg_runbook_sop.dns_failover.name, sg_runbook_sop.deployment_rollback.name], note = "Auto-remediation agent executes safe fixes." },
+    { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name, sg_runbook_sop.memory_pressure_mitigation.name, sg_runbook_sop.grafana_metrics_triage.name], skill_refs = concat(["sre-observability-triage", "sre-signal-dossier"], try(var.workflow_skill_refs["incident-response::collect-signals"], [])), note = "Triage agent gathers initial signal dossier." },
+    { stage_id = "correlate-changes", agent_ref = sg_agent.sre_change_correlation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-change-correlation", "sre-deploy-history"], try(var.workflow_skill_refs["incident-response::correlate-changes"], [])), note = "Change-correlation agent finds recent mutations." },
+    { stage_id = "assess-blast-radius", agent_ref = sg_agent.sre_risk_posture.name, stage_depends_on = ["collect-signals"], skill_refs = concat(["sre-blast-radius", "sre-dependency-walk"], try(var.workflow_skill_refs["incident-response::assess-blast-radius"], [])), note = "Risk-posture agent sizes impact." },
+    { stage_id = "determine-severity", agent_ref = sg_agent.sre_incident.name, stage_depends_on = ["correlate-changes", "assess-blast-radius"], runbook_refs = [sg_runbook_sop.incident_communications.name], skill_refs = concat(["sre-severity-matrix", "sre-incident-comms"], try(var.workflow_skill_refs["incident-response::determine-severity"], [])), note = "Incident commander classifies severity." },
+    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["determine-severity"], runbook_refs = [sg_runbook_sop.db_failover.name, sg_runbook_sop.dns_failover.name, sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-safe-remediation", "sre-rollback-playbook"], try(var.workflow_skill_refs["incident-response::recommend-action"], [])), note = "Auto-remediation agent executes safe fixes." },
   ]
 }
 
@@ -484,7 +484,7 @@ resource "sg_workflow" "incident_quick_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name], note = "Focused diagnostic pass." },
-    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], note = "Recommend and execute safe fixes." },
+    { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name], skill_refs = concat(["sre-quick-signal-scan"], try(var.workflow_skill_refs["incident-triage::collect-signals"], [])), note = "Focused diagnostic pass." },
+    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-targeted-remediation"], try(var.workflow_skill_refs["incident-triage::recommend-action"], [])), note = "Recommend and execute safe fixes." },
   ]
 }

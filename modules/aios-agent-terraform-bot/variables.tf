@@ -30,3 +30,13 @@ variable "integration_names" {
     error_message = "integration_names.github and integration_names.ubuntu_cli must be non-empty. The agent needs both Guild integrations; omitting ubuntu_cli (or passing \"\") leaves only GitHub tools and breaks terraform-module-compliance / install-validate-test SOPs."
   }
 }
+
+variable "workflow_skill_refs" {
+  description = <<-EOT
+    Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
+    Keys: "terraform-module-update::<stage_id>" where stage_id matches the workflow stage (e.g. analyze-request, security-scan-and-plan).
+    Each value is appended after the module defaults for that stage.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}

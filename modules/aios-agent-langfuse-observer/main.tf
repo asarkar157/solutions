@@ -178,29 +178,34 @@ resource "sg_workflow" "ai_ops_health_scorecard" {
       stage_id     = "collect-traces"
       agent_ref    = sg_agent.langfuse_observer.name
       runbook_refs = [sg_runbook_sop.collect_traces.name]
+      skill_refs   = concat(["obs-langfuse-collect-traces"], try(var.workflow_skill_refs["${var.workflow_name}::collect-traces"], []))
     },
     {
       stage_id         = "score-reliability"
       agent_ref        = sg_agent.langfuse_observer.name
       stage_depends_on = ["collect-traces"]
       runbook_refs     = [sg_runbook_sop.score_reliability.name]
+      skill_refs       = concat(["obs-langfuse-score-reliability"], try(var.workflow_skill_refs["${var.workflow_name}::score-reliability"], []))
     },
     {
       stage_id         = "score-correctness"
       agent_ref        = sg_agent.langfuse_observer.name
       stage_depends_on = ["collect-traces"]
       runbook_refs     = [sg_runbook_sop.score_correctness.name]
+      skill_refs       = concat(["obs-langfuse-score-correctness"], try(var.workflow_skill_refs["${var.workflow_name}::score-correctness"], []))
     },
     {
       stage_id         = "cross-domain-correlation"
       agent_ref        = sg_agent.langfuse_observer.name
       stage_depends_on = ["score-reliability", "score-correctness"]
       runbook_refs     = [sg_runbook_sop.cross_domain_correlation.name]
+      skill_refs       = concat(["obs-aiops-cross-domain-correlation"], try(var.workflow_skill_refs["${var.workflow_name}::cross-domain-correlation"], []))
     },
     {
       stage_id         = "compile-scorecard"
       agent_ref        = sg_agent.langfuse_observer.name
       stage_depends_on = ["cross-domain-correlation"]
+      skill_refs       = concat(["obs-aiops-compile-scorecard"], try(var.workflow_skill_refs["${var.workflow_name}::compile-scorecard"], []))
     },
   ]
 }

@@ -89,20 +89,22 @@ resource "sg_workflow" "alert_triage_pipeline" {
 
   stage_bindings = [
     {
-      stage_id  = "alert-extraction"
-      agent_ref = sg_agent.alert_triage_coordinator.name
-      note      = "Driven by the Coordinator to fetch the alert from Grafana."
+      stage_id   = "alert-extraction"
+      agent_ref  = sg_agent.alert_triage_coordinator.name
+      skill_refs = concat(["sre-grafana-alert-ingest", "sre-alert-normalization"], try(var.workflow_skill_refs["cross-platform-alert-triage::alert-extraction"], []))
+      note       = "Driven by the Coordinator to fetch the alert from Grafana."
     },
     {
-      stage_id = "cloud-triage"
-      # NO agent_ref -> This enables "dynamic agent resolution" via "skill matching"
+      stage_id         = "cloud-triage"
       stage_depends_on = ["alert-extraction"]
+      skill_refs       = concat(["sre-multi-cloud-triage", "sre-dynamic-agent-routing"], try(var.workflow_skill_refs["cross-platform-alert-triage::cloud-triage"], []))
       note             = "The runtime will automatically resolve the best-fit agent (e.g., AWS SRE for AWS issues, Azure DevOps for Azure issues, or Ubuntu CLI) based on skill and integration matching."
     },
     {
       stage_id         = "notify-slack"
       agent_ref        = sg_agent.alert_triage_coordinator.name
       stage_depends_on = ["cloud-triage"]
+      skill_refs       = concat(["sre-slack-incident-summary"], try(var.workflow_skill_refs["cross-platform-alert-triage::notify-slack"], []))
       note             = "Post the compiled report to the Slack channel."
     }
   ]

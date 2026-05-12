@@ -73,8 +73,8 @@ resource "sg_workflow" "developer_onboarding" {
   ]
 
   stage_bindings = [
-    { stage_id = "access-check", agent_ref = sg_agent.onboarding_assistant.name, runbook_refs = [sg_runbook_sop.access_provisioning.name] },
-    { stage_id = "env-setup", agent_ref = sg_agent.onboarding_assistant.name, stage_depends_on = ["access-check"], runbook_refs = [sg_runbook_sop.environment_setup.name] },
-    { stage_id = "codebase-tour", agent_ref = sg_agent.onboarding_assistant.name, stage_depends_on = ["env-setup"], runbook_refs = [sg_runbook_sop.codebase_orientation.name] },
+    { stage_id = "access-check", agent_ref = sg_agent.onboarding_assistant.name, runbook_refs = [sg_runbook_sop.access_provisioning.name], skill_refs = concat(["peopleops-access-provisioning"], try(var.workflow_skill_refs["developer-onboarding::access-check"], [])) },
+    { stage_id = "env-setup", agent_ref = sg_agent.onboarding_assistant.name, stage_depends_on = ["access-check"], runbook_refs = [sg_runbook_sop.environment_setup.name], skill_refs = concat(["peopleops-dev-environment-setup"], try(var.workflow_skill_refs["developer-onboarding::env-setup"], [])) },
+    { stage_id = "codebase-tour", agent_ref = sg_agent.onboarding_assistant.name, stage_depends_on = ["env-setup"], runbook_refs = [sg_runbook_sop.codebase_orientation.name], skill_refs = concat(["peopleops-codebase-orientation"], try(var.workflow_skill_refs["developer-onboarding::codebase-tour"], [])) },
   ]
 }

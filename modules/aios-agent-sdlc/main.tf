@@ -341,21 +341,24 @@ resource "sg_workflow" "release_pipeline" {
 
   stage_bindings = [
     {
-      stage_id  = "build"
-      agent_ref = sg_agent.k8s_ops.name
-      note      = "K8s-ops agent manages Kaniko build pods, ECR image tagging, and registry authentication."
+      stage_id   = "build"
+      agent_ref  = sg_agent.k8s_ops.name
+      note       = "K8s-ops agent manages Kaniko build pods, ECR image tagging, and registry authentication."
+      skill_refs = concat(["sdlc-kaniko-ecr-build"], try(var.workflow_skill_refs["release-pipeline::build"], []))
     },
     {
       stage_id         = "security-scan"
       agent_ref        = var.sre_agent_names.sre_risk_posture
       stage_depends_on = ["build"]
       note             = "SRE risk-posture agent runs Trivy and Snyk scans against the newly built image."
+      skill_refs       = concat(["sdlc-container-security-scan"], try(var.workflow_skill_refs["release-pipeline::security-scan"], []))
     },
     {
       stage_id         = "integration-tests"
       agent_ref        = sg_agent.qa_testing.name
       stage_depends_on = ["build"]
       note             = "QA agent provisions an ephemeral Kubernetes namespace and runs the integration suite."
+      skill_refs       = concat(["sdlc-ephemeral-integration-tests"], try(var.workflow_skill_refs["release-pipeline::integration-tests"], []))
     },
     {
       stage_id         = "deploy-staging"
@@ -363,12 +366,14 @@ resource "sg_workflow" "release_pipeline" {
       stage_depends_on = ["security-scan", "integration-tests"]
       runbook_refs     = [var.sre_runbook_names.deployment_rollback]
       note             = "K8s-ops agent syncs ArgoCD and triggers rollback runbook if health checks fail."
+      skill_refs       = concat(["sdlc-argocd-staging-rollout"], try(var.workflow_skill_refs["release-pipeline::deploy-staging"], []))
     },
     {
       stage_id         = "smoke-tests"
       agent_ref        = sg_agent.qa_testing.name
       stage_depends_on = ["deploy-staging"]
       note             = "QA agent runs the smoke test suite against the staging environment."
+      skill_refs       = concat(["sdlc-staging-smoke-tests"], try(var.workflow_skill_refs["release-pipeline::smoke-tests"], []))
     },
     {
       stage_id         = "deploy-production"
@@ -376,6 +381,7 @@ resource "sg_workflow" "release_pipeline" {
       stage_depends_on = ["smoke-tests"]
       runbook_refs     = [var.sre_runbook_names.deployment_rollback, var.sre_runbook_names.ssl_cert_renewal]
       note             = "K8s-ops agent performs canary deployment. Rollback and TLS renewal runbooks attached."
+      skill_refs       = concat(["sdlc-canary-production-promote"], try(var.workflow_skill_refs["release-pipeline::deploy-production"], []))
     },
   ]
 }
@@ -451,21 +457,24 @@ resource "sg_workflow" "developer_request_intake" {
 
   stage_bindings = [
     {
-      stage_id  = "analyze-request"
-      agent_ref = sg_agent.linear_pm.name
-      note      = "Linear/PM agent classifies the request and determines processing path."
+      stage_id   = "analyze-request"
+      agent_ref  = sg_agent.linear_pm.name
+      note       = "Linear/PM agent classifies the request and determines processing path."
+      skill_refs = concat(["sdlc-request-intake-classification"], try(var.workflow_skill_refs["developer-request-intake::analyze-request"], []))
     },
     {
       stage_id         = "create-tracking-issue"
       agent_ref        = sg_agent.linear_pm.name
       stage_depends_on = ["analyze-request"]
       note             = "Linear/PM agent creates the Jira tracking issue with context from analysis."
+      skill_refs       = concat(["sdlc-jira-tracking"], try(var.workflow_skill_refs["developer-request-intake::create-tracking-issue"], []))
     },
     {
       stage_id         = "check-policy"
       agent_ref        = sg_agent.github_scm.name
       stage_depends_on = ["create-tracking-issue"]
       note             = "GitHub SCM agent pulls Rego policies and evaluates request parameters."
+      skill_refs       = concat(["sdlc-rego-policy-evaluation"], try(var.workflow_skill_refs["developer-request-intake::check-policy"], []))
     },
     {
       stage_id         = "process-request"
@@ -475,13 +484,15 @@ resource "sg_workflow" "developer_request_intake" {
         sg_runbook_sop.stackgen_mcp_iac.name,
         var.sre_runbook_names.deployment_rollback,
       ])
-      note = "Cloud-infra agent: StackGen MCP IaC runbook (stackgen-mcp_*) plus AWS integration; SRE rollback runbook if deployment rollback applies."
+      note       = "Cloud-infra agent: StackGen MCP IaC runbook (stackgen-mcp_*) plus AWS integration; SRE rollback runbook if deployment rollback applies."
+      skill_refs = concat(["sdlc-stackgen-mcp-iac"], try(var.workflow_skill_refs["developer-request-intake::process-request"], []))
     },
     {
       stage_id         = "close-tracking-issue"
       agent_ref        = sg_agent.linear_pm.name
       stage_depends_on = ["process-request"]
       note             = "Linear/PM agent updates Jira, attaches evidence, transitions to Done."
+      skill_refs       = concat(["sdlc-jira-closeout"], try(var.workflow_skill_refs["developer-request-intake::close-tracking-issue"], []))
     },
   ]
 }

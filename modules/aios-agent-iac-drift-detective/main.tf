@@ -14,6 +14,15 @@ variable "model_names" {
   type = map(string)
 }
 
+variable "workflow_skill_refs" {
+  description = <<-EOT
+    Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
+    Keys: "iac-drift-remediation::<stage_id>" (run-plan, analyze-drift, open-pr). Each value is appended after module defaults.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}
+
 resource "sg_agent" "iac_drift_detective" {
   name    = "iac-drift-detective"
   persona = file("${path.module}/personas/drift-detective.md")
@@ -47,8 +56,23 @@ resource "sg_workflow" "drift_remediation" {
   ]
 
   stage_bindings = [
-    { stage_id = "run-plan", agent_ref = sg_agent.iac_drift_detective.name, runbook_refs = [sg_runbook_sop.drift_scan.name] },
-    { stage_id = "analyze-drift", agent_ref = sg_agent.iac_drift_detective.name, stage_depends_on = ["run-plan"] },
-    { stage_id = "open-pr", agent_ref = sg_agent.iac_drift_detective.name, stage_depends_on = ["analyze-drift"] },
+    {
+      stage_id     = "run-plan"
+      agent_ref    = sg_agent.iac_drift_detective.name
+      runbook_refs = [sg_runbook_sop.drift_scan.name]
+      skill_refs   = concat(["iac-drift-plan-and-diff"], try(var.workflow_skill_refs["iac-drift-remediation::run-plan"], []))
+    },
+    {
+      stage_id         = "analyze-drift"
+      agent_ref        = sg_agent.iac_drift_detective.name
+      stage_depends_on = ["run-plan"]
+      skill_refs       = concat(["iac-drift-intent-classification"], try(var.workflow_skill_refs["iac-drift-remediation::analyze-drift"], []))
+    },
+    {
+      stage_id         = "open-pr"
+      agent_ref        = sg_agent.iac_drift_detective.name
+      stage_depends_on = ["analyze-drift"]
+      skill_refs       = concat(["iac-drift-backport-pr"], try(var.workflow_skill_refs["iac-drift-remediation::open-pr"], []))
+    },
   ]
 }

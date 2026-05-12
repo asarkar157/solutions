@@ -87,10 +87,10 @@ resource "sg_workflow" "finops_review" {
   ]
 
   stage_bindings = [
-    { stage_id = "idle-scan", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.idle_resource_scan.name] },
-    { stage_id = "rightsizing", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.rightsizing_analysis.name] },
-    { stage_id = "commitment-review", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.savings_plan_review.name] },
-    { stage_id = "anomaly-check", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.cost_anomaly_detection.name] },
-    { stage_id = "executive-summary", agent_ref = sg_agent.cost_optimizer.name, stage_depends_on = ["idle-scan", "rightsizing", "commitment-review", "anomaly-check"] },
+    { stage_id = "idle-scan", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.idle_resource_scan.name], skill_refs = concat(["finops-idle-resource-scan"], try(var.workflow_skill_refs["finops-review::idle-scan"], [])) },
+    { stage_id = "rightsizing", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.rightsizing_analysis.name], skill_refs = concat(["finops-rightsizing-analysis"], try(var.workflow_skill_refs["finops-review::rightsizing"], [])) },
+    { stage_id = "commitment-review", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.savings_plan_review.name], skill_refs = concat(["finops-commitment-coverage"], try(var.workflow_skill_refs["finops-review::commitment-review"], [])) },
+    { stage_id = "anomaly-check", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.cost_anomaly_detection.name], skill_refs = concat(["finops-spend-anomaly"], try(var.workflow_skill_refs["finops-review::anomaly-check"], [])) },
+    { stage_id = "executive-summary", agent_ref = sg_agent.cost_optimizer.name, stage_depends_on = ["idle-scan", "rightsizing", "commitment-review", "anomaly-check"], skill_refs = concat(["finops-executive-savings-report"], try(var.workflow_skill_refs["finops-review::executive-summary"], [])) },
   ]
 }

@@ -90,7 +90,7 @@ resource "sg_workflow" "k8s_monitoring" {
   example_queries = ["Pod in default namespace is crashing", "Node CPU pressure reported in EKS"]
 
   stages         = [{ stage_id = "check-pod-health", description = "Check pod logs and events.", note = "Run kubectl commands.", required = true }]
-  stage_bindings = [{ stage_id = "check-pod-health", agent_ref = sg_agent.aws_sre.name, note = "AWS SRE diagnosing K8s" }]
+  stage_bindings = [{ stage_id = "check-pod-health", agent_ref = sg_agent.aws_sre.name, note = "AWS SRE diagnosing K8s", skill_refs = concat(["aws-eks-pod-diagnostics"], try(var.workflow_skill_refs["k8s-monitoring::check-pod-health"], [])) }]
 }
 
 resource "sg_workflow" "aws_unified_audit" {
@@ -110,9 +110,9 @@ resource "sg_workflow" "aws_unified_audit" {
   ]
 
   stage_bindings = [
-    { stage_id = "perform-security-scan", agent_ref = sg_agent.aws_sre.name, note = "Security audit" },
-    { stage_id = "analyze-costs", agent_ref = sg_agent.aws_sre.name, note = "Cost analysis" },
-    { stage_id = "validate-tags", agent_ref = sg_agent.aws_sre.name, note = "Tag validation" },
-    { stage_id = "consolidate-findings", agent_ref = sg_agent.aws_sre.name, stage_depends_on = ["perform-security-scan", "analyze-costs", "validate-tags"], note = "Consolidation" },
+    { stage_id = "perform-security-scan", agent_ref = sg_agent.aws_sre.name, note = "Security audit", skill_refs = concat(["aws-security-posture-scan"], try(var.workflow_skill_refs["aws-unified-audit::perform-security-scan"], [])) },
+    { stage_id = "analyze-costs", agent_ref = sg_agent.aws_sre.name, note = "Cost analysis", skill_refs = concat(["aws-cost-idle-resources"], try(var.workflow_skill_refs["aws-unified-audit::analyze-costs"], [])) },
+    { stage_id = "validate-tags", agent_ref = sg_agent.aws_sre.name, note = "Tag validation", skill_refs = concat(["aws-tag-governance"], try(var.workflow_skill_refs["aws-unified-audit::validate-tags"], [])) },
+    { stage_id = "consolidate-findings", agent_ref = sg_agent.aws_sre.name, stage_depends_on = ["perform-security-scan", "analyze-costs", "validate-tags"], note = "Consolidation", skill_refs = concat(["aws-audit-executive-summary"], try(var.workflow_skill_refs["aws-unified-audit::consolidate-findings"], [])) },
   ]
 }

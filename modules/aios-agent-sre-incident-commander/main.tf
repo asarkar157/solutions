@@ -36,6 +36,15 @@ variable "policy_ids" {
   default = {}
 }
 
+variable "workflow_skill_refs" {
+  description = <<-EOT
+    Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
+    Keys: "incident-orchestration::<stage_id>" (acknowledge, diagnose, mitigate, postmortem). Each value is appended after module defaults.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}
+
 resource "sg_agent_policy_attachment" "dangerous_ops" {
   count      = lookup(var.policy_ids, "dangerous_ops", "") != "" ? 1 : 0
   agent_name = sg_agent.incident_commander.name
@@ -63,9 +72,29 @@ resource "sg_workflow" "incident_orchestration" {
   ]
 
   stage_bindings = [
-    { stage_id = "acknowledge", agent_ref = sg_agent.incident_commander.name, runbook_refs = [sg_runbook_sop.major_incident.name] },
-    { stage_id = "diagnose", agent_ref = sg_agent.incident_commander.name, stage_depends_on = ["acknowledge"] },
-    { stage_id = "mitigate", agent_ref = sg_agent.incident_commander.name, stage_depends_on = ["diagnose"] },
-    { stage_id = "postmortem", agent_ref = sg_agent.incident_commander.name, stage_depends_on = ["mitigate"] },
+    {
+      stage_id     = "acknowledge"
+      agent_ref    = sg_agent.incident_commander.name
+      runbook_refs = [sg_runbook_sop.major_incident.name]
+      skill_refs   = concat(["sre-incident-acknowledge"], try(var.workflow_skill_refs["incident-orchestration::acknowledge"], []))
+    },
+    {
+      stage_id         = "diagnose"
+      agent_ref        = sg_agent.incident_commander.name
+      stage_depends_on = ["acknowledge"]
+      skill_refs       = concat(["sre-incident-diagnose"], try(var.workflow_skill_refs["incident-orchestration::diagnose"], []))
+    },
+    {
+      stage_id         = "mitigate"
+      agent_ref        = sg_agent.incident_commander.name
+      stage_depends_on = ["diagnose"]
+      skill_refs       = concat(["sre-incident-mitigate"], try(var.workflow_skill_refs["incident-orchestration::mitigate"], []))
+    },
+    {
+      stage_id         = "postmortem"
+      agent_ref        = sg_agent.incident_commander.name
+      stage_depends_on = ["mitigate"]
+      skill_refs       = concat(["sre-incident-postmortem"], try(var.workflow_skill_refs["incident-orchestration::postmortem"], []))
+    },
   ]
 }

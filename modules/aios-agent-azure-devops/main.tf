@@ -143,11 +143,11 @@ resource "sg_workflow" "azure_devops_full_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "check-clickhouse", agent_ref = local.clickhouse_agent, runbook_refs = [sg_runbook_sop.clickhouse_diagnostics.name] },
-    { stage_id = "check-queues", agent_ref = sg_agent.azure_devops_sre.name, runbook_refs = [sg_runbook_sop.storage_queue_inspection.name] },
-    { stage_id = "check-functions", agent_ref = sg_agent.azure_devops_sre.name, runbook_refs = [sg_runbook_sop.azure_function_health.name] },
-    { stage_id = "correlate", agent_ref = sg_agent.azure_devops_sre.name, stage_depends_on = ["check-clickhouse", "check-queues", "check-functions"] },
-    { stage_id = "remediate", agent_ref = sg_agent.azure_devops_sre.name, stage_depends_on = ["correlate"] },
+    { stage_id = "check-clickhouse", agent_ref = local.clickhouse_agent, runbook_refs = [sg_runbook_sop.clickhouse_diagnostics.name], skill_refs = concat(["azure-clickhouse-diagnostics"], try(var.workflow_skill_refs["azure-devops-full-triage::check-clickhouse"], [])) },
+    { stage_id = "check-queues", agent_ref = sg_agent.azure_devops_sre.name, runbook_refs = [sg_runbook_sop.storage_queue_inspection.name], skill_refs = concat(["azure-storage-queue-triage"], try(var.workflow_skill_refs["azure-devops-full-triage::check-queues"], [])) },
+    { stage_id = "check-functions", agent_ref = sg_agent.azure_devops_sre.name, runbook_refs = [sg_runbook_sop.azure_function_health.name], skill_refs = concat(["azure-functions-health"], try(var.workflow_skill_refs["azure-devops-full-triage::check-functions"], [])) },
+    { stage_id = "correlate", agent_ref = sg_agent.azure_devops_sre.name, stage_depends_on = ["check-clickhouse", "check-queues", "check-functions"], skill_refs = concat(["azure-cross-signal-correlation"], try(var.workflow_skill_refs["azure-devops-full-triage::correlate"], [])) },
+    { stage_id = "remediate", agent_ref = sg_agent.azure_devops_sre.name, stage_depends_on = ["correlate"], skill_refs = concat(["azure-incident-remediation"], try(var.workflow_skill_refs["azure-devops-full-triage::remediate"], [])) },
   ]
 }
 

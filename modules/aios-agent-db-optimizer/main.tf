@@ -14,6 +14,15 @@ variable "model_names" {
   type = map(string)
 }
 
+variable "workflow_skill_refs" {
+  description = <<-EOT
+    Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
+    Keys: "db-performance-tuning::<stage_id>" (gather-metrics, explain-plan, recommend-index). Each value is appended after module defaults.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}
+
 resource "sg_agent" "db_optimizer" {
   name    = "db-optimizer"
   persona = file("${path.module}/personas/db-optimizer.md")
@@ -48,8 +57,23 @@ resource "sg_workflow" "db_tuning" {
   ]
 
   stage_bindings = [
-    { stage_id = "gather-metrics", agent_ref = sg_agent.db_optimizer.name, runbook_refs = [sg_runbook_sop.slow_query.name] },
-    { stage_id = "explain-plan", agent_ref = sg_agent.db_optimizer.name, stage_depends_on = ["gather-metrics"] },
-    { stage_id = "recommend-index", agent_ref = sg_agent.db_optimizer.name, stage_depends_on = ["explain-plan"] },
+    {
+      stage_id     = "gather-metrics"
+      agent_ref    = sg_agent.db_optimizer.name
+      runbook_refs = [sg_runbook_sop.slow_query.name]
+      skill_refs   = concat(["db-slow-query-telemetry"], try(var.workflow_skill_refs["db-performance-tuning::gather-metrics"], []))
+    },
+    {
+      stage_id         = "explain-plan"
+      agent_ref        = sg_agent.db_optimizer.name
+      stage_depends_on = ["gather-metrics"]
+      skill_refs       = concat(["db-explain-plan-analysis"], try(var.workflow_skill_refs["db-performance-tuning::explain-plan"], []))
+    },
+    {
+      stage_id         = "recommend-index"
+      agent_ref        = sg_agent.db_optimizer.name
+      stage_depends_on = ["explain-plan"]
+      skill_refs       = concat(["db-index-recommendation"], try(var.workflow_skill_refs["db-performance-tuning::recommend-index"], []))
+    },
   ]
 }

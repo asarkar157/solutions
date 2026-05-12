@@ -53,3 +53,13 @@ variable "agent_budgets" {
   default = {}
 }
 
+variable "workflow_skill_refs" {
+  description = <<-EOT
+    Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
+    Keys: "<workflow_name>::<stage_id>" using each sg_workflow.name (e.g. incident-response::collect-signals) and the stage_id string.
+    Each value is appended after the module defaults for that stage.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}
+

@@ -144,10 +144,10 @@ resource "sg_workflow" "supply_chain_scan" {
   ]
 
   stage_bindings = [
-    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name] },
-    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name] },
-    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name] },
-    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"] },
-    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["correlate"] },
+    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name], skill_refs = concat(["supply-chain-npm-integrity"], try(var.workflow_skill_refs["supply-chain-security-analyst::integrity-check"], [])) },
+    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat(["supply-chain-npm-sandbox"], try(var.workflow_skill_refs["supply-chain-security-analyst::behavioral-sandbox"], [])) },
+    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat(["supply-chain-manifest-anomaly"], try(var.workflow_skill_refs["supply-chain-security-analyst::manifest-anomaly"], [])) },
+    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat(["supply-chain-correlation"], try(var.workflow_skill_refs["supply-chain-security-analyst::correlate"], [])) },
+    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["correlate"], skill_refs = concat(["supply-chain-remediation-guidance"], try(var.workflow_skill_refs["supply-chain-security-analyst::recommend"], [])) },
   ]
 }

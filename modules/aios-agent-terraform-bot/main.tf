@@ -491,7 +491,8 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      note = <<-EOT
+      skill_refs = concat(["terraform-bot-orchestration-sop"], try(var.workflow_skill_refs["terraform-module-update::analyze-request"], []))
+      note       = <<-EOT
         Budget contract: ≤ 1 subagent, ≤ $0.50, ≤ 90s.
 
         Plan:
@@ -512,6 +513,10 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_module_compliance.name,
         sg_runbook_sop.terraform_install_validate_test.name,
       ]
+      skill_refs = concat(
+        ["terraform-bot-orchestration-sop", "github-content-change-sop", "terraform-module-compliance", "terraform-install-validate-test-sop"],
+        try(var.workflow_skill_refs["terraform-module-update::security-scan-and-plan"], [])
+      )
       note = <<-EOT
         Budget contract: ≤ 3 subagents total, ≤ $3.00, ≤ 8 minutes.
 
@@ -533,7 +538,8 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      note = <<-EOT
+      skill_refs = concat(["terraform-bot-orchestration-sop", "stackgen-module-impact-sop"], try(var.workflow_skill_refs["terraform-module-update::deployment-impact-scan"], []))
+      note       = <<-EOT
         Budget contract: ≤ 1 subagent, ≤ $1.00, ≤ 3 minutes.
 
         Plan:
@@ -555,6 +561,10 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_install_validate_test.name,
         sg_runbook_sop.github_content_change.name,
       ]
+      skill_refs = concat(
+        ["terraform-bot-orchestration-sop", "terraform-install-validate-test-sop", "github-content-change-sop"],
+        try(var.workflow_skill_refs["terraform-module-update::merge-findings-and-test-loop"], [])
+      )
       note = <<-EOT
         Budget contract: ≤ 2 subagents, ≤ $3.00, ≤ 8 minutes. Reserve at least $1.50 for register-and-notify.
 
@@ -577,6 +587,10 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.stackgen_module_registration.name,
         sg_runbook_sop.github_content_change.name,
       ]
+      skill_refs = concat(
+        ["terraform-bot-orchestration-sop", "stackgen-module-registration-sop", "github-content-change-sop"],
+        try(var.workflow_skill_refs["terraform-module-update::register-and-notify"], [])
+      )
       note = <<-EOT
         Budget contract: ≤ 2 subagents, ≤ $1.50, ≤ 3 minutes. THIS STAGE MUST RUN — it is how the user sees the workflow output.
 

@@ -93,9 +93,9 @@ resource "sg_workflow" "gcp_unified_audit" {
   ]
 
   stage_bindings = [
-    { stage_id = "security-scan", agent_ref = sg_agent.gcp_sre.name, note = "GCP security audit" },
-    { stage_id = "cost-analysis", agent_ref = sg_agent.gcp_sre.name, note = "GCP cost analysis" },
-    { stage_id = "consolidate", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["security-scan", "cost-analysis"], note = "Report generation" },
+    { stage_id = "security-scan", agent_ref = sg_agent.gcp_sre.name, note = "GCP security audit", skill_refs = concat(["gcp-security-posture"], try(var.workflow_skill_refs["gcp-unified-audit::security-scan"], [])) },
+    { stage_id = "cost-analysis", agent_ref = sg_agent.gcp_sre.name, note = "GCP cost analysis", skill_refs = concat(["gcp-cost-optimization"], try(var.workflow_skill_refs["gcp-unified-audit::cost-analysis"], [])) },
+    { stage_id = "consolidate", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["security-scan", "cost-analysis"], note = "Report generation", skill_refs = concat(["gcp-audit-reporting"], try(var.workflow_skill_refs["gcp-unified-audit::consolidate"], [])) },
   ]
 }
 
@@ -119,8 +119,8 @@ resource "sg_workflow" "gke_incident_response" {
   ]
 
   stage_bindings = [
-    { stage_id = "diagnose-cluster", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.gke_diagnostics.name] },
-    { stage_id = "check-dependencies", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.cloud_sql_health.name] },
-    { stage_id = "recommend-action", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["diagnose-cluster", "check-dependencies"] },
+    { stage_id = "diagnose-cluster", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.gke_diagnostics.name], skill_refs = concat(["gcp-gke-diagnostics"], try(var.workflow_skill_refs["gke-incident-response::diagnose-cluster"], [])) },
+    { stage_id = "check-dependencies", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.cloud_sql_health.name], skill_refs = concat(["gcp-cloud-sql-health"], try(var.workflow_skill_refs["gke-incident-response::check-dependencies"], [])) },
+    { stage_id = "recommend-action", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["diagnose-cluster", "check-dependencies"], skill_refs = concat(["gcp-gke-remediation"], try(var.workflow_skill_refs["gke-incident-response::recommend-action"], [])) },
   ]
 }

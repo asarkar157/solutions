@@ -107,9 +107,9 @@ resource "sg_workflow" "compliance_assessment" {
   ]
 
   stage_bindings = [
-    { stage_id = "access-controls-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_access_review.name] },
-    { stage_id = "change-management-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_change_management.name] },
-    { stage_id = "audit-log-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.audit_log_analysis.name] },
-    { stage_id = "generate-report", agent_ref = sg_agent.compliance_auditor.name, stage_depends_on = ["access-controls-review", "change-management-review", "audit-log-review"] },
+    { stage_id = "access-controls-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_access_review.name], skill_refs = concat(["compliance-soc2-access-controls"], try(var.workflow_skill_refs["compliance-assessment::access-controls-review"], [])) },
+    { stage_id = "change-management-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_change_management.name], skill_refs = concat(["compliance-change-management-evidence"], try(var.workflow_skill_refs["compliance-assessment::change-management-review"], [])) },
+    { stage_id = "audit-log-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.audit_log_analysis.name], skill_refs = concat(["compliance-audit-log-review"], try(var.workflow_skill_refs["compliance-assessment::audit-log-review"], [])) },
+    { stage_id = "generate-report", agent_ref = sg_agent.compliance_auditor.name, stage_depends_on = ["access-controls-review", "change-management-review", "audit-log-review"], skill_refs = concat(["compliance-readiness-report"], try(var.workflow_skill_refs["compliance-assessment::generate-report"], [])) },
   ]
 }

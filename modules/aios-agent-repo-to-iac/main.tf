@@ -112,6 +112,7 @@ resource "sg_workflow" "repository_to_iac" {
       stage_id     = "fetch-repository-metadata"
       agent_ref    = sg_agent.repo_iac_architect.name
       runbook_refs = [sg_runbook_sop.repository_discovery.name]
+      skill_refs   = concat(["platform-repo-github-discovery"], try(var.workflow_skill_refs["repository-to-iac::fetch-repository-metadata"], []))
       note         = "Architect resolves URL and gathers manifest inventory via GitHub tools."
     },
     {
@@ -119,6 +120,7 @@ resource "sg_workflow" "repository_to_iac" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["fetch-repository-metadata"]
       runbook_refs     = [sg_runbook_sop.repository_discovery.name]
+      skill_refs       = concat(["platform-repo-stack-classification"], try(var.workflow_skill_refs["repository-to-iac::analyze-repository"], []))
       note             = "Architect classifies stack and defines target IaC shape."
     },
     {
@@ -126,6 +128,7 @@ resource "sg_workflow" "repository_to_iac" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["analyze-repository"]
       runbook_refs     = [sg_runbook_sop.stackgen_iac_synthesis.name]
+      skill_refs       = concat(["platform-stackgen-mcp-iac-synthesis"], try(var.workflow_skill_refs["repository-to-iac::generate-iac-stackgen"], []))
       note             = "Architect drives StackGen MCP tools to emit IaC aligned with the repo."
     },
     {
@@ -133,6 +136,7 @@ resource "sg_workflow" "repository_to_iac" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["generate-iac-stackgen"]
       runbook_refs     = [sg_runbook_sop.deliverable_handoff.name]
+      skill_refs       = concat(["platform-iac-deliverable-handoff"], try(var.workflow_skill_refs["repository-to-iac::summarize-deliverables"], []))
       note             = "Architect closes with structured summary and follow-ups."
     },
   ]
@@ -237,6 +241,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       stage_id     = "scan-github-repository"
       agent_ref    = sg_agent.repo_iac_architect.name
       runbook_refs = [sg_runbook_sop.repository_discovery.name]
+      skill_refs   = concat(["platform-repo-github-scan"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::scan-github-repository"], []))
       note         = "Architect scans source github_repo_url via GitHub tools."
     },
     {
@@ -244,6 +249,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["scan-github-repository"]
       runbook_refs     = [sg_runbook_sop.repo_appstack_infer_plan.name]
+      skill_refs       = concat(["platform-appstack-infer-plan"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::infer-modules-and-appstack-plan"], []))
       note             = "Architect maps repo to StackGen types, packs, templates."
     },
     {
@@ -251,6 +257,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["infer-modules-and-appstack-plan"]
       runbook_refs     = [sg_runbook_sop.repo_appstack_provision_env.name]
+      skill_refs       = concat(["platform-appstack-provision-env"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::provision-appstack-and-env"], []))
       note             = "Architect creates canvas IaC and env aligned with AWS/region inputs."
     },
     {
@@ -258,6 +265,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["provision-appstack-and-env"]
       runbook_refs     = [sg_runbook_sop.repo_appstack_artifact_export_github.name]
+      skill_refs       = concat(["platform-appstack-build-artifact"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::build-deployable-artifact"], []))
       note             = "Architect runs action pipeline for deployable output."
     },
     {
@@ -265,6 +273,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["build-deployable-artifact"]
       runbook_refs     = [sg_runbook_sop.repo_appstack_artifact_export_github.name]
+      skill_refs       = concat(["platform-stackgen-export-github"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::export-iac-to-github"], []))
       note             = "Architect executes StackGen Export to export_github_repo."
     },
     {
@@ -272,6 +281,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
       agent_ref        = sg_agent.repo_iac_architect.name
       stage_depends_on = ["export-iac-to-github"]
       runbook_refs     = [sg_runbook_sop.deliverable_handoff.name]
+      skill_refs       = concat(["platform-iac-export-handoff"], try(var.workflow_skill_refs["repo-scan-appstack-github-export::summarize-handoff"], []))
       note             = "Architect closes with links and evidence."
     },
   ]

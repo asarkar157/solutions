@@ -70,8 +70,8 @@ resource "sg_workflow" "developer_daily_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "review-linear", agent_ref = sg_agent.workspace_assistant.name, runbook_refs = [sg_runbook_sop.developer_triage_sop.id] },
-    { stage_id = "review-communications", agent_ref = sg_agent.workspace_assistant.name, runbook_refs = [sg_runbook_sop.developer_triage_sop.id] },
-    { stage_id = "generate-brief", agent_ref = sg_agent.workspace_assistant.name, stage_depends_on = ["review-linear", "review-communications"], runbook_refs = [sg_runbook_sop.developer_triage_sop.id] },
+    { stage_id = "review-linear", agent_ref = sg_agent.workspace_assistant.name, runbook_refs = [sg_runbook_sop.developer_triage_sop.id], skill_refs = concat(["workspace-linear-triage"], try(var.workflow_skill_refs["developer-daily-triage::review-linear"], [])) },
+    { stage_id = "review-communications", agent_ref = sg_agent.workspace_assistant.name, runbook_refs = [sg_runbook_sop.developer_triage_sop.id], skill_refs = concat(["workspace-slack-gmail-digest"], try(var.workflow_skill_refs["developer-daily-triage::review-communications"], [])) },
+    { stage_id = "generate-brief", agent_ref = sg_agent.workspace_assistant.name, stage_depends_on = ["review-linear", "review-communications"], runbook_refs = [sg_runbook_sop.developer_triage_sop.id], skill_refs = concat(["workspace-daily-prioritization"], try(var.workflow_skill_refs["developer-daily-triage::generate-brief"], [])) },
   ]
 }

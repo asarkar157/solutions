@@ -226,6 +226,7 @@ resource "sg_workflow" "product_launch" {
       stage_id     = "market-research"
       agent_ref    = sg_agent.marketing_analytics.name
       runbook_refs = [sg_runbook_sop.launch_metrics_dashboard.name]
+      skill_refs   = concat(["gtm-competitive-positioning"], try(var.workflow_skill_refs["product-launch::market-research"], []))
       note         = "Analytics agent runs competitive analysis via Crayon/Klue and produces the positioning brief."
     },
     {
@@ -233,6 +234,7 @@ resource "sg_workflow" "product_launch" {
       agent_ref        = sg_agent.marketing_content.name
       stage_depends_on = ["market-research"]
       runbook_refs     = [sg_runbook_sop.product_messaging_framework.name, sg_runbook_sop.landing_page_optimization.name, sg_runbook_sop.email_nurture_sequence.name]
+      skill_refs       = concat(["gtm-messaging-landing-email"], try(var.workflow_skill_refs["product-launch::content-creation"], []))
       note             = "Content agent drafts the messaging hierarchy, landing page and email copy, and social media assets."
     },
     {
@@ -240,6 +242,7 @@ resource "sg_workflow" "product_launch" {
       agent_ref        = sg_agent.marketing_sales_enablement.name
       stage_depends_on = ["market-research"]
       runbook_refs     = [sg_runbook_sop.sales_enablement_kit.name, sg_runbook_sop.analyst_briefing_prep.name]
+      skill_refs       = concat(["gtm-sales-enablement-kit"], try(var.workflow_skill_refs["product-launch::sales-enablement"], []))
       note             = "Sales-enablement agent creates battle cards, demo scripts, objection playbooks, and analyst briefing materials."
     },
     {
@@ -247,6 +250,7 @@ resource "sg_workflow" "product_launch" {
       agent_ref        = sg_agent.marketing_pr.name
       stage_depends_on = ["content-creation", "sales-enablement"]
       runbook_refs     = [sg_runbook_sop.press_release_distribution.name, sg_runbook_sop.social_media_launch_campaign.name]
+      skill_refs       = concat(["gtm-press-social-launch"], try(var.workflow_skill_refs["product-launch::launch-coordination"], []))
       note             = "PR agent manages the embargo schedule, distributes the press release, and coordinates the social media blitz."
     },
     {
@@ -254,6 +258,7 @@ resource "sg_workflow" "product_launch" {
       agent_ref        = sg_agent.marketing_analytics.name
       stage_depends_on = ["launch-coordination"]
       runbook_refs     = [sg_runbook_sop.launch_metrics_dashboard.name]
+      skill_refs       = concat(["gtm-launch-kpi-reporting"], try(var.workflow_skill_refs["product-launch::post-launch-analysis"], []))
       note             = "Analytics agent configures the Looker dashboard, sets up Slack alerts, and generates daily and weekly reports."
     },
   ]

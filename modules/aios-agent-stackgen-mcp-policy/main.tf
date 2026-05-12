@@ -102,7 +102,7 @@ resource "sg_workflow" "infrastructure_audit" {
   ]
 
   stage_bindings = [
-    { stage_id = "fetch-state", agent_ref = sg_agent.stackgen_expert.name, runbook_refs = [sg_runbook_sop.stackgen_audit.name] },
-    { stage_id = "evaluate", agent_ref = sg_agent.stackgen_expert.name, stage_depends_on = ["fetch-state"] },
+    { stage_id = "fetch-state", agent_ref = sg_agent.stackgen_expert.name, runbook_refs = [sg_runbook_sop.stackgen_audit.name], skill_refs = concat(["stackgen-mcp-app-graph"], try(var.workflow_skill_refs["stackgen-infrastructure-audit::fetch-state"], [])) },
+    { stage_id = "evaluate", agent_ref = sg_agent.stackgen_expert.name, stage_depends_on = ["fetch-state"], skill_refs = concat(["stackgen-architecture-best-practices"], try(var.workflow_skill_refs["stackgen-infrastructure-audit::evaluate"], [])) },
   ]
 }
