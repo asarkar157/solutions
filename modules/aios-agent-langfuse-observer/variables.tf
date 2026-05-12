@@ -40,12 +40,6 @@ variable "workflow_domain" {
   default = "observability"
 }
 
-variable "workflow_approve" {
-  description = "Whether the workflow requires human approval before completion."
-  type        = bool
-  default     = true
-}
-
 variable "runbook_name_prefix" {
   description = "Prefix for sg_runbook_sop resource names to avoid collisions when this module is instantiated more than once in the same StackGen project."
   type        = string

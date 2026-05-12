@@ -387,6 +387,8 @@ resource "sg_workflow" "developer_request_intake" {
   name        = "developer-request-intake"
   domain      = "developer-services"
   description = trimspace(templatefile("${path.module}/templates/workflow-developer-request-intake.md", {}))
+  # Guild `approve`: auto-approve the workflow *definition* draft after apply (provider sg_workflow).
+  approve = true
 
   triggers = [
     { field = "channel", values = ["jira", "slack", "web"], type = "passive" },

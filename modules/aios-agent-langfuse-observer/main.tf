@@ -117,7 +117,7 @@ resource "sg_workflow" "ai_ops_health_scorecard" {
   name        = var.workflow_name
   domain      = var.workflow_domain
   description = trimspace(templatefile("${path.module}/templates/workflow-description.md", local.tpl_ctx))
-  approve     = var.workflow_approve
+  approve     = true
 
   triggers = [
     { field = "schedule", values = ["weekly", "daily"], type = "passive" },

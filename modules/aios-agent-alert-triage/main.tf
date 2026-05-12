@@ -53,6 +53,7 @@ resource "sg_workflow" "alert_triage_pipeline" {
   name        = "cross-platform-alert-triage"
   domain      = "incident-response"
   description = "A workflow that automatically triages incoming Grafana alerts against AWS, Azure, K8s, or Remote Runner environments using dynamic agent resolution based on skill matching."
+  approve     = true
 
   triggers = [
     { field = "source", values = ["grafana"], type = "active", source = "grafana" }
