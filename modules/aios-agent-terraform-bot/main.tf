@@ -15,15 +15,21 @@ resource "sg_agent" "terraform_module_manager" {
   persona     = file("${path.module}/personas/terraform-module-manager.md")
   model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
 
-  integrations = compact([
+  # Both integrations are required (see variable validation). Do not use compact() —
+  # an empty ubuntu_cli would silently drop CLI tools while the SOPs still reference ubuntu-cli_*.
+  integrations = [
     var.integration_names.github,
-    var.integration_names.ubuntu_cli
-  ])
+    var.integration_names.ubuntu_cli,
+  ]
 }
 
 resource "sg_agent_budget" "terraform_module_manager" {
-  agent_name  = sg_agent.terraform_module_manager.name
-  limit_usd   = 10
+  agent_name = sg_agent.terraform_module_manager.name
+  # The prior workflow run cost $10.74 and exhausted the previous $10 budget
+  # before reaching `register-and-notify`. With the new orchestration SOP's
+  # per-stage subagent caps the budget should comfortably fit, but $15/day
+  # leaves headroom for retries and the StackGen registration step.
+  limit_usd   = 15
   period_type = "daily"
 }
 
@@ -39,6 +45,7 @@ resource "sg_agent_policy_attachment" "terraform_module_manager_dangerous_ops" {
 
 resource "sg_runbook_sop" "terraform_module_compliance" {
   name        = "terraform-module-compliance-sop"
+  approve     = true
   description = <<-EOT
     Executes a strict compliance and blast radius test loop for Terraform module updates.
 
@@ -57,6 +64,7 @@ resource "sg_runbook_sop" "terraform_module_compliance" {
 
 resource "sg_runbook_sop" "stackgen_module_registration" {
   name        = "stackgen-module-registration-sop"
+  approve     = true
   description = <<-EOT
     Provides instructions for installing the StackGen CLI and registering a Terraform module into the StackGen module catalog.
 
@@ -83,6 +91,7 @@ resource "sg_runbook_sop" "stackgen_module_registration" {
 
 resource "sg_runbook_sop" "terraform_install_validate_test" {
   name        = "terraform-install-validate-test-sop"
+  approve     = true
   description = <<-EOT
     Skill: Provision an Ubuntu CLI sandbox with Terraform or OpenTofu, validate the module under review, run static security analysis (tfsec / checkov / tflint), and author + run unit tests via the native HCL test framework (`terraform test` / `tofu test`).
 
@@ -156,6 +165,7 @@ resource "sg_runbook_sop" "terraform_install_validate_test" {
 
 resource "sg_runbook_sop" "github_content_change" {
   name        = "github-content-change-sop"
+  approve     = true
   description = <<-EOT
     Skill: Use the GitHub `gh` CLI from the Ubuntu CLI sandbox to clone a repository, read / scan repo files locally, author file changes on a working branch, push, and open or update a Pull Request — without paying the per-call latency of the high-level GitHub Guild integration.
 
@@ -238,91 +248,176 @@ resource "sg_runbook_sop" "github_content_change" {
 
 resource "sg_runbook_sop" "terraform_bot_orchestration" {
   name        = "terraform-bot-orchestration-sop"
+  approve     = true
   description = <<-EOT
-    Skill: Operating manual for the Terraform Module Manager. Read this BEFORE doing anything else in any stage. It defines integration boundaries, subagent rules, and context hygiene that every other skill depends on.
+    Skill: Operating manual for the Terraform Module Manager. Read this BEFORE doing anything else in any stage. It encodes the planner/executor split, integration boundaries, subagent budget rules, and context hygiene that every other skill depends on.
 
-    Keywords for skill discovery: terraform, opentofu, module, workflow, orchestration, subagent, integration boundaries, ubuntu cli, github cli, gh api, jq, note, plan, validate, security scan, AWS, GCP, Azure, infrastructure-as-code.
+    Keywords for skill discovery: terraform, opentofu, module, workflow, orchestration, planner, subagent, create_agent, integration boundaries, ubuntu cli, github cli, gh api, jq, note, plan, validate, security scan, AWS, GCP, Azure, infrastructure-as-code, sagemaker, s3, rds, eks.
 
     ========================================================================
-    1) Integration boundaries (which tool runs which kind of command)
+    0) Reality check — you are a planner, not an executor
     ========================================================================
 
-    There are exactly two execution surfaces. They have separate filesystems and separate auth. Mismatching the two is the #1 cause of failed runs.
+    Your only direct tools are: `search_tools`, `create_agent`, `ask_clarifying_question`, `graph_query`, `notify`, `note`, `read_notes`, `delete_context`, `check_budget`, `knowledge_*`. You CANNOT call `github-integration_*` or `ubuntu-cli_*` directly. Every shell or API call happens inside a `create_agent` subagent.
 
-    a) GitHub Guild integration — `github-integration_execute_command`, `github-integration_execute_series`, `github-integration_execute_parallel`:
-       - ONLY for `gh` CLI calls (`gh api`, `gh repo`, `gh pr`, `gh issue`, `gh release`) and `curl` calls against `api.github.com`.
-       - Does NOT have `terraform`, `tofu`, `tfsec`, `checkov`, `git clone`, `find`, `cat`, `sed`, `python`, `bash` scripts, or any general-purpose Linux toolchain.
-       - Each call is auto-summarized when the response exceeds the context budget; large `gh api` responses get truncated to ~750 chars. Always pre-filter with `--jq` and `?per_page=` to keep responses small.
+    When this SOP (or any other SOP) tells you to "run `git clone ...`" or "call `gh api ...`", that ALWAYS means: spawn ONE subagent whose `tool_names` include the right integration and whose `goal` inlines the command(s). The templates in §7 below show exactly how.
 
-    b) Ubuntu CLI integration — `ubuntu-cli_execute_command`, `ubuntu-cli_execute_series`, `ubuntu-cli_execute_parallel`:
-       - Full Linux shell sandbox. Use it for `terraform`, `tofu`, `tfsec`, `checkov`, `tflint`, `git clone`, `gh repo clone`, `gh pr create`, `gh pr comment`, file I/O (`cat`/`find`/`rg`/`sed`), Python/Bash scripts, and any tool installation.
-       - This is where the source clone, the validate/test loop, and the PR push live.
-       - If `gh` itself is not installed in this sandbox, install it once (see `github-content-change-sop`).
+    ========================================================================
+    1) Integration boundaries (which subagent gets which tools)
+    ========================================================================
 
-    c) The two sandboxes do NOT share a filesystem. A file written via `github-integration_execute_command` (which is really just `gh`/`curl`) is not visible to `ubuntu-cli_execute_command`. Always pick one sandbox per task and stay in it.
+    Two execution surfaces with separate filesystems and separate auth. Mismatching them is the #1 cause of failed runs (a prior trace tried to run `terraform validate` via the GitHub integration — that integration can only run `gh`/`curl`, so the validator never validated).
 
-    Decision rule: if the command starts with `gh api`, `gh repo list`, `gh issue`, or `curl https://api.github.com/...` → GitHub integration. EVERYTHING else (including `gh repo clone`, `gh pr create`, `gh pr comment`, because those need a working tree and git auth) → Ubuntu CLI.
+    a) GitHub Guild integration — `github-integration_execute_command|series|parallel`:
+       - ONLY for `gh` API calls (`gh api`, `gh repo list`, `gh issue`, `gh release`) and `curl https://api.github.com/...`.
+       - Does NOT have `terraform`, `tofu`, `tfsec`, `checkov`, `git clone`, `find`, `cat`, `sed`, `python`, or any general-purpose Linux toolchain.
+       - Responses > ~50 KB are auto-summarized down to ~750 chars and the original is lost. Always pre-filter with `--jq` and `?per_page=`.
+
+    b) Ubuntu CLI integration — `ubuntu-cli_execute_command|series|parallel`:
+       - Full Linux shell sandbox. Use it for `terraform`, `tofu`, `tfsec`, `checkov`, `tflint`, `git clone`, `gh repo clone`, `gh pr create`, `gh pr comment`, `find`, `cat`, `rg`, `sed`, Python/Bash scripts, and any tool installation.
+       - The source clone, validate/test loop, and PR push all live here.
+
+    c) The two sandboxes do NOT share a filesystem. Pick one per subagent and stay in it.
+
+    Decision rule: command starts with `gh api`, `gh repo list`, `gh issue`, or `curl https://api.github.com/...` → GitHub-integration subagent. EVERYTHING else (including `gh repo clone`, `gh pr create`, `gh pr comment`) → Ubuntu-CLI subagent.
 
     ========================================================================
     2) Repo materialization — clone once, reuse everywhere
     ========================================================================
 
-    - The first non-trivial repo read in any stage MUST be a single `git clone` (or `gh repo clone`) via Ubuntu CLI into `/tmp/work/<repo>`. Persist the path under `note` key `repo_clone_path`.
-    - Subsequent stages MUST call `read_notes` for `repo_clone_path` and re-use the existing clone (no second clone, no per-file `gh api /contents/...` fetches).
-    - For multi-file reads, prefer one `ubuntu-cli_execute_parallel` over many serial `gh api /contents/<file>` calls. Per-file API reads of source code are the most expensive way to read a repo and trigger auto-summarization.
+    The first non-trivial repo read in any stage MUST be a single `git clone` via an Ubuntu-CLI subagent into `/tmp/work/<repo>`. Persist the absolute path under `note` key `repo_clone_path`. Every later stage starts by `read_notes` for `repo_clone_path` and reuses the existing clone — no second clone, no per-file `gh api /contents/...` fetches.
+
+    A prior trace spawned 7 separate subagents (`discover-repo-structure`, `full-aws-directory-scan`, `raw-aws-directory-list`, `list-exact-filenames`, `find-sagemaker-modules`, `get-exact-sagemaker-paths`, `print-sagemaker-dirs`) each calling `gh api git/trees/HEAD?recursive=1` to list the same directory. A single `git clone` + one `find` would have replaced all of them. Don't repeat this.
 
     ========================================================================
     3) Note discipline (persist once, read many)
     ========================================================================
 
-    Persist every artifact that the workflow will reference more than once. Standard keys to use:
+    Canonical note keys (use these exact names — do not invent new ones per subagent):
     - `issue_details` — title/body/author of the triggering issue or PR.
     - `repo_clone_path` — absolute path of the local clone.
     - `module_paths` — list of module directories under analysis.
-    - `static_security_findings` — combined tfsec + checkov output (from terraform-install-validate-test-sop).
+    - `static_security_findings` — combined tfsec + checkov output.
     - `validation_summary` — pass/fail of fmt/init/validate per module.
     - `test_summary` — `terraform test` output summary.
-    - `working_branch` — the `terraform-bot/<slug>-<ts>` branch the manager created.
+    - `deployment_impact` — context-graph dependency / org-impact summary.
+    - `working_branch` — the `terraform-bot/<slug>-<ts>` branch.
     - `pr_url` — output of `gh pr view --json url -q .url` after PR creation.
+    - `registered_versions` — output of `stackgen` registration for each module.
+    - `stage_summary:<stage_id>` — one-paragraph summary at the end of each stage.
 
-    Before fetching anything, ALWAYS `read_notes` first. If the key is populated, do not refetch.
+    Always `read_notes` first. If the key is populated, do NOT refetch — re-shape your plan to use what's there.
 
     ========================================================================
     4) Context budget for `gh api` calls
     ========================================================================
 
-    Auto-summarization will destroy >100 KB responses. To avoid it:
-    - Always append `--jq '<filter>'` to constrain the response to the fields you actually need.
-    - Always paginate with `?per_page=30` (or smaller) when listing.
-    - Never call `gh api /repos/<o>/<r>/git/trees/HEAD?recursive=1` without a `--jq` selector — the raw response is huge.
+    - Always append `--jq '<filter>'` to keep the response under ~10 KB.
+    - Always paginate with `?per_page=30` or smaller when listing.
+    - Never run `gh api /repos/<o>/<r>/git/trees/HEAD?recursive=1` without a `--jq` selector — the raw response is megabytes and triggers auto-summarization.
     - Never fetch `gh api /repos/<o>/<r>/contents/<file>` for bulk source reads. Clone and `cat` instead.
-    - If a response was auto-summarized, persist the summary to `note` and DO NOT re-call the same endpoint hoping for a different result — re-shape the query (different `--jq`, smaller scope).
+    - If a response was auto-summarized, persist the summary and STOP re-calling the same endpoint hoping for a different result. Re-shape the query (smaller scope, different `--jq`).
 
     ========================================================================
-    5) Subagent rules (use `create_agent` sparingly and correctly)
+    5) Subagent rules (the most-violated section)
     ========================================================================
 
-    Do not spawn a subagent for any task that the lead can finish in ≤ 3 tool calls. When you DO spawn a subagent:
+    a) Hard cap: at most ONE subagent per logical task per stage. A prior trace spawned 22 unique subagent names — `fetch-all-module-contents`, `fetch-current-module-files`, `fetch-module-contents-v2`, `fetch-with-base64-cmd`, `deep-content-fetcher`, `repo-content-fetcher`, `deep-discovery`, etc. — all doing the same fetch. Each subagent costs ~$0.50 and 30-90s. Don't fan out.
 
-    a) `tool_names` MUST include the Ubuntu CLI tools whenever the subagent will validate, test, or scan code:
-       `["ubuntu-cli_execute_command","ubuntu-cli_execute_series","ubuntu-cli_execute_parallel","github-integration_execute_command","github-integration_execute_parallel","note","read_notes","search_skill"]`
+    b) Subagent naming convention: `<stage_id>-<phase>` ONLY. Approved phases per stage:
+       - `analyze-request-fetch-issue`
+       - `security-scan-and-plan-clone`
+       - `security-scan-and-plan-validate`
+       - `security-scan-and-plan-scan`
+       - `security-scan-and-plan-plan`
+       - `deployment-impact-scan-graph-query`
+       - `merge-findings-and-test-loop-author-tests`
+       - `merge-findings-and-test-loop-pr`
+       - `register-and-notify-register`
+       - `register-and-notify-comment`
+       If you find yourself wanting a name not in this list, you're fanning out — STOP and consolidate into one of the approved names.
 
-    b) Inline the relevant skill content in the subagent `goal` (do not rely on the subagent finding our SOPs through `search_skill` — the index sometimes returns "No relevant skills found" for terraform-specific queries). Paste the steps from the SOP that matter into the goal verbatim.
+    c) `tool_names` rules:
+       - Validator / test / scan subagents: include `ubuntu-cli_execute_command`, `ubuntu-cli_execute_series`, `ubuntu-cli_execute_parallel`, `note`, `read_notes`, `search_skill`, `load_skill`.
+       - GH API fetcher subagents: include `github-integration_execute_command`, `github-integration_execute_parallel`, `note`, `read_notes`.
+       - PR-author subagents: include `ubuntu-cli_*` (for `gh pr create`, `gh pr comment`, `git push`), PLUS `note`, `read_notes`.
+       - Always include `note` and `read_notes` so the subagent can persist partial results before hitting its budget limit.
 
-    c) Inline the working state the subagent needs (repo clone path, module list, prior findings) so it does not re-discover. Reference `note` keys for anything large.
+    d) Inline content into the subagent `goal` (subagents cannot see your skills):
+       1. Paste the relevant SOP steps verbatim (the planner system prompt explicitly states: *"sub-agents CANNOT see the learned skills, only you can. You MUST copy the skill's steps directly into the sub-agent's goal text."*).
+       2. Paste the relevant note keys' current values OR explicit `read_notes` instructions with key names.
+       3. Specify the exact commands to run, the note keys to write, and the success criterion.
 
-    d) Set tight budgets: `max_tool_iterations` ≤ 12 for analyzers / validators, ≤ 6 for fetchers. `timeout_seconds` ≤ 120.
+    e) Tight budgets: `max_tool_iterations` ≤ 10 for analyzers/validators, ≤ 5 for fetchers. `timeout_seconds` ≤ 120. `max_llm_calls` ≤ 6.
 
-    e) After a subagent returns, persist its output under a dedicated `note` key — do not pass it through more subagents by reference.
+    f) Always call `check_budget` before any `create_agent`. If remaining budget < $2, skip non-critical subagents and go straight to `register-and-notify` with whatever evidence is already in notes. The agent has a $10/day budget; the prior trace hit $10.74 and never reached PR creation.
+
+    g) If a subagent fails or partially succeeds: extract any useful output from its response, `note` it, and DO NOT spawn a retry with a slightly different name. After 2 failures on the same logical task, accept partial results and continue.
 
     ========================================================================
     6) End-state of every stage
     ========================================================================
 
-    A stage is only "done" when:
-    - All artifacts it produced are in `note` keys named above.
-    - Any branch / PR mutation it performed has its URL surfaced under `pr_url`.
-    - The agent has emitted a one-paragraph stage summary listing what it persisted, so the next stage can pick up cleanly.
+    Before declaring a stage done you MUST `note` a `stage_summary:<stage_id>` key with: what you fetched, what notes you populated, which subagents you spawned, and any blockers. The next stage reads this first.
+
+    ========================================================================
+    7) Subagent goal templates (copy-paste these)
+    ========================================================================
+
+    Template A — "clone the repo" (one-shot for any stage that needs source):
+      agent_name: "<stage_id>-clone"
+      tool_names: ["ubuntu-cli_execute_command","note","read_notes"]
+      max_tool_iterations: 5, max_llm_calls: 4, timeout_seconds: 120
+      goal: |
+        Clone github.com/<owner>/<repo> to /tmp/work/<repo> and persist the path.
+        1. Run: `mkdir -p /tmp/work && cd /tmp/work && [ -d <repo> ] || git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`
+        2. If a specific PR branch is required, run: `cd /tmp/work/<repo> && git fetch origin pull/<pr_number>/head:pr-<pr_number> && git switch pr-<pr_number>` (skip when no PR yet).
+        3. Run: `cd /tmp/work/<repo> && git rev-parse HEAD` and capture the SHA.
+        4. note key="repo_clone_path", value="/tmp/work/<repo>"
+        5. note key="repo_head_sha", value="<sha>"
+        Stop after these steps; do not list directory contents (next phase does that).
+
+    Template B — "fetch the triggering issue" (analyze-request stage):
+      agent_name: "analyze-request-fetch-issue"
+      tool_names: ["github-integration_execute_command","note","read_notes"]
+      max_tool_iterations: 3, max_llm_calls: 3, timeout_seconds: 60
+      goal: |
+        Fetch ONE issue and persist a structured summary.
+        1. Run: `gh api /repos/<owner>/<repo>/issues/<issue_number> --jq '{number, title, body, state, author:.user.login, labels:[.labels[].name]}'`
+        2. note key="issue_details", value=<the JSON returned, verbatim>
+        Do not fetch comments, tree, or contents. Stop after step 2.
+
+    Template C — "install + validate + scan" (security-scan-and-plan stage):
+      agent_name: "security-scan-and-plan-validate"
+      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","ubuntu-cli_execute_parallel","note","read_notes"]
+      max_tool_iterations: 10, max_llm_calls: 6, timeout_seconds: 240
+      goal: |
+        Validate the module(s) at the clone path, run static security analysis, persist results.
+        Read notes first: `repo_clone_path`, `module_paths`.
+        Follow `terraform-install-validate-test-sop` steps 1, 2, 2b verbatim:
+        <PASTE STEPS 1 + 2 + 2b FROM terraform-install-validate-test-sop HERE>
+        Persist: `validation_summary` (per-module fmt/init/validate result) and `static_security_findings` (combined tfsec+checkov findings).
+
+    Template D — "open the PR" (merge-findings-and-test-loop stage):
+      agent_name: "merge-findings-and-test-loop-pr"
+      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","note","read_notes"]
+      max_tool_iterations: 8, max_llm_calls: 5, timeout_seconds: 180
+      goal: |
+        Create a working branch in the existing clone, commit the prepared changes, push, and open / update a PR.
+        Read notes first: `repo_clone_path`, `issue_details`, `validation_summary`, `test_summary`.
+        Follow `github-content-change-sop` steps 3-6 verbatim:
+        <PASTE STEPS 3-6 FROM github-content-change-sop HERE>
+        Persist: `working_branch`, `pr_url`.
+
+    Template E — "comment on the PR" (register-and-notify stage):
+      agent_name: "register-and-notify-comment"
+      tool_names: ["ubuntu-cli_execute_command","note","read_notes"]
+      max_tool_iterations: 3, max_llm_calls: 3, timeout_seconds: 60
+      goal: |
+        Read notes: `pr_url`, `registered_versions`, `validation_summary`, `test_summary`, `static_security_findings`.
+        Compose a markdown summary and post ONE comment:
+          `gh pr comment <pr_url> --body-file - <<'EOF'\n<summary>\nEOF`
+        Stop after the comment.
   EOT
 }
 
@@ -396,7 +491,16 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      note = "Manager analyzes the requested change (serial gate before parallel work). Fetch the triggering issue/PR with ONE `gh api /repos/<o>/<r>/issues/<n> --jq '{title,body,state,user:.user.login,number}'` call, persist under `note` key `issue_details`, and stop. Do not list the entire repo tree here; the next stage handles materialization."
+      note = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $0.50, ≤ 90s.
+
+        Plan:
+        1. `read_notes` first. If `issue_details` is already populated, skip to step 3.
+        2. Spawn EXACTLY one subagent named `analyze-request-fetch-issue` per terraform-bot-orchestration-sop Template B. It calls `gh api /repos/<o>/<r>/issues/<n> --jq '{number,title,body,state,author:.user.login,labels:[.labels[].name]}'` ONCE and notes `issue_details`. Do not list the repo tree here.
+        3. note key="stage_summary:analyze-request" with one paragraph of what you learned and what's queued.
+
+        Forbidden in this stage: cloning the repo, listing trees, fetching contents, spawning analyzer/validator subagents.
+      EOT
     },
     {
       stage_id         = "security-scan-and-plan"
@@ -408,7 +512,19 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_module_compliance.name,
         sg_runbook_sop.terraform_install_validate_test.name,
       ]
-      note = "Step 1 (Ubuntu CLI): `git clone` / `gh pr checkout` ONCE into `/tmp/work/<repo>`, persist `repo_clone_path` in notes. Step 2 (Ubuntu CLI): drive `terraform-install-validate-test-sop` to install tofu/terraform + tfsec + checkov, then run fmt/init/validate/tfsec/checkov and persist `static_security_findings` + `validation_summary`. Step 3: `terraform plan` against the policy bundle. Do NOT read repo files via `gh api /contents/...` — read from the local clone. Do NOT spawn subagents without including ubuntu-cli tools in their `tool_names`."
+      note = <<-EOT
+        Budget contract: ≤ 3 subagents total, ≤ $3.00, ≤ 8 minutes.
+
+        Plan (do exactly this — DO NOT add fan-out phases):
+        1. `read_notes` for `issue_details`, `repo_clone_path`. If `repo_clone_path` is empty, spawn subagent `security-scan-and-plan-clone` per orchestration-sop Template A. Otherwise reuse the clone.
+        2. Spawn ONE subagent `security-scan-and-plan-validate` per orchestration-sop Template C (it does fmt + init + validate + tfsec + checkov + plan together, inlining steps 1, 2, 2b from terraform-install-validate-test-sop). It writes `module_paths`, `validation_summary`, `static_security_findings`.
+        3. note key="stage_summary:security-scan-and-plan".
+
+        Hard rules:
+        - NEVER read files via `gh api /repos/.../contents/<file>` — the validator subagent reads them from the local clone with `cat`/`find`.
+        - NEVER spawn more than the 2 named subagents above. If `validation_summary` is already populated when this stage starts (re-entry case), skip to step 3.
+        - Every subagent `tool_names` MUST include `ubuntu-cli_execute_command|series|parallel` if it needs to run anything beyond `gh api`.
+      EOT
     },
     {
       stage_id         = "deployment-impact-scan"
@@ -417,7 +533,18 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      note = "Manager runs org-impact and context-graph track in parallel with security-scan-and-plan. Uses StackGen Context Graph queries only — no repo I/O, no `gh api /contents/...` fetches."
+      note = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $1.00, ≤ 3 minutes.
+
+        Plan:
+        1. `read_notes` for `issue_details` to know what module(s) are in scope.
+        2. Run `graph_query` directly (the lead has this tool — no subagent needed) for downstream dependents of each affected module.
+        3. If a CLI call is required (e.g. StackGen org-inventory CLI), spawn ONE subagent `deployment-impact-scan-graph-query` with `ubuntu-cli_execute_command` + `note` + `read_notes`. Otherwise skip.
+        4. note key="deployment_impact" with the dependent list + breaking-change risk score.
+        5. note key="stage_summary:deployment-impact-scan".
+
+        Forbidden: cloning, fetching repo contents, anything `gh api /contents/...`.
+      EOT
     },
     {
       stage_id         = "merge-findings-and-test-loop"
@@ -428,7 +555,18 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_install_validate_test.name,
         sg_runbook_sop.github_content_change.name,
       ]
-      note = "Read `repo_clone_path`, `static_security_findings`, `validation_summary` from notes — do NOT re-clone or re-scan. Author/run `terraform test` (or `tofu test`) unit tests in the existing clone via Ubuntu CLI. Then use github-content-change: create `terraform-bot/<slug>-<ts>` branch, commit auto-remediations, `git push -u origin HEAD`, `gh pr create --fill` (or `gh pr edit` if a PR already exists). Persist `working_branch` and `pr_url` in notes."
+      note = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $3.00, ≤ 8 minutes. Reserve at least $1.50 for register-and-notify.
+
+        Plan:
+        1. `read_notes` for `repo_clone_path`, `validation_summary`, `static_security_findings`, `deployment_impact`. Do NOT re-clone, re-scan, or refetch — those notes are authoritative.
+        2. `check_budget`. If remaining < $2.50, skip to step 5 with `test_summary="skipped: budget"`.
+        3. Spawn ONE subagent `merge-findings-and-test-loop-author-tests`: read the clone path, decide breaking vs non-breaking from impact + findings, author `*.tftest.hcl` if missing (use `mock_provider` + `command = plan`), then run `tofu test -verbose`. Inline steps 3 + 4 from terraform-install-validate-test-sop. Note `test_summary`.
+        4. Spawn ONE subagent `merge-findings-and-test-loop-pr` per orchestration-sop Template D: create the `terraform-bot/<slug>-<ts>` branch, commit auto-remediations + new test files, `git push -u origin HEAD`, `gh pr create --fill` (or `gh pr edit` if the PR exists). Note `working_branch`, `pr_url`.
+        5. note key="stage_summary:merge-findings-and-test-loop".
+
+        Forbidden: spawning more than 2 subagents in this stage. If you find yourself wanting a "fetch-X" or "verify-X" subagent, you already have the data in notes — re-read instead.
+      EOT
     },
     {
       stage_id         = "register-and-notify"
@@ -439,7 +577,15 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.stackgen_module_registration.name,
         sg_runbook_sop.github_content_change.name,
       ]
-      note = "Read `pr_url`, `validation_summary`, `test_summary`, `static_security_findings` from notes. Register the module into StackGen core (single `stackgen` CLI call from the Ubuntu CLI sandbox), then ONE `gh pr comment <pr_number> --body-file -` posting the registered version, compliance status, and test output. Done."
+      note = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $1.50, ≤ 3 minutes. THIS STAGE MUST RUN — it is how the user sees the workflow output.
+
+        Plan:
+        1. `read_notes` for `pr_url`, `validation_summary`, `test_summary`, `static_security_findings`, `deployment_impact`, `working_branch`, `module_paths`.
+        2. Spawn ONE subagent `register-and-notify-register`: install `stackgen` CLI in the clone (per stackgen-module-registration-sop) and run `stackgen register` for each module in `module_paths`. Note `registered_versions`.
+        3. Spawn ONE subagent `register-and-notify-comment` per orchestration-sop Template E: post ONE `gh pr comment` with the markdown summary (registered versions, compliance status, test output, impact).
+        4. note key="stage_summary:register-and-notify" with the final PR URL and registration outcome.
+      EOT
     }
   ]
 }

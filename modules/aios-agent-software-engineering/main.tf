@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -69,16 +69,19 @@ resource "sg_agent_policy_attachment" "developer_shell_hitl" {
 
 resource "sg_runbook_sop" "linear_ticket_analysis" {
   name        = "linear-ticket-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/linear-ticket-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cursor_code_authoring" {
   name        = "cursor-code-authoring"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/cursor-code-authoring.md", {}))
 }
 
 resource "sg_runbook_sop" "github_pr_submission" {
   name        = "github-pr-submission"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/github-pr-submission.md", {}))
 }
 

@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -76,16 +76,19 @@ resource "sg_agent_policy_attachment" "phantom_dep" {
 
 resource "sg_runbook_sop" "npm_integrity_check" {
   name        = "npm-integrity-check"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-integrity-check.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_behavioral_sandbox" {
   name        = "npm-behavioral-sandbox"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-behavioral-sandbox.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_manifest_anomaly" {
   name        = "npm-manifest-anomaly-scan"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-manifest-anomaly-scan.md", {}))
 }
 

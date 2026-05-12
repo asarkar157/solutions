@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -40,16 +40,19 @@ resource "sg_agent_policy_attachment" "repo_iac_architect_dangerous_ops" {
 
 resource "sg_runbook_sop" "repository_discovery" {
   name        = "repository-structure-discovery"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/repository-structure-discovery.md", {}))
 }
 
 resource "sg_runbook_sop" "stackgen_iac_synthesis" {
   name        = "stackgen-iac-synthesis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/stackgen-iac-synthesis.md", {}))
 }
 
 resource "sg_runbook_sop" "deliverable_handoff" {
   name        = "repo-to-iac-deliverable-handoff"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/repo-to-iac-deliverable-handoff.md", {}))
 }
 
@@ -144,16 +147,19 @@ resource "sg_workflow" "repository_to_iac" {
 
 resource "sg_runbook_sop" "repo_appstack_infer_plan" {
   name        = "repo-appstack-infer-plan"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/repo-appstack-infer-plan.md", {}))
 }
 
 resource "sg_runbook_sop" "repo_appstack_provision_env" {
   name        = "repo-appstack-provision-env"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/repo-appstack-provision-env.md", {}))
 }
 
 resource "sg_runbook_sop" "repo_appstack_artifact_export_github" {
   name        = "repo-appstack-artifact-export-github"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/repo-appstack-artifact-export-github.md", {}))
 }
 

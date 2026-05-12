@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -57,20 +57,24 @@ resource "sg_agent_policy_attachment" "ubuntu_shell_hitl" {
 
 resource "sg_runbook_sop" "ubuntu_network_diagnostics" {
   name        = "ubuntu-network-diagnostics"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-network-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_process_triage" {
   name        = "ubuntu-process-triage"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-process-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_disk_triage" {
   name        = "ubuntu-disk-triage"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-disk-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_log_analysis" {
   name        = "ubuntu-log-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-log-analysis.md", {}))
 }

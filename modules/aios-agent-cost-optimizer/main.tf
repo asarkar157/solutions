@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -40,21 +40,25 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "idle_resource_scan" {
   name        = "idle-resource-scan"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/idle-resource-scan.md", {}))
 }
 
 resource "sg_runbook_sop" "rightsizing_analysis" {
   name        = "rightsizing-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/rightsizing-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "savings_plan_review" {
   name        = "savings-plan-review"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/savings-plan-review.md", {}))
 }
 
 resource "sg_runbook_sop" "cost_anomaly_detection" {
   name        = "cost-anomaly-detection"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/cost-anomaly-detection.md", {}))
 }
 

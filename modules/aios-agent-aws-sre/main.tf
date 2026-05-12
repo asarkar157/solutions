@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -53,21 +53,25 @@ resource "sg_agent_policy_attachment" "aws_tool_governance" {
 
 resource "sg_runbook_sop" "k8s_diagnostics" {
   name        = "k8s-diagnostics"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/k8s-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_security_audit" {
   name        = "aws-security-audit"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/aws-security-audit.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_cost_analysis" {
   name        = "aws-cost-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/aws-cost-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "aws_tags_sanity" {
   name        = "aws-tags-sanity"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/aws-tags-sanity.md", {}))
 }
 

@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
     azurerm = { source = "hashicorp/azurerm" }
   }
 }
@@ -66,21 +66,25 @@ resource "sg_agent_policy_attachment" "container_shell_hitl" {
 # Runbooks
 resource "sg_runbook_sop" "azure_function_health" {
   name        = "azure-function-health-check"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/azure-function-health-check.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_diagnostics" {
   name        = "clickhouse-cluster-diagnostics"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "storage_queue_inspection" {
   name        = "storage-queue-inspection"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/storage-queue-inspection.md", {}))
 }
 
 resource "sg_runbook_sop" "blob_storage_monitoring" {
   name        = "blob-storage-monitoring"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/blob-storage-monitoring.md", {}))
 }
 

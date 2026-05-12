@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -86,22 +86,26 @@ resource "sg_agent_policy_attachment" "langfuse_observability" {
 
 resource "sg_runbook_sop" "collect_traces" {
   name        = "${var.runbook_name_prefix}-collect-traces"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-collect-traces.md", {}))
 }
 
 resource "sg_runbook_sop" "score_reliability" {
   name        = "${var.runbook_name_prefix}-score-reliability"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-score-reliability.md", {}))
 }
 
 resource "sg_runbook_sop" "score_correctness" {
   name        = "${var.runbook_name_prefix}-score-correctness"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-score-correctness.md", {}))
 }
 
 resource "sg_runbook_sop" "cross_domain_correlation" {
   # Default prefix keeps the historical name `langfuse-grafana-cross-domain-correlation` for stable state.
   name        = "${var.runbook_name_prefix}-grafana-cross-domain-correlation"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/stage-cross-domain-correlation.md", local.tpl_ctx))
 }
 

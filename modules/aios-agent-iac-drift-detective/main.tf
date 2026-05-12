@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -30,6 +30,7 @@ resource "sg_agent" "iac_drift_detective" {
 
 resource "sg_runbook_sop" "drift_scan" {
   name        = "iac-drift-scan"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/drift-scan.md", {}))
 }
 

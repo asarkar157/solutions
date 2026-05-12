@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -86,6 +86,7 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 # --- Workflows ---
 resource "sg_runbook_sop" "stackgen_audit" {
   name        = "stackgen-audit"
+  approve     = true
   description = "Audit the current application infrastructure using the StackGen MCP."
 }
 

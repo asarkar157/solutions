@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -161,6 +161,7 @@ resource "sg_agent_budget" "github_pr_reminder" {
 
 resource "sg_runbook_sop" "stackgen_mcp_iac" {
   name        = "stackgen-mcp-iac"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/stackgen-mcp-iac.md", {}))
 }
 

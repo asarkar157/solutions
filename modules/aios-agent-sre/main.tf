@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -252,46 +252,55 @@ resource "sg_agent_policy_attachment" "sre_risk_posture_dangerous_ops" {
 
 resource "sg_runbook_sop" "db_failover" {
   name        = "rds-aurora-failover"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/rds-aurora-failover.md", {}))
 }
 
 resource "sg_runbook_sop" "cache_restart" {
   name        = "redis-cluster-drain-restart"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/redis-cluster-drain-restart.md", {}))
 }
 
 resource "sg_runbook_sop" "pod_crashloop_recovery" {
   name        = "pod-crashloop-recovery"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/pod-crashloop-recovery.md", {}))
 }
 
 resource "sg_runbook_sop" "ssl_cert_renewal" {
   name        = "tls-certificate-renewal"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/tls-certificate-renewal.md", {}))
 }
 
 resource "sg_runbook_sop" "dns_failover" {
   name        = "route53-dns-failover"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/route53-dns-failover.md", {}))
 }
 
 resource "sg_runbook_sop" "memory_pressure_mitigation" {
   name        = "node-memory-pressure-mitigation"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/node-memory-pressure-mitigation.md", {}))
 }
 
 resource "sg_runbook_sop" "deployment_rollback" {
   name        = "argocd-rollback"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/argocd-rollback.md", {}))
 }
 
 resource "sg_runbook_sop" "grafana_metrics_triage" {
   name        = "grafana-metrics-triage"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-metrics-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "incident_communications" {
   name        = "incident-communications"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/incident-communications.md", {}))
 }
 

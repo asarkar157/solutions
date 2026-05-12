@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -53,21 +53,25 @@ resource "sg_agent_policy_attachment" "gcp_governance" {
 
 resource "sg_runbook_sop" "gke_diagnostics" {
   name        = "gke-cluster-diagnostics"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/gke-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_security_audit" {
   name        = "gcp-security-audit"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/gcp-security-audit.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_cost_analysis" {
   name        = "gcp-cost-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/gcp-cost-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cloud_sql_health" {
   name        = "cloud-sql-health-check"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/cloud-sql-health-check.md", {}))
 }
 

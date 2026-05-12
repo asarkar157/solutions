@@ -34,6 +34,7 @@ resource "sg_agent_policy_attachment" "coordinator_dangerous_ops" {
 
 resource "sg_runbook_sop" "grafana_alert_routing" {
   name        = "grafana-alert-routing-sop"
+  approve     = true
   description = <<-EOT
     Triages an incoming Grafana alert by checking the datasource and routing to the correct cloud provider skill.
     

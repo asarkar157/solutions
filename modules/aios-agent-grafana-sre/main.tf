@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -63,40 +63,48 @@ resource "sg_agent_policy_attachment" "data_risk" {
 
 resource "sg_runbook_sop" "service_health_pass" {
   name        = "grafana-service-health-pass"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-service-health-pass.md", {}))
 }
 
 resource "sg_runbook_sop" "alert_noise_check" {
   name        = "grafana-alert-noise-check"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-alert-noise-check.md", {}))
 }
 
 resource "sg_runbook_sop" "four_golden_signals" {
   name        = "grafana-four-golden-signals"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-four-golden-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "slo_error_budget" {
   name        = "grafana-slo-error-budget-review"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-slo-error-budget-review.md", {}))
 }
 
 resource "sg_runbook_sop" "dora_visibility" {
   name        = "grafana-dora-delivery-visibility"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-dora-delivery-visibility.md", {}))
 }
 
 resource "sg_runbook_sop" "change_failure_correlation" {
   name        = "grafana-change-failure-correlation"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-change-failure-correlation.md", {}))
 }
 
 resource "sg_runbook_sop" "restore_time_signals" {
   name        = "grafana-restore-time-signals"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-restore-time-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "red_use_workload" {
   name        = "grafana-red-use-workload"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-red-use-workload.md", {}))
 }

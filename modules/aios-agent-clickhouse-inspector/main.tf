@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -67,25 +67,30 @@ resource "sg_agent_policy_attachment" "ch_tool_governance" {
 
 resource "sg_runbook_sop" "clickhouse_cluster_health" {
   name        = "clickhouse-cluster-health-assessment"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-cluster-health-assessment.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_slow_queries" {
   name        = "clickhouse-slow-query-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-slow-query-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_parts_merges" {
   name        = "clickhouse-parts-merge-diagnostics"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-parts-merge-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_memory_pressure" {
   name        = "clickhouse-memory-pressure-triage"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-memory-pressure-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_ingestion_health" {
   name        = "clickhouse-ingestion-health"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-ingestion-health.md", {}))
 }

@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -104,41 +104,49 @@ resource "sg_agent_policy_attachment" "marketing_sales_enablement_dangerous_ops"
 
 resource "sg_runbook_sop" "product_messaging_framework" {
   name        = "product-messaging-framework"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/product-messaging-framework.md", {}))
 }
 
 resource "sg_runbook_sop" "press_release_distribution" {
   name        = "press-release-distribution"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/press-release-distribution.md", {}))
 }
 
 resource "sg_runbook_sop" "social_media_launch_campaign" {
   name        = "social-media-launch-campaign"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/social-media-launch-campaign.md", {}))
 }
 
 resource "sg_runbook_sop" "email_nurture_sequence" {
   name        = "email-nurture-sequence"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/email-nurture-sequence.md", {}))
 }
 
 resource "sg_runbook_sop" "landing_page_optimization" {
   name        = "landing-page-optimization"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/landing-page-optimization.md", {}))
 }
 
 resource "sg_runbook_sop" "sales_enablement_kit" {
   name        = "sales-enablement-kit"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/sales-enablement-kit.md", {}))
 }
 
 resource "sg_runbook_sop" "analyst_briefing_prep" {
   name        = "analyst-briefing-prep"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/analyst-briefing-prep.md", {}))
 }
 
 resource "sg_runbook_sop" "launch_metrics_dashboard" {
   name        = "launch-metrics-dashboard"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/launch-metrics-dashboard.md", {}))
 }
 

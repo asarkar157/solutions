@@ -15,9 +15,18 @@ variable "policy_ids" {
 }
 
 variable "integration_names" {
-  description = "Map of integration names available to this module"
+  description = <<-EOT
+    Guild integration names attached to the terraform-module-manager agent.
+    Both are required: GitHub for API access, Ubuntu CLI for git/tofu/terraform, tfsec/checkov, and gh against a real working tree.
+    Provision `modules/aios-integration-ubuntu` and pass `integration_name` as `ubuntu_cli`.
+  EOT
   type = object({
     github     = string
     ubuntu_cli = string
   })
+
+  validation {
+    condition     = trimspace(var.integration_names.github) != "" && trimspace(var.integration_names.ubuntu_cli) != ""
+    error_message = "integration_names.github and integration_names.ubuntu_cli must be non-empty. The agent needs both Guild integrations; omitting ubuntu_cli (or passing \"\") leaves only GitHub tools and breaks terraform-module-compliance / install-validate-test SOPs."
+  }
 }

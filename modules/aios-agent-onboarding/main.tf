@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -34,16 +34,19 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 
 resource "sg_runbook_sop" "environment_setup" {
   name        = "developer-environment-setup"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/developer-environment-setup.md", {}))
 }
 
 resource "sg_runbook_sop" "access_provisioning" {
   name        = "access-provisioning-checklist"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/access-provisioning-checklist.md", {}))
 }
 
 resource "sg_runbook_sop" "codebase_orientation" {
   name        = "codebase-orientation"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/codebase-orientation.md", {}))
 }
 

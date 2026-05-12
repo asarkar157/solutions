@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.8, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.9, < 0.2.0" }
   }
 }
 
@@ -58,21 +58,25 @@ resource "sg_agent_policy_attachment" "data_risk_pii" {
 
 resource "sg_runbook_sop" "soc2_access_review" {
   name        = "soc2-access-review"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/soc2-access-review.md", {}))
 }
 
 resource "sg_runbook_sop" "soc2_change_management" {
   name        = "soc2-change-management"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/soc2-change-management.md", {}))
 }
 
 resource "sg_runbook_sop" "gdpr_data_mapping" {
   name        = "gdpr-data-mapping"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/gdpr-data-mapping.md", {}))
 }
 
 resource "sg_runbook_sop" "audit_log_analysis" {
   name        = "audit-log-analysis"
+  approve     = true
   description = trimspace(templatefile("${path.module}/templates/audit-log-analysis.md", {}))
 }
 
