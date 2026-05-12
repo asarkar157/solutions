@@ -92,7 +92,7 @@ resource "sg_workflow" "alert_triage_pipeline" {
       note      = "Driven by the Coordinator to fetch the alert from Grafana."
     },
     {
-      stage_id         = "cloud-triage"
+      stage_id = "cloud-triage"
       # NO agent_ref -> This enables "dynamic agent resolution" via "skill matching"
       stage_depends_on = ["alert-extraction"]
       note             = "The runtime will automatically resolve the best-fit agent (e.g., AWS SRE for AWS issues, Azure DevOps for Azure issues, or Ubuntu CLI) based on skill and integration matching."
