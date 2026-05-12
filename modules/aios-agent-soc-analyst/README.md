@@ -26,7 +26,7 @@ This module provisions an `sg_agent` alongside a strict `sg_agent_budget`. The a
 ### Requirements
 
 - Terraform >= 1.5
-- StackGen Provider >= 0.1.9
+- StackGen Provider >= 0.1.10
 
 ### Variables
 
