@@ -79,7 +79,7 @@ resource "sg_runbook_sop" "stackgen_module_registration" {
 resource "sg_workflow" "terraform_module_update" {
   name        = "terraform-module-update"
   domain      = "infrastructure-as-code"
-  description = "Analyzes requested changes to existing Terraform modules (from PR or issue), checks deployed instances for security compliance and breaking changes, runs test loop, and either upgrades module or creates new module based on breaking change analysis. Finally registers it into StackGen core."
+  description = "Analyzes requested changes to existing Terraform modules (from PR or issue). After triage, runs security/plan compliance and org-wide deployment impact in parallel, merges findings, runs the test loop, then registers into StackGen core and notifies on GitHub."
 
   triggers = [
     { field = "event_type", values = ["issue.created", "pull_request.opened"], type = "active", source = "github" }
@@ -106,15 +106,21 @@ resource "sg_workflow" "terraform_module_update" {
       required    = true
     },
     {
-      stage_id    = "impact-and-compliance-check"
-      description = "Check deployed instances of the module across StackGen and assess security compliance and organizational impact"
-      note        = "Analyze if the requested change is security-compliant. Evaluate whether it is a breaking change or unwanted change organizationally based on existing deployments."
+      stage_id    = "security-scan-and-plan"
+      description = "Clone the branch and run static security analysis plus Terraform plan against organizational policies"
+      note        = "Parallel track A: tfsec/checkov (or equivalent), terraform plan, blast-radius / Rego evaluation per terraform-module-compliance-sop. Do not block on org-wide graph queries—those run in the sibling stage."
       required    = true
     },
     {
-      stage_id    = "test-loop-and-upgrade"
-      description = "Test changes via PR pipeline or guild runner. Upgrade existing module if compliant and non-breaking, or create a new module for breaking changes."
-      note        = "If compliant: iterate on test loop. If breaking: create a new major version or module. If non-breaking: push new version of existing module."
+      stage_id    = "deployment-impact-scan"
+      description = "Discover deployed instances of the module and assess breaking-change risk via StackGen context and org inventory"
+      note        = "Parallel track B: query StackGen Context Graph and deployment inventory for dependents and org impact. Do not block on full Ubuntu test harness work—that runs in the sibling stage."
+      required    = true
+    },
+    {
+      stage_id    = "merge-findings-and-test-loop"
+      description = "Reconcile parallel compliance and impact results, then test via PR pipeline or guild runner and upgrade or fork the module"
+      note        = "Join stage: merge outputs from both parallel tracks. If compliant: iterate on test loop. If breaking: new major or new module. If non-breaking: bump existing module version."
       required    = true
     },
     {
@@ -129,24 +135,30 @@ resource "sg_workflow" "terraform_module_update" {
     {
       stage_id  = "analyze-request"
       agent_ref = sg_agent.terraform_module_manager.name
-      note      = "Manager analyzes the requested change."
+      note      = "Manager analyzes the requested change (serial gate before parallel work)."
     },
     {
-      stage_id         = "impact-and-compliance-check"
+      stage_id         = "security-scan-and-plan"
       agent_ref        = sg_agent.terraform_module_manager.name
       stage_depends_on = ["analyze-request"]
-      note             = "Manager checks impact and compliance."
+      note             = "Manager runs compliance SOP clone/plan/static-analysis track in parallel with deployment-impact-scan."
     },
     {
-      stage_id         = "test-loop-and-upgrade"
+      stage_id         = "deployment-impact-scan"
       agent_ref        = sg_agent.terraform_module_manager.name
-      stage_depends_on = ["impact-and-compliance-check"]
-      note             = "Manager performs test loop and implements module upgrades or creation."
+      stage_depends_on = ["analyze-request"]
+      note             = "Manager runs org impact and context-graph track in parallel with security-scan-and-plan."
+    },
+    {
+      stage_id         = "merge-findings-and-test-loop"
+      agent_ref        = sg_agent.terraform_module_manager.name
+      stage_depends_on = ["security-scan-and-plan", "deployment-impact-scan"]
+      note             = "Manager merges parallel findings, then performs test loop and implements module upgrades or creation."
     },
     {
       stage_id         = "register-and-notify"
       agent_ref        = sg_agent.terraform_module_manager.name
-      stage_depends_on = ["test-loop-and-upgrade"]
+      stage_depends_on = ["merge-findings-and-test-loop"]
       note             = "Manager registers the resulting module into StackGen core and posts a summary comment to the GitHub PR/issue."
     }
   ]
