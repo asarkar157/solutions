@@ -73,7 +73,7 @@ resource "sg_evidence_checklist" "repository_to_iac_evidence" {
     "iac_synthesis_or_preview_evidence",
   ]
   optional_items = ["mcp_tool_invocation_list"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }
@@ -91,7 +91,7 @@ resource "sg_evidence_checklist" "repo_scan_appstack_github_export_evidence" {
     "plan_or_action_run_evidence",
   ]
   optional_items = ["export_pr_or_branch_url"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }

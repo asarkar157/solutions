@@ -142,7 +142,7 @@ resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
     "multi_shard_plan_zero_diff_evidence",
   ]
   optional_items = ["appstack_materialization_summary", "orphan_secondary_handoff_link"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.72
   }
@@ -160,7 +160,7 @@ resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
     "modularization_memory_or_pr_link",
   ]
   optional_items = ["test_results_or_ci_link"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }

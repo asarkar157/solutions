@@ -403,7 +403,7 @@ resource "sg_evidence_checklist" "post_incident_review" {
     "active_monitoring_links_attached",
   ]
   optional_items = ["postmortem_draft_started", "pagerduty_incident_linked"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.72
   }
@@ -421,7 +421,7 @@ resource "sg_evidence_checklist" "change_validation" {
     "rollback_plan_acknowledged",
   ]
   optional_items = ["canary_metrics_snapshot", "feature_flag_state_captured"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }
@@ -439,7 +439,7 @@ resource "sg_evidence_checklist" "security_incident" {
     "containment_actions_listed",
   ]
   optional_items = ["law_enforcement_ticket", "customer_notice_template"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.75
   }
@@ -456,7 +456,7 @@ resource "sg_evidence_checklist" "incident_quick_triage" {
     "service_health_snapshot_captured",
   ]
   optional_items = ["recommended_owner_or_team"]
-  scoring {
+  scoring = {
     min_required         = 1
     confidence_threshold = 0.65
   }

@@ -96,7 +96,7 @@ resource "sg_evidence_checklist" "feature_development_evidence" {
     "pull_request_url",
   ]
   optional_items = ["ci_status_or_reviewers_tagged"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.68
   }

@@ -91,7 +91,7 @@ resource "sg_evidence_checklist" "compliance_assessment_evidence" {
     "audit_log_review_summary",
   ]
   optional_items = ["framework_control_mapping_table"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.72
   }

@@ -123,7 +123,7 @@ resource "sg_evidence_checklist" "supply_chain_incident" {
     "dependency_graph_delta_captured",
   ]
   optional_items = ["github_advisory_cross_reference"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }

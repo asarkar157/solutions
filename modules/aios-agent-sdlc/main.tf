@@ -401,7 +401,7 @@ resource "sg_evidence_checklist" "developer_request_intake_evidence" {
     "policy_evaluation_outcome_documented",
   ]
   optional_items = ["mcp_or_shell_action_log_summary"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }

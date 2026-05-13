@@ -74,7 +74,7 @@ resource "sg_evidence_checklist" "finops_review_evidence" {
     "spend_anomaly_hypothesis_with_query_links",
   ]
   optional_items = ["executive_savings_total_estimated"]
-  scoring {
+  scoring = {
     min_required         = 3
     confidence_threshold = 0.68
   }

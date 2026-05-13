@@ -121,7 +121,7 @@ resource "sg_evidence_checklist" "azure_devops_incident" {
     "function_invocation_errors_captured",
   ]
   optional_items = ["previous_known_good_deploy_identified"]
-  scoring {
+  scoring = {
     min_required         = 2
     confidence_threshold = 0.7
   }
