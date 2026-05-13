@@ -16,9 +16,9 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 
 | Key | Purpose |
 |-----|---------|
-| `repo_clone_path` | Local clone for IaC + scripts |
+| `repo_clone_path` | Local clone for IaC + scripts (use a writable path — often under `/tmp`; see **Ephemeral workspace** below) |
 | `monolith_state_uri` | s3://, gcs://, path, or backend hint for monolith state |
-| `monolith_state_local_path` | Downloaded `terraform.tfstate` or `json` snapshot path |
+| `monolith_state_local_path` | Downloaded `terraform.tfstate` or `json` snapshot path (writable; prefer under `/tmp` when the default workspace is read-only) |
 | `monolith_resource_count` | Integer: total resource **instances** in monolith (after filters) |
 | `grouping_policy_json` | Optional rules: tag keys, module prefixes, regexes |
 | `logical_group_seeds` | JSON seeds from multi-vendor anchor detection |
@@ -37,6 +37,19 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 | `orphan_modularization_memory` | How orphans were sorted / modularized |
 | `secondary_workflow_payload` | JSON for `orphan-iac-module-authoring` |
 | `stage_summary:<stage_id>` | One paragraph per stage |
+
+## Ephemeral workspace (`/tmp`) and read-only filesystems
+
+Guild/Ubuntu MCP sandboxes often expose a **read-only** project root, cwd, or workflow-supplied path. Errors such as *read-only filesystem*, *permission denied*, or failed **`git clone` / `git pull` / `git fetch`** when targeting a fixed repo path mean this step **cannot** complete there.
+
+**Required recovery — use `/tmp` for ephemeral disk:**
+
+1. **Create a unique writable root** under `/tmp`, e.g. `/tmp/db-state-split-<workflow-or-session-or-timestamp>/` (one directory per run; avoid collisions).
+2. **Re-run failed work under that tree:** fresh **`git clone`** of the IaC repository URL (or unpack/copy inputs), download **`monolith_state_uri`** into **`monolith_state_local_path`**, `terraform show -json` scratch files, per-shard TF workdirs, **`download-iac`** output directories, plan JSON / log artifacts.
+3. **`note` the canonical paths** used in practice: set **`repo_clone_path`** and **`monolith_state_local_path`** (and **`remote_runner_artifacts`** when applicable) to the **actual** `/tmp/...` locations so later stages (`discover-db-anchors`, plan matrix, MCP `download-iac` parity checks) read the same files.
+4. Do **not** bulk-fetch state via GitHub HTTP; keep large state and clones on **Ubuntu CLI** under `/tmp` (or remote runner paths) only.
+
+If the first writable path attempt fails, escalate in `stage_summary:ingest-monolith` with the exact errno/message — but **always** try `/tmp` before declaring the run blocked.
 
 ## Loop contracts (max ${max_iterations} outer iterations)
 
@@ -58,4 +71,4 @@ When `orphans_bundle` is non-empty after registry / AppStack mapping, build `sec
 
 ## Subagent discipline
 
-At most **one** Ubuntu-CLI subagent per atomic shell phase; StackGen MCP calls may batch on the lead when tools are attached. Reuse `repo_clone_path`; never bulk-fetch state via `gh api`.
+At most **one** Ubuntu-CLI subagent per atomic shell phase; StackGen MCP calls may batch on the lead when tools are attached. Reuse **`repo_clone_path`** once established; if it was moved under **`/tmp`** due to read-only errors, all subsequent Ubuntu stages must use those **`note`** paths. Never bulk-fetch state via `gh api`.

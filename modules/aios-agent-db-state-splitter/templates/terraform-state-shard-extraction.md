@@ -4,7 +4,7 @@ Keywords: terraform show -json, state list, jq, dependency closure, tags, defaul
 
 ## Inputs
 
-- Monolith state JSON or `terraform state list` output.
+- Monolith state JSON or `terraform state list` output (paths from **`monolith_state_local_path`** in workflow notes — often under **`/tmp`** when the workspace mount is read-only).
 - Optional **`grouping_policy_json`** from workflow inputs: rules such as  
   - **Tag keys** (e.g. `app`, `service`, `team`, `cost-center`) — match `values.tags` / provider `default_tags` in state.  
   - **Module address prefix** (e.g. `module.data_plane`).  

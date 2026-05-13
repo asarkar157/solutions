@@ -46,7 +46,7 @@ Keywords: create_appstack, add_resource_to_appstack, connect_resources, create_a
 2. For each resource address in the group, map Terraform type → StackGen **`resource_type`** via `get_supported_resource_types`; then `add_resource_to_appstack` with a unique **`identifier`**.  
 3. `get_possible_resource_connections` → `connect_resources` for obvious edges (VPC→subnet→instance, server→database, etc.).  
 4. `create_env_profile` with **per-AppStack state backend** HCL when splitting remote state.  
-5. `create_appstack_action_run` (**Plan**) per AppStack; then optional `download-iac` into `repo_clone_path`/stackgen-export/ for offline diff.
+5. `create_appstack_action_run` (**Plan**) per AppStack; then optional `download-iac` with **`destination`** under a **writable** directory (prefer **`/tmp/.../stackgen-export/`** when `repo_clone_path` is read-only or missing); compare with Ubuntu-sandbox `tofu plan` for offline diff.
 
 ### Flow B — From existing StackGen cloud discovery
 

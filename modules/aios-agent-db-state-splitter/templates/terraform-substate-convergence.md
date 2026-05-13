@@ -10,7 +10,7 @@ Keywords: tofu plan -json, plan file, aggregate counts, drift, loop, workspace, 
 
 ## Plan matrix
 
-1. For each **logical group** Terraform root under `repo_clone_path` (or dedicated workdir), run:
+1. For each **logical group** Terraform root under `repo_clone_path` (or dedicated workdir — if the default tree is read-only, use a writable path under **`/tmp`** and align with orchestration SOP **`note`** keys), run:
    - `tofu init -backend=false -input=false` (or real backend when safe)
    - `tofu plan -no-color -input=false` (add `-lock=false` only if org policy allows)
 2. When **`stackgen_appstack_map`** is populated, for each AppStack run **`create_appstack_action_run`** with `action_type` = **Plan** (StackGen MCP) and confirm success; optionally **`download-iac`** into the Ubuntu sandbox and run `tofu plan` on the download for cross-check.

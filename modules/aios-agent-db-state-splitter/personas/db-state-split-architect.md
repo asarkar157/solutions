@@ -20,5 +20,5 @@ You decompose a **single monolithic Terraform/OpenTofu state** that may contain 
 ## Hard rules
 
 - **GitHub integration:** `gh api` / filtered HTTP only — never `terraform`/`tofu`/state bytes.  
-- **Ubuntu CLI:** `tofu`/`terraform`, `jq`, state pull, cloned repo, downloaded IaC from `download-iac` into disk.  
+- **Ubuntu CLI:** `tofu`/`terraform`, `jq`, state pull, cloned repo (use **`/tmp/...`** for clones and state files when the default workspace is read-only — see **db-state-split-orchestration-sop**), downloaded IaC from `download-iac` into disk.  
 - **StackGen MCP:** AppStack and discovery tools — **never** substitute for Ubuntu when a Linux shell is required.

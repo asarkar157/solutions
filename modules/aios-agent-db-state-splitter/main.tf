@@ -174,7 +174,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id    = "ingest-monolith"
       description = "Clone IaC repo, fetch monolith state to workspace, record monolith_resource_count"
-      note        = "Ubuntu CLI: git clone, backend pull or aws s3 cp state, tofu/terraform state list | wc -l style count; persist monolith_state_local_path."
+      note        = "Ubuntu CLI: git clone, backend pull or aws s3 cp state, tofu/terraform state list | wc -l style count; persist monolith_state_local_path. On read-only filesystem errors, re-home clone + state under /tmp (see db-state-split-orchestration-sop) and note the actual paths."
       required    = true
     },
     {
@@ -238,8 +238,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Budget: ≤ 2 Ubuntu-CLI subagents, ≤ $2, ≤ 6m.
-        1) read_notes; clone IAC to `repo_clone_path` if missing. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
-        2) Download state from `monolith_state_uri` → `monolith_state_local_path`; compute `monolith_resource_count`.
+        1) read_notes; clone IAC to `repo_clone_path` if missing — if clone/update fails (read-only filesystem, permission denied), use a fresh directory under `/tmp` (e.g. `/tmp/db-state-split-<id>/repo`), then `note` the real `repo_clone_path`. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
+        2) Download state from `monolith_state_uri` → `monolith_state_local_path` (same `/tmp` tree if needed); compute `monolith_resource_count`.
         3) note `stage_summary:ingest-monolith`.
       EOT
     },
