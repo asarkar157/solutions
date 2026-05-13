@@ -135,7 +135,72 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 ## State fetch prerequisites (operator + runtime)
 
 - **`monolith_state_uri`** may be **`https://`**, **`s3://`**, **`gs://`**, **`azblob://`**, or a path. **GitHub `raw` URLs** are fine for demos; production monoliths usually need **cloud credentials** on whichever surface runs **`curl`/`aws`/`gcloud`/`az` copy`** (Ubuntu MCP integration env, remote runner secrets, or instance profile). If download fails with 403/network, fix **IAM / bucket policy / VPC egress** — not grouping logic.
-- **`iac_repository_url`** clones need **read access** to the repo (token on Ubuntu or GitHub integration for metadata only — clones are still Ubuntu-side per SOP).
+- **`iac_repository_url`** clones need **read access** to the repo. The GitHub Guild integration provides `gh api` MCP tools (metadata / filtered HTTP only) — **`git clone` / `git fetch` / `git push` run inside the Ubuntu container** and read **env-mounted git credentials** as described in **Git connectivity** below. Never try to bulk-fetch the repo through `gh api`.
+
+## Git connectivity — env-mounted credentials (same pattern as AWS)
+
+Operators mount git credentials as **env vars** on the Ubuntu integration's `secret_ref_ids` (see README "Operator prerequisites → Git connectivity" for the `sg_secret` boilerplate). The agent's job is to **detect the auth mode** at clone time and use the right env vars — never `ask_clarifying_question` for tokens that are already in the container's env.
+
+**Detection (run at the start of `ingest-monolith`, before any `git clone`):**
+
+```bash
+# 1. Parse host from iac_repository_url (covers HTTPS + SSH forms).
+GIT_URL_HOST="$$(printf '%s' "$$iac_repository_url" | sed -E 's#^(git@|ssh://[^/]*@)([^:/]+).*#\2#; s#^https?://([^/]+).*#\1#')"
+
+# 2. Prefer per-host token env vars (multi-host setups), fall back to generic ones.
+host_upper="$$(printf '%s' "$$GIT_URL_HOST" | tr 'a-z.-' 'A-Z__')"
+GIT_TOKEN_VAR="GIT_TOKEN_$${host_upper}"
+GIT_HOST_VAR="GIT_HOST_$${host_upper}"
+[ -n "$${!GIT_TOKEN_VAR:-}" ] && GIT_TOKEN="$${!GIT_TOKEN_VAR}"
+[ -n "$${!GIT_HOST_VAR:-}"  ] && GIT_HOST="$${!GIT_HOST_VAR}"
+GIT_TOKEN="$${GIT_TOKEN:-$${GITHUB_TOKEN:-}}"        # legacy GITHUB_TOKEN still supported
+GIT_HOST="$${GIT_HOST:-$$GIT_URL_HOST}"
+GIT_USERNAME="$${GIT_USERNAME:-x-access-token}"     # GitHub/GitLab token-as-password convention
+```
+
+**HTTPS token clone** (preferred — works for GitHub, GitLab, Bitbucket, Azure DevOps):
+
+```bash
+# Rewrite iac_repository_url to inject the token; never echo $$GIT_TOKEN to logs.
+clone_url="$$(printf '%s' "$$iac_repository_url" | sed -E "s#^https?://([^@/]+@)?#https://$${GIT_USERNAME}:$${GIT_TOKEN}@#")"
+git -c credential.helper= clone --depth=1 "$$clone_url" "$$repo_clone_path"
+```
+
+**SSH key clone** (when `GIT_SSH_PRIVATE_KEY` is set instead of `GIT_TOKEN`):
+
+```bash
+install -d -m 700 "$$HOME/.ssh"
+printf '%s\n' "$$GIT_SSH_PRIVATE_KEY" > "$$HOME/.ssh/id_split"     && chmod 600 "$$HOME/.ssh/id_split"
+printf '%s\n' "$$GIT_SSH_KNOWN_HOSTS" > "$$HOME/.ssh/known_hosts"  && chmod 600 "$$HOME/.ssh/known_hosts"
+GIT_SSH_COMMAND="ssh -i $$HOME/.ssh/id_split -o UserKnownHostsFile=$$HOME/.ssh/known_hosts" \
+  git clone --depth=1 "$$iac_repository_url" "$$repo_clone_path"
+```
+
+**Failure modes & escalation:**
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `fatal: could not read Username` / 401 / 403 | No token in env, or token lacks repo read scope | `notify` once with `{stage:'ingest-monolith', error:'git_credentials_missing', host:"$$GIT_URL_HOST"}`; do **not** `ask_clarifying_question` for a token. Operator wires `sg_secret` → Ubuntu `secret_ref_ids`. |
+| `Permission denied (publickey)` (SSH form) | Missing / bad `GIT_SSH_PRIVATE_KEY` or `GIT_SSH_KNOWN_HOSTS` | Same `git_credentials_missing` notify; surface the SSH path used. |
+| `unable to access … SSL` | Self-signed corporate proxy | Soft-fail with `git_tls_proxy`; operator-owned (extend Ubuntu image or set `GIT_SSL_CAINFO`). |
+
+**Discipline:**
+
+- **Never echo `$$GIT_TOKEN` / `$$GIT_SSH_PRIVATE_KEY`** into `note`, `notify`, chat, or shell logs. Use `git -c credential.helper=` + URL rewrite so the token is **not** persisted to `~/.git-credentials`.
+- **Read-only operations** (primary split workflow): the token only needs **repo read** scope — for GitHub fine-grained PATs that is `Contents: Read` + `Metadata: Read`.
+- **Write-back operations** (`orphan-iac-module-authoring` PRs) need **repo write** — operators wire a separate secret (`GIT_TOKEN_WRITE` etc.) or extend the same secret's scope; the secondary workflow's SOP re-reads `GIT_TOKEN` and falls back through the same detection chain.
+
+## HCL-only output (never `.tf.json`)
+
+Every per-group root, every orphan module scaffold, and every file the workflow commits to `repo_clone_path` MUST be **HCL** (`*.tf`). Hard rules:
+
+- **Filenames end in `.tf`** — `versions.tf`, `providers.tf`, `main.tf`, `imports.tf`, `generated.tf`, etc. **Never** write `*.tf.json` (Terraform JSON syntax). The `db-monorepo-state-split-evidence` checklist treats any `.tf.json` under a group root as a defect.
+- **`tofu plan -generate-config-out=generated.tf`** emits HCL by design. Use that flag literally; never `-generate-config-out=generated.tf.json` and never post-process the output through `tofu show -json` into a JSON config.
+- **`terraform show -json` and `tofu show -json` are for reading state, not for writing configuration.** Their output (`*.state.json`, `*.plan.json`) lives under `/tmp/db-state-split-<workflow_id>/` scratch space and is **never** committed alongside the per-group `*.tf` files.
+- **`jq` / `python -c json.dumps` are not Terraform authoring tools** — do not synthesize `*.tf.json` by hand even when an attribute is hard to express in HCL. If a concrete attribute is genuinely unrepresentable in HCL, mark the address `orphans_bundle{reason:"requires_dynamic_codegen"}` and let `orphan-iac-module-authoring` decide on a wrapper module — still authored in HCL.
+- **Orphan module scaffold** (`modules/<proposed_name>/`) MUST contain `main.tf` + `variables.tf` + `outputs.tf` + `README.md` only — no `*.json`, no `*.tf.json`.
+
+Anti-pattern: writing a single `generated.tf.json` per group "because it's easier to template" — the resulting roots fail `tofu fmt` parity, are not reviewable via `git diff`, and break the `hcl_hydration_status:<group_id>` evidence semantics (which expect a `generated_tf_path` ending in `.tf`).
 
 ## Secrets, notes, and shared disks
 

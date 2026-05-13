@@ -22,7 +22,7 @@ terraform {
 resource "sg_agent" "clickhouse_inspector" {
   name        = "clickhouse-inspector"
   persona     = file("${path.module}/personas/clickhouse-inspector.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   integrations = [var.integration_names.clickhouse]
 }

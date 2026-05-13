@@ -13,7 +13,7 @@ terraform {
 resource "sg_agent" "workspace_assistant" {
   name        = "workspace-assistant"
   persona     = file("${path.module}/personas/workspace-assistant.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = concat(var.google_readonly_tools, var.linear_readonly_tools, [

@@ -19,7 +19,7 @@ resource "sg_policy" "aws_tool_governance" {
 resource "sg_agent" "aws_sre" {
   name        = "aws-sre"
   persona     = file("${path.module}/personas/aws-sre.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = [

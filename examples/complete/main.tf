@@ -78,6 +78,17 @@ module "ubuntu_integration" {
   source = "../../modules/aios-integration-ubuntu"
 }
 
+# Optional: only created when grafana_token is set. Required by the
+# alert-triage agent below so incoming Grafana alerts can be triaged and
+# posted to Slack.
+module "grafana_integration" {
+  count  = var.grafana_token != "" ? 1 : 0
+  source = "../../modules/aios-integration-grafana"
+
+  grafana_server = var.grafana_server
+  grafana_token  = var.grafana_token
+}
+
 # -----------------------------------------------------------------------------
 # StackGen Consumer MCP (required by aios-agent-db-state-splitter)
 # -----------------------------------------------------------------------------
@@ -198,6 +209,125 @@ module "cost_optimizer" {
   }
 }
 
+# Weekly FinOps report — Mondays 09:00 UTC. Drives the cost-optimizer's
+# finops-review workflow to summarize spend, idle resources, rightsizing,
+# and anomalies, then post the executive summary to Slack.
+module "cost_optimizer_weekly" {
+  source = "../../modules/aios-agent-schedules"
+
+  target_type = "workflow"
+  target_name = module.cost_optimizer.workflow_name
+
+  schedules = [
+    {
+      name       = "weekly-finops-review"
+      expression = "0 9 * * 1"
+      action     = "Run the full FinOps review across the connected AWS account: idle scan, rightsizing, commitment review, anomaly check, then post the executive summary (with savings totals) to the configured Slack channel."
+    },
+  ]
+}
+
+# Use case: Automated alert RCA + dedicated Slack notifications.
+# Receives Grafana alert webhooks, dynamically routes triage to the best-fit
+# cloud agent (AWS / Azure / K8s / Remote Runner), then posts the findings
+# to Slack. Only wired when grafana_token is set so the Grafana integration
+# above exists at apply time.
+module "alert_triage" {
+  count  = var.grafana_token != "" ? 1 : 0
+  source = "../../modules/aios-agent-alert-triage"
+
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    grafana = module.grafana_integration[0].integration_name
+    slack   = module.slack_integration.integration_name
+  }
+}
+
+# Use case: Unused resource detection (≥ 30 days inactive) + cleanup automation.
+# Detection is read-only; cleanup is HITL-gated through the dangerous-ops policy
+# with a tag-and-quarantine dwell window.
+module "resource_janitor" {
+  source = "../../modules/aios-agent-resource-janitor"
+
+  # aios-foundation now exposes model_names as list(string); pass it directly.
+  model_names = module.foundation.model_names
+
+  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    aws   = module.aws_integration.integration_name
+    slack = module.slack_integration.integration_name
+  }
+
+  inactivity_days       = 30
+  cleanup_dwell_days    = 7
+  max_resources_per_run = 25
+  cleanup_dollar_cap    = 1000
+}
+
+# Periodic detection — runs every Monday at 08:00 UTC, before the FinOps
+# review at 09:00 UTC, so the executive summary can reference fresh
+# unused-resource findings.
+module "resource_janitor_schedules" {
+  source = "../../modules/aios-agent-schedules"
+
+  target_type = "workflow"
+  target_name = module.resource_janitor.workflow_names.detection
+
+  schedules = [
+    {
+      name       = "weekly-unused-resource-sweep"
+      expression = "0 8 * * 1"
+      action     = "Run the detection workflow across all attached cloud integrations and post a per-team summary to Slack. Read-only — no quarantine in this run."
+    },
+  ]
+}
+
+# Use case: GitHub pipeline insights & deployment intelligence.
+# Conversational, read-only. Use Guild chat or wire a Slack mention bridge
+# to the optional `slack-pipeline-insights` webhook (set enable_slack_webhook).
+module "pipeline_insights" {
+  source = "../../modules/aios-agent-pipeline-insights"
+
+  model_names = module.foundation.model_names
+
+  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    github = module.github_integration.integration_name
+    slack  = module.slack_integration.integration_name
+  }
+
+  enable_slack_webhook = false
+}
+
+# Use case: Microservice tag discovery & release tracking.
+# Conversational, read-only. Optional service catalog so operators can ask
+# by service_name instead of repository.
+module "release_tracker" {
+  source = "../../modules/aios-agent-release-tracker"
+
+  model_names = module.foundation.model_names
+
+  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    github = module.github_integration.integration_name
+    slack  = module.slack_integration.integration_name
+  }
+
+  service_catalog = {
+    # Replace with your real service → repository mapping.
+    # payments      = "appcd-dev/payments"
+    # checkout-api  = "appcd-dev/checkout"
+    # order-service = "appcd-dev/orders"
+  }
+
+  image_namespace_template = "ghcr.io/appcd-dev/{{service}}"
+}
+
 module "compliance_auditor" {
   source = "../../modules/aios-agent-compliance-auditor"
 
@@ -246,6 +376,31 @@ module "terraform_bot" {
   # Optional remote runner: set name + remote_runner_attach_to_agent = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true
+}
+
+# Use case: SE feedback loop automation.
+# Triages `scenario-request` GitHub issues on this repo: matches against
+# existing scenarios under examples/scenarios/, or scaffolds a brand-new
+# scenario PR (5 files + scripts/demo.sh registry entry), validates with
+# tofu fmt + validate, opens the PR, and comments back on the originating
+# issue. Same integration set as terraform_bot (GitHub + Ubuntu CLI) so
+# `gh` CLI work piggybacks on the existing Ubuntu sandbox. See
+# modules/aios-agent-scenario-author/README.md and docs/se-feedback.md.
+module "scenario_author" {
+  source = "../../modules/aios-agent-scenario-author"
+
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  integration_names = {
+    github     = module.github_integration.integration_name
+    ubuntu_cli = module.ubuntu_integration.integration_name
+  }
+
+  # Defaults: appcd-dev/aios-modules + scenario-request label.
+  # Override repository_full_name for forks or staging tenants.
+  # repository_full_name   = "appcd-dev/aios-modules"
+  # scenario_request_label = "scenario-request"
 }
 
 module "db_state_splitter" {
@@ -338,7 +493,46 @@ output "terraform_bot_webhook" {
   sensitive = true
 }
 
+output "scenario_author_webhook" {
+  description = "Webhook endpoint for the Scenario Author bot — wire this into the aios-modules repo's GitHub Issues webhook to auto-triage scenario-request issues."
+  value = {
+    id    = module.scenario_author.webhook_id
+    token = module.scenario_author.webhook_token
+  }
+  sensitive = true
+}
+
+output "scenario_author_workflow" {
+  description = "Guild workflow name for the SE feedback-loop triage (scenario-request-triage)."
+  value       = module.scenario_author.workflow_name
+}
+
 output "db_state_splitter_workflows" {
   description = "DB monorepo state split + orphan module authoring workflow names"
   value       = module.db_state_splitter.workflow_names
+}
+
+output "cost_optimizer_workflow" {
+  description = "Cost optimizer FinOps workflow name (scheduled weekly via cost_optimizer_weekly)."
+  value       = module.cost_optimizer.workflow_name
+}
+
+output "resource_janitor_workflows" {
+  description = "Detection (read-only, scheduled weekly) and cleanup (HITL-gated) workflow names from the resource-janitor module."
+  value       = module.resource_janitor.workflow_names
+}
+
+output "pipeline_insights_workflow" {
+  description = "GitHub pipeline / deployment intelligence workflow name."
+  value       = module.pipeline_insights.workflow_name
+}
+
+output "release_tracker_workflow" {
+  description = "Microservice release-tracking workflow name."
+  value       = module.release_tracker.workflow_name
+}
+
+output "alert_triage_enabled" {
+  description = "Whether the Grafana alert-triage agent + workflow were created (requires grafana_token)."
+  value       = length(module.alert_triage) > 0
 }

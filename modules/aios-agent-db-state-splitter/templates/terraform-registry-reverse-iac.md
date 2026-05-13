@@ -61,6 +61,22 @@ This stage runs **after** ingest / discover / allocate / count-reconcile. Always
 ### Anti-pattern
 
 - Writing `resource "aws_X" "Y" {}` (empty body) and declaring the stage complete. That is exactly the failure mode that produced `iteration 2` blocking item "Author resource blocks in all 402 main.tf stubs". Use `-generate-config-out` instead.
+- Writing `*.tf.json` (Terraform JSON syntax) for any per-group root or scaffold file. See **HCL-only output** below.
+
+## HCL-only output (never `.tf.json`)
+
+Every file the workflow writes under `groups/<group_id>/` MUST be **HCL** with a `.tf` extension. This applies to:
+
+- **Scaffold files** — `versions.tf`, `providers.tf`, `imports.tf` (or per-cloud `imports-aws.tf` / `imports-azure.tf` / `imports-gcp.tf`). Use HCL `terraform { required_providers { ... } }` + `provider "..." { ... }` blocks, **not** `terraform.tf.json` envelopes.
+- **Import blocks** — Terraform 1.5+ `import {}` HCL blocks (`import { to = aws_s3_bucket.foo, id = "..." }`), **not** a JSON config map.
+- **Generated bodies** — `generated.tf` from `tofu plan -generate-config-out=generated.tf`. The flag literally writes HCL; do not redirect it through `jq` / `tofu show -json` into a `*.tf.json` file.
+
+Hard rules:
+
+1. **No `*.tf.json` filenames** anywhere in the per-group root, even as "easier-to-template" placeholders. The `hcl_hydration_status:<group_id>` evidence schema records `generated_tf_path` which must end in `.tf`.
+2. **`tofu fmt`** is the parity check — run it on every group root after scaffold + after hydration. JSON-syntax files fail `tofu fmt` cleanly, which is why this rule is enforceable downstream.
+3. **State JSON stays in scratch.** `terraform show -json` / `tofu show -json` output (`*.state.json`, `*.plan.json`) lives under `/tmp/db-state-split-<workflow_id>/` and is **never** committed alongside the per-group `.tf` files. Treat that output as *parser input*, not Terraform configuration.
+4. **`jq`-built JSON is not Terraform config.** Do not synthesize `*.tf.json` via `jq` / `python -c json.dumps` even when an attribute is awkward in HCL. If a value is genuinely unrepresentable, push the address to `orphans_bundle{reason:"requires_dynamic_codegen"}` for `orphan-iac-module-authoring` to wrap in HCL.
 
 ## StackGen module / template cross-check
 

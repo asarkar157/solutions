@@ -63,6 +63,23 @@ variable "slack_webhook_url" {
   default   = ""
 }
 
+# Grafana integration is optional. When `grafana_token` is non-empty, the
+# example wires the Grafana integration AND the alert-triage agent (which
+# needs both Grafana and Slack) so incoming Grafana alerts can be triaged
+# and posted back to Slack. Leave empty to skip that wiring.
+variable "grafana_server" {
+  description = "Base URL of the Grafana server (e.g. https://grafana.example.com). Empty disables the Grafana integration + alert-triage."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_token" {
+  description = "Grafana service account token. Empty disables the Grafana integration + alert-triage."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "langfuse_public_key" {
   type    = string
   default = ""

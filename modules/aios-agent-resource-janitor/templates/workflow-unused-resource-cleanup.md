@@ -1,0 +1,1 @@
+HITL-gated cleanup automation. Consumes a recent detection batch, applies the tag-and-quarantine procedure, notifies owners, and (only after the dwell window) deletes resources through the dangerous-ops policy with operator approval. Bounded by `max_resources_per_run` and `cleanup_dollar_cap`.

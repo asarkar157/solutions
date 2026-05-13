@@ -82,10 +82,8 @@ resource "sg_guild_integration" "stackgen_mcp" {
 module "repo_to_iac" {
   source = "../../modules/aios-agent-repo-to-iac"
 
-  model_names = {
-    gpt4o         = module.foundation.model_names.gpt4o
-    claude_sonnet = module.foundation.model_names.claude_sonnet
-  }
+  # aios-foundation now exposes model_names as list(string) — pass it through.
+  model_names = module.foundation.model_names
 
   policy_ids = {
     dangerous_ops = module.policies.policy_ids.dangerous_ops

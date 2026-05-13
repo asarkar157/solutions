@@ -17,12 +17,13 @@ variable "stackgen_mcp_integration_name" {
 }
 
 variable "model_names" {
-  description = "Map of model keys to actual deployed model names (from aios-foundation)."
-  type = object({
-    gpt4o         = string
-    claude_sonnet = string
-    gemini_flash  = string
-  })
+  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
+  type        = list(string)
+
+  validation {
+    condition     = length(compact(var.model_names)) > 0
+    error_message = "model_names must contain at least one non-empty model name."
+  }
 }
 
 variable "policy_ids" {
@@ -50,6 +51,22 @@ variable "integration_names" {
     the Ubuntu integration via `sg_guild_integration.secret_ref_ids` (e.g. `AWS_ACCESS_KEY_ID` /
     `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` metadata, or an STS-rotated equivalent). This module does
     not perform that wiring — see the module README "Operator prerequisites" section.
+
+    **Git connectivity for `git clone iac_repository_url` (same env-mounted-secret pattern):**
+    the `github` Guild integration above only exposes `gh api` MCP tools — `git clone` / `git fetch`
+    run inside the **Ubuntu** container and need git credentials in that container's **env**, not
+    as MCP tools. Attach a read-only git secret to the Ubuntu integration via
+    `sg_guild_integration.secret_ref_ids` exposing **one of**:
+      - **HTTPS token auth** — `GIT_TOKEN`, `GIT_HOST` (e.g. `github.com`), optional
+        `GIT_USERNAME` (default `x-access-token` for GitHub/GitLab token-as-password). The SOPs
+        instruct the agent to clone with
+        `git clone https://$${GIT_USERNAME}:$${GIT_TOKEN}@$${GIT_HOST}/<org>/<repo>.git`.
+      - **SSH key auth** — `GIT_SSH_PRIVATE_KEY` (PEM body) + `GIT_SSH_KNOWN_HOSTS`; the agent
+        materializes them under `~/.ssh/` with `chmod 600` and uses an `ssh://` clone.
+    For mixed-host setups (GitHub + GitLab + internal git), append per-host suffixes
+    (`GIT_TOKEN_GITHUB`, `GIT_HOST_GITHUB`, …); the agent selects the matching pair from the host
+    parsed out of `iac_repository_url`. Module does not perform this wiring — see README
+    "Operator prerequisites" → "Git connectivity" section.
   EOT
   type = object({
     github     = string

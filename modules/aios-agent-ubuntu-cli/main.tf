@@ -20,7 +20,7 @@ terraform {
 resource "sg_agent" "ubuntu_cli_agent" {
   name        = "ubuntu-cli-inspector"
   persona     = file("${path.module}/personas/ubuntu-sre.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   integrations = [var.integration_names.ubuntu_cli]
 }

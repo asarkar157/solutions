@@ -1,0 +1,1 @@
+Conversational GitHub pipeline / deployment intelligence. Resolves the target (repo, branch, PR, SHA, or environment), pulls workflow runs, PR merge metadata, and deployment statuses, and renders a linked Markdown report. Read-only — never re-runs workflows or re-deploys without explicit operator approval.

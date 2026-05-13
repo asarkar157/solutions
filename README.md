@@ -8,6 +8,20 @@
 
 Production-ready, composable Terraform modules for bootstrapping **AIOS (AI Operations)** solutions — autonomous SRE agents, incident response workflows, software engineering pipelines, and supply chain security scanners.
 
+## For solutions engineers (start here)
+
+The repo serves **three jobs**. Pick the one that matches what you are doing right now.
+
+| You are… | Where to go |
+|----------|-------------|
+| **Demoing Aiden to a prospect in the next 30 minutes.** | [`docs/se-playbook.md`](docs/se-playbook.md) — prospect-question → scenario map. Then run `make demo SCENARIO=<name>` against a root under [`examples/scenarios/`](examples/scenarios/). Each scenario is < 80 lines of HCL and ships with a talk track. |
+| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / integrations / policies / schedules / secret refs. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; phase 2 rewrites that HCL into module form. |
+| **Composing your own root from individual modules** (advanced / customer extending the library). | Continue with [Quick start](#-quick-start), [`examples/complete/`](examples/complete/), and [`docs/onboarding/`](docs/onboarding/). |
+
+> If your prospect has not seen Aiden yet, **skip the repo** — open the Guild UI. Come back once they nod at the concept.
+
+Feedback / scenario requests live in [`docs/se-feedback.md`](docs/se-feedback.md). Scenario reviewers per area are pinned in [`CONTRIBUTORS-SE.md`](CONTRIBUTORS-SE.md). The loop is **automated** by [`modules/aios-agent-scenario-author`](modules/aios-agent-scenario-author/) — it reads every `scenario-request` issue and either points you at the matching scenario or scaffolds a draft PR within minutes.
+
 ## Guided onboarding (GitHub Pages)
 
 Step-by-step docs for **new users and contributors** live under [`docs/`](docs/) as a small [Jekyll](https://jekyllrb.com/) site (orientation → install tools → run checks → use a module → deeper links).

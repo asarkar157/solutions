@@ -12,7 +12,7 @@ terraform {
 resource "sg_agent" "cost_optimizer" {
   name        = "cost-optimizer"
   persona     = file("${path.module}/personas/cost-optimizer.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["web_search", "note", "read_notes"] }
 

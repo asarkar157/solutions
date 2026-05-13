@@ -19,7 +19,7 @@ terraform {
 resource "sg_agent" "cloud_infra" {
   name        = "cloud-infrastructure-engineer"
   persona     = file("${path.module}/personas/cloud-infra.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = ["run_shell"]
@@ -36,13 +36,13 @@ resource "sg_agent" "cloud_infra" {
 resource "sg_agent" "k8s_ops" {
   name        = "kubernetes-operator"
   persona     = file("${path.module}/personas/k8s-ops.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "github_scm" {
   name        = "github-scm-manager"
   persona     = file("${path.module}/personas/github-scm.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   integrations = var.github_token != "" ? compact([lookup(var.integration_names, "github_scm", "github-integration")]) : []
 }
@@ -50,25 +50,25 @@ resource "sg_agent" "github_scm" {
 resource "sg_agent" "qa_testing" {
   name        = "qa-test-engineer"
   persona     = file("${path.module}/personas/qa-testing.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "docs_writer" {
   name        = "documentation-writer"
   persona     = file("${path.module}/personas/docs-writer.md")
-  model_names = [var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "ui_frontend" {
   name        = "ui-frontend-developer"
   persona     = file("${path.module}/personas/ui-frontend.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "linear_pm" {
   name        = "project-manager"
   persona     = file("${path.module}/personas/linear-pm.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   integrations = var.linear_mcp_integration_name != "" ? [var.linear_mcp_integration_name] : []
 }
@@ -76,13 +76,13 @@ resource "sg_agent" "linear_pm" {
 resource "sg_agent" "datadog_alert_triage" {
   name        = "datadog-alert-analyst"
   persona     = file("${path.module}/personas/datadog-alert-triage.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "github_pr_reminder" {
   name        = "pr-review-reminder"
   persona     = file("${path.module}/personas/github-pr-reminder.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = ["run_shell"]

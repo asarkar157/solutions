@@ -55,13 +55,9 @@ resource "sg_policy" "stackgen_guardrails" {
 
 # 4. Provision the Agent
 resource "sg_agent" "stackgen_expert" {
-  name    = "stackgen-expert"
-  persona = file("${path.module}/personas/stackgen-expert.md")
-  model_names = compact([
-    lookup(var.model_names, "gpt4o", ""),
-    lookup(var.model_names, "claude_sonnet", ""),
-    lookup(var.model_names, "gemini_flash", "")
-  ])
+  name        = "stackgen-expert"
+  persona     = file("${path.module}/personas/stackgen-expert.md")
+  model_names = compact(var.model_names)
 
   integrations = compact([
     sg_guild_integration.stackgen_mcp.name,

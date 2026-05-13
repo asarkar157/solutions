@@ -14,7 +14,7 @@ terraform {
 resource "sg_agent" "repo_iac_architect" {
   name        = "repository-iac-architect"
   persona     = file("${path.module}/personas/repo-to-iac-architect.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   integrations = compact([
     var.github_integration_name,

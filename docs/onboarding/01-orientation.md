@@ -12,12 +12,15 @@ parent: Onboarding
 
 This monorepo is a **Terraform/OpenTofu module library for StackGen**: provider-backed resources such as **projects**, **roles**, **secrets**, **integrations**, **policies** (Rego), and **agents**. **AIOS**—StackGen’s AI operating system—is a **strong theme in the catalog** (foundation, integrations, and agent bundles) when you want opinionated, layered stacks; you can still adopt pieces à la carte. Modules compose in layers (foundation → integrations → agents; see [Architecture]({% include doc_url.html path="architecture.md" %})).
 
-## Two common paths
+## Three common paths
 
-1. **I only want to use modules in my Terraform**  
-   You will reference module `source` URLs (GitHub), provide variables (StackGen URL, API keys, etc.), and run **`tofu plan` / `tofu apply`** (or the same with **`terraform`**) in **your** environment. You do **not** have to clone this repo unless you want to read examples or contribute.
+1. **I want to demo Aiden in front of a prospect today** (most pre-sales SEs land here first)  
+   You will clone this repo, set a few environment variables, and run `make demo SCENARIO=<name>` — a one-command wrapper over `tofu init && plan && apply` against a prebuilt scenario root under [`examples/scenarios/`]({{ site.github.repository_url }}/tree/main/examples/scenarios). See the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) for which scenario to pick for which prospect. The rest of the onboarding steps are optional for this path.
 
-2. **I want to change modules or run the same checks as CI**  
+2. **I only want to use modules in my Terraform** (composing your own root)  
+   You will reference module `source` URLs (GitHub), provide variables (StackGen URL, API keys, etc.), and run **`tofu plan` / `tofu apply`** (or the same with **`terraform`**) in **your** environment. You do **not** have to clone this repo unless you want to read examples or contribute. This is the path the rest of these onboarding pages walk you through.
+
+3. **I want to change modules or run the same checks as CI**  
    You will clone this repository, install Terraform (and OPA for policy work), and use the **`Makefile`** targets described in later steps.
 
 ## What you need in the real world (high level)

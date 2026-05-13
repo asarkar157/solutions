@@ -18,6 +18,6 @@ module "stackgen_mcp_agent" {
 
   stackgen_mcp_url   = "https://app.stackgen.com/api/mcp/sse"
   stackgen_api_token = var.my_secure_token
-  model_names        = { gpt4o = "gpt-4o" }
+  model_names        = ["gpt-4o"]
 }
 ```

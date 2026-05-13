@@ -16,7 +16,7 @@ terraform {
 resource "sg_agent" "sentry_observer" {
   name        = "sentry-observer"
   persona     = file("${path.module}/personas/sentry-observer.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gemini_flash]
+  model_names = compact(var.model_names)
 
   integrations = [var.integration_names.sentry]
 }

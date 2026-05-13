@@ -1,7 +1,7 @@
 # Local verification and CI entrypoints. Full context: README.md
 # ("Local verification", "Continuous integration").
 
-.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates verify-persona-length check clean
+.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates verify-persona-length check clean demo demo-list demo-doctor demo-reset
 
 SHELL := /bin/bash
 
@@ -15,15 +15,22 @@ help:
 	@echo ""
 	@echo "  TF=$(TF)  (default: tofu if installed, else terraform — set TF= to override)"
 	@echo ""
-	@echo "  make fmt | fix-fmt  Format all .tf ($(TF) fmt -recursive; fixes fmt-check failures)"
-	@echo "  make fmt-check      CI-style format check ($(TF) fmt -check -recursive)"
-	@echo "  make opa-fmt        Format all Rego (.rego) files"
-	@echo "  make opa-fmt-check  Fail if Rego formatting differs (CI)"
-	@echo "  make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
-	@echo "  make validate       $(TF) init -backend=false && validate per module/example + db-state-split tftpl smoke"
-	@echo "  make verify-persona-length  Fail if (a) any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap), or (b) any aios-agent-* module is missing _persona_guard.tf"
-	@echo "  make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, validate"
-	@echo "  make clean          remove .terraform caches under modules/ and examples/"
+	@echo "  SE-facing targets (pre-sales demos, see docs/se-playbook.md):"
+	@echo "    make demo-list                Available scenarios with their prospect pitch"
+	@echo "    make demo-doctor [SCENARIO=…] Check tools + env vars before applying"
+	@echo "    make demo SCENARIO=<name>     tofu init && apply examples/scenarios/<name>"
+	@echo "    make demo-reset SCENARIO=…    tofu destroy then re-apply (between demos)"
+	@echo ""
+	@echo "  Build / CI targets:"
+	@echo "    make fmt | fix-fmt  Format all .tf ($(TF) fmt -recursive; fixes fmt-check failures)"
+	@echo "    make fmt-check      CI-style format check ($(TF) fmt -check -recursive)"
+	@echo "    make opa-fmt        Format all Rego (.rego) files"
+	@echo "    make opa-fmt-check  Fail if Rego formatting differs (CI)"
+	@echo "    make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
+	@echo "    make validate       $(TF) init -backend=false && validate per module/example + db-state-split tftpl smoke"
+	@echo "    make verify-persona-length  Fail if (a) any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap), or (b) any aios-agent-* module is missing _persona_guard.tf"
+	@echo "    make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, validate"
+	@echo "    make clean          remove .terraform caches under modules/ and examples/"
 	@echo ""
 	@echo "validate needs network; see README if dev_overrides force a minimal CLI config (then set TF_TOKEN_releases_stackgen_com)."
 
@@ -74,3 +81,35 @@ clean:
 	@find modules examples -type d -name .terraform -prune 2>/dev/null | while read -r d; do \
 	  echo "rm -rf $$d"; rm -rf "$$d"; \
 	done; true
+
+# -----------------------------------------------------------------------------
+# Solutions-engineer demo targets (see docs/se-playbook.md)
+# -----------------------------------------------------------------------------
+# These targets wrap scripts/demo.sh so SEs can launch / reset prospect demos
+# with one command. Set credentials as environment variables (the script maps
+# STACKGEN_URL etc. to TF_VAR_*); see the header of scripts/demo.sh for the
+# full list.
+
+DEMO_SCRIPT := $(CURDIR)/scripts/demo.sh
+
+demo-list:
+	@chmod +x "$(DEMO_SCRIPT)" 2>/dev/null || true
+	@"$(DEMO_SCRIPT)" list
+
+demo-doctor:
+	@chmod +x "$(DEMO_SCRIPT)" 2>/dev/null || true
+	@"$(DEMO_SCRIPT)" doctor $(SCENARIO)
+
+demo:
+	@chmod +x "$(DEMO_SCRIPT)" 2>/dev/null || true
+	@if [ -z "$(SCENARIO)" ]; then \
+	  echo "error: SCENARIO is required (try: make demo-list)"; exit 2; \
+	fi
+	@"$(DEMO_SCRIPT)" apply "$(SCENARIO)"
+
+demo-reset:
+	@chmod +x "$(DEMO_SCRIPT)" 2>/dev/null || true
+	@if [ -z "$(SCENARIO)" ]; then \
+	  echo "error: SCENARIO is required (try: make demo-list)"; exit 2; \
+	fi
+	@"$(DEMO_SCRIPT)" reset "$(SCENARIO)"

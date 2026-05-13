@@ -11,7 +11,7 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 
 ## Operator prerequisites (outside Terraform)
 
-- **`monolith_state_uri` / `iac_repository_url`** are workflow inputs when you start **`db-monorepo-state-split-convergence`** in Guild — not variables on this module. The **Ubuntu CLI** (or **remote runner**) environment must be able to **fetch** state and **clone** the repo (tokens, cloud SDK auth, VPC egress to S3/GCS, etc.).
+- **`monolith_state_uri` / `iac_repository_url`** are workflow inputs when you start **`db-monorepo-state-split-convergence`** in Guild — not variables on this module. The **Ubuntu CLI** (or **remote runner**) environment must be able to **fetch** state and **clone** the repo (git tokens, cloud SDK auth, VPC egress to S3/GCS, etc.). The `gh api` GitHub integration is for **metadata only** — actual `git clone` happens inside the Ubuntu container and needs **env-mounted git credentials** (see "Git connectivity" below).
 - **AWS connectivity for `tofu plan`.** Passing `integration_names.aws` attaches the AWS Guild integration (`aws_cli_*` MCP tools), but `tofu plan -generate-config-out=` and `tofu plan` use the **`hashicorp/aws`** provider inside the **Ubuntu** container — they need AWS credentials in that container's environment, not as MCP tools. Wire a read-only AWS secret onto the Ubuntu integration's `secret_ref_ids`:
 
   ```hcl
@@ -31,7 +31,33 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
   ```
 
   Then either (a) define the Ubuntu `sg_guild_integration` directly in your root with `secret_ref_ids = [sg_secret.ubuntu_aws_readonly.id]`, or (b) extend `modules/aios-integration-ubuntu` with an `extra_secret_ref_ids` variable. The AWS managed policy `ReadOnlyAccess` is sufficient for everything the workflow does; narrower policies must include `s3:GetObject` on the state bucket plus read on every resource type present in the monolith state.
-- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image. When a remote runner is configured for plan fan-out, the same AWS read-only credentials must be available there too.
+- **Git connectivity for `git clone iac_repository_url`.** Same pattern as AWS — the GitHub Guild integration only powers `gh api` MCP tools, but **`git clone` / `git fetch` / `git push`** run inside the **Ubuntu** container and need credentials in that container's **env**. Wire a read-only git secret onto the Ubuntu integration's `secret_ref_ids`:
+
+  ```hcl
+  resource "sg_secret" "ubuntu_git" {
+    name        = "ubuntu-cli-git-token"
+    description = "Git access token (HTTPS) for cloning IaC repos inside the Ubuntu MCP."
+    category    = "Provider"
+    subcategory = "github" # or "gitlab", "bitbucket", "generic-git"
+
+    metadata = {
+      # HTTPS token auth (preferred — works with GitHub, GitLab, Bitbucket, Azure DevOps).
+      # The SOPs instruct the agent to clone with:
+      #   git clone https://x-access-token:${GIT_TOKEN}@${GIT_HOST}/<org>/<repo>.git
+      # so any token-bearing variable name works as long as the agent is told which one.
+      GIT_TOKEN    = var.git_readonly_token
+      GIT_HOST     = "github.com"             # repo host (no scheme)
+      GIT_USERNAME = "x-access-token"         # GitHub/GitLab token-as-password convention
+      # Optional fine-grained PAT scopes (GitHub): `repo:read`, `metadata:read`. For read-only
+      # state-split work you do NOT need `repo:write` or `workflow` — least privilege.
+    }
+  }
+  ```
+
+  For SSH-key auth instead of HTTPS tokens, mount `GIT_SSH_PRIVATE_KEY` (PEM body) and `GIT_SSH_KNOWN_HOSTS` and the agent will write them to `~/.ssh/` with `chmod 600` before cloning. For multi-host setups (mixed GitHub + GitLab + internal git), repeat the secret with per-host metadata (e.g. `GIT_TOKEN_GITHUB`, `GIT_HOST_GITHUB`, `GIT_TOKEN_GITLAB`, `GIT_HOST_GITLAB`) — the SOPs match on the host parsed from `iac_repository_url`.
+
+  Wire the secret in the same two ways as the AWS one: (a) define the Ubuntu `sg_guild_integration` in your root with `secret_ref_ids = [sg_secret.ubuntu_git.id, sg_secret.ubuntu_aws_readonly.id]`, or (b) extend `modules/aios-integration-ubuntu` with an `extra_secret_ref_ids` variable that fans both in. If the repo also needs to be written back to (PR creation for `orphan-iac-module-authoring`), the token must have `repo:write` (or equivalent) — but the **primary** split workflow only needs read.
+- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image. When a remote runner is configured for plan fan-out, the same AWS read-only **and git** credentials must be available there too.
 
 ## Security & privacy
 

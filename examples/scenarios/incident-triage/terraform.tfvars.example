@@ -1,0 +1,19 @@
+# =============================================================================
+# Scenario: incident-triage — example tfvars
+# =============================================================================
+#   make demo SCENARIO=incident-triage
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"     # sensitive
+stackgen_project_id = ""
+
+openai_api_key    = ""                         # at least one of these required
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+# Required: Grafana
+grafana_server = "https://grafana.example.com"
+grafana_token  = "glsa_replace_me"            # sensitive
+
+# Required: Slack (the demo's payoff is the RCA post)
+slack_bot_token = "xoxb-replace-me"           # sensitive

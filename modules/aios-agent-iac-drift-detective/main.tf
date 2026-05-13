@@ -14,7 +14,13 @@ variable "integration_names" {
 }
 
 variable "model_names" {
-  type = map(string)
+  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
+  type        = list(string)
+
+  validation {
+    condition     = length(compact(var.model_names)) > 0
+    error_message = "model_names must contain at least one non-empty model name."
+  }
 }
 
 variable "workflow_skill_refs" {
@@ -52,13 +58,9 @@ data "sg_remote_runner" "iac_drift_detective" {
 }
 
 resource "sg_agent" "iac_drift_detective" {
-  name    = "iac-drift-detective"
-  persona = file("${path.module}/personas/drift-detective.md")
-  model_names = compact([
-    lookup(var.model_names, "gpt4o", ""),
-    lookup(var.model_names, "claude_sonnet", ""),
-    lookup(var.model_names, "gemini_flash", "")
-  ])
+  name           = "iac-drift-detective"
+  persona        = file("${path.module}/personas/drift-detective.md")
+  model_names    = compact(var.model_names)
   remote_runners = length(data.sg_remote_runner.iac_drift_detective) > 0 ? toset([data.sg_remote_runner.iac_drift_detective[0].name]) : null
   integrations = compact([
     lookup(var.integration_names, "github", ""),

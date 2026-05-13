@@ -1,0 +1,19 @@
+# =============================================================================
+# Scenario: repo-to-iac — example tfvars
+# =============================================================================
+#   make demo SCENARIO=repo-to-iac
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"     # sensitive
+stackgen_project_id = ""
+
+openai_api_key    = ""                         # at least one of these required
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+# Required: GitHub PAT (repo + read:org)
+github_token = "ghp_replace_me"               # sensitive
+
+# Optional: demo repo URL the SE pastes into the workflow.
+# The workflow accepts any GitHub URL at run-time; this only seeds the prompt.
+github_repo_url = "https://github.com/appcd-dev/solutions"

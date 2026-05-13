@@ -30,10 +30,8 @@ Multi-channel request processing (Jira/Slack/Web): analyze → create tracking i
 module "sdlc" {
   source = "github.com/appcd-dev/solutions//modules/aios-agent-sdlc"
 
-  model_names = {
-    gpt4o         = module.foundation.model_names.gpt4o
-    claude_sonnet = module.foundation.model_names.claude_sonnet
-  }
+  # aios-foundation exposes model_names as list(string); pass it through.
+  model_names = module.foundation.model_names
 
   policy_ids = {
     dangerous_ops = module.policies.policy_ids.dangerous_ops

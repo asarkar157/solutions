@@ -5,8 +5,13 @@ variable "integration_names" {
 }
 
 variable "model_names" {
-  description = "Map of models available to use (e.g., claude_sonnet, gpt4o)"
-  type        = map(string)
+  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
+  type        = list(string)
+
+  validation {
+    condition     = length(compact(var.model_names)) > 0
+    error_message = "model_names must contain at least one non-empty model name."
+  }
 }
 
 variable "agent_budget" {

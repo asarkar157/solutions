@@ -10,13 +10,9 @@ terraform {
 # =============================================================================
 
 resource "sg_agent" "soc_analyst" {
-  name    = "soc-analyst"
-  persona = file("${path.module}/personas/soc-analyst.md")
-  model_names = compact([
-    lookup(var.model_names, "gpt4o", ""),
-    lookup(var.model_names, "claude_sonnet", ""),
-    lookup(var.model_names, "gemini_flash", "")
-  ])
+  name        = "soc-analyst"
+  persona     = file("${path.module}/personas/soc-analyst.md")
+  model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["web_search", "note", "read_notes", "query_logs"] }
 

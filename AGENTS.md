@@ -98,7 +98,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 
 ## Variable and output contracts (agent modules)
 
-- **`model_names`**: Almost always `module.foundation.model_names` (object with keys like `gpt4o`, `claude_sonnet`, `gemini_flash`).
+- **`model_names`** is a **`list(string)`** of Guild-registered model names in priority order. Wire `module.foundation.model_names` directly (it is a `list(string)` output containing only configured models — empty entries are dropped). For hand-picking a single provider, use the companion `module.foundation.model_names_by_provider` map (e.g. `[module.foundation.model_names_by_provider.gpt4o]`). Modules forward `model_names` straight to `sg_agent.model_names` after `compact()`; agents are no longer picky about which keys exist.
 - **`policy_ids`**: A **map** keyed by logical names; each agent module documents which keys it needs in its `variables.tf` / README. Source: `module.policies.policy_ids`.
 - **Integrations**: Some modules take `integration_name` (string), others `integration_names` (map). Match the **exact** variable type of the module you are calling.
 - **Secrets / tokens**: Prefer root-level sensitive variables and pass into modules; never commit credentials.
@@ -149,6 +149,10 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-workspace-assistant` | Workspace assistant workflow |
 | `modules/aios-agent-ubuntu-cli` | Ubuntu CLI-oriented agent |
 | `modules/aios-agent-clickhouse-inspector` | ClickHouse inspection |
+| `modules/aios-agent-resource-janitor` | Multi-cloud unused-resource detection (≥ 30 days inactive — Lambda invocations, S3 last-modified, idle compute / disks / IPs) plus HITL-gated tag-and-quarantine cleanup workflow |
+| `modules/aios-agent-pipeline-insights` | Read-only GitHub pipeline & deployment intelligence — workflow runs, PR-merge metadata (who / when / mode / scope), deployment statuses with failure log excerpts |
+| `modules/aios-agent-release-tracker` | Read-only microservice release tracker — latest GitHub tags / Releases, GHCR image versions, "what's deployed where" via deployments + optional manifest cross-check, release diffs |
+| `modules/aios-agent-scenario-author` | Closes the SE feedback loop — triages `scenario-request` GitHub issues, matches existing scenarios, scaffolds new `examples/scenarios/<slug>/` PRs (5 files + `scripts/demo.sh` entry), validates with tofu fmt + validate, opens PR, comments back on the issue. Uses GitHub + Ubuntu CLI integrations (`gh` CLI installed on first use); strict repo + label gate |
 | `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent or workflow |
 
 ## IDE tips (no agent file required)

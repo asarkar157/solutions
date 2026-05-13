@@ -1,0 +1,1 @@
+Conversational microservice release tracker. Resolves the target service (via repository or a service catalog), pulls the latest tags, GitHub Releases, container image tags, and (optionally) the currently deployed version per environment, and renders a linked Markdown report. Read-only — never publishes releases or pushes images.

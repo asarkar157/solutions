@@ -43,6 +43,7 @@ module "foundation" {
 
 | Name | Description |
 |------|-------------|
-| `model_names` | Map of model name references (`gpt4o`, `claude_sonnet`, `gemini_flash`) |
+| `model_names` | **`list(string)`** of registered model names in stable order (`claude_sonnet`, `gpt4o`, `gemini_flash`); unconfigured providers are omitted. Wire directly to any agent module's `model_names` input. |
+| `model_names_by_provider` | Map of provider key → registered model name (empty string for unconfigured providers). Use for hand-picking a specific provider, e.g. `model_names = [module.foundation.model_names_by_provider.gpt4o]`. |
 | `model_provider_names` | Map of provider name references |
 | `secret_names` | Map of vault secret names |

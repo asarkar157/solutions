@@ -13,6 +13,15 @@ Keywords: orphan resources, new module, terraform test, scaffold, stackgen regis
 2. Prefer **import blocks** pulling orphan addresses into clean resource names.
 3. Add `tests/` with `command = plan` hermetic tests (see `terraform-install-validate-test-sop` pattern from terraform-bot module).
 
+### HCL-only output (never `.tf.json`)
+
+The module scaffold MUST be **HCL** end to end. Hard rules — same as **db-state-split-orchestration-sop** § *HCL-only output*:
+
+- `main.tf` / `variables.tf` / `outputs.tf` / `versions.tf` — `.tf` only, never `*.tf.json`. `tofu fmt` is the parity check.
+- Import blocks and generator output (`tofu plan -generate-config-out=generated.tf`) — HCL.
+- `terraform show -json` snapshots are *inputs* to taxonomy decisions, never committed config.
+- If a single attribute genuinely can't be expressed in HCL, do **not** fall back to `*.tf.json` — split the address out, document it in `orphan_modularization_memory` under `requires_dynamic_codegen`, and let a follow-up iteration extend the module with `dynamic { ... }` blocks or a `templatefile()` indirection (still HCL).
+
 ## Validate
 
 1. `tofu fmt`, `init`, `validate`, `plan` — **one command group per step** with conservative **`timeout_seconds`** (avoid chaining all shards through a single ~300s-at-risk shell line). Optional `tfsec`/`checkov` soft-fail.
@@ -23,5 +32,5 @@ Keywords: orphan resources, new module, terraform test, scaffold, stackgen regis
 
 ## Handoff
 
-1. Open PR or emit `notify` with module path + test evidence.
+1. Open PR or emit `notify` with module path + test evidence. The PR path uses **`git push`** + **`gh pr create`** inside the **Ubuntu** container, which requires a **write-scope** git token mounted as env (`GIT_TOKEN` with `repo:write` for GitHub, equivalent for GitLab/Bitbucket). See **db-state-split-orchestration-sop** § *Git connectivity* — same detection chain as the read-side clone. If the read-side token lacks write scope, soft-fail the PR step and `notify` with `{stage:'memory-and-handoff', error:'git_credentials_readonly', host:...}`; do **not** `ask_clarifying_question` for a new token.
 2. If StackGen registration is required, follow org’s `stackgen register` SOP (reuse terraform-bot registration skill when available).

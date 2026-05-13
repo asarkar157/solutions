@@ -455,7 +455,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -501,7 +501,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -536,7 +536,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -571,7 +571,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -606,7 +606,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -646,7 +646,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -689,7 +689,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -713,7 +713,7 @@
         "workflow_names",
         "runbook_names"
       ],
-      "usage": "module \"repo_to_iac\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-repo-to-iac?ref=main\"\n\n  model_names = {\n    gpt4o         = module.foundation.model_names.gpt4o\n    claude_sonnet = module.foundation.model_names.claude_sonnet\n  }\n  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_integration_name = module.github_integration.integration_name\n}"
+      "usage": "module \"repo_to_iac\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-repo-to-iac?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_integration_name = module.github_integration.integration_name\n}"
     },
     {
       "id": "aios-agent-software-engineering",
@@ -731,7 +731,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -767,7 +767,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -796,7 +796,7 @@
         "workflow_names",
         "runbook_names"
       ],
-      "usage": "module \"sdlc\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-sdlc?ref=main\"\n\n  model_names = {\n    gpt4o         = module.foundation.model_names.gpt4o\n    claude_sonnet = module.foundation.model_names.claude_sonnet\n  }\n  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  sre_agent_names   = { sre_risk_posture = module.sre.agent_names.sre_risk_posture }\n  sre_runbook_names = { deployment_rollback = \"argocd-rollback\" }\n}"
+      "usage": "module \"sdlc\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-sdlc?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  sre_agent_names   = { sre_risk_posture = module.sre.agent_names.sre_risk_posture }\n  sre_runbook_names = { deployment_rollback = \"argocd-rollback\" }\n}"
     },
     {
       "id": "aios-agent-supply-chain-security",
@@ -813,7 +813,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -852,7 +852,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -888,7 +888,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -922,7 +922,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -950,7 +950,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -985,7 +985,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1019,7 +1019,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1036,7 +1036,7 @@
       "outputs": [
         "agent_name"
       ],
-      "usage": "module \"ubuntu_cli\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-ubuntu-cli?ref=main\"\n\n  model_names = {\n    gpt4o         = module.foundation.model_names.gpt4o\n    claude_sonnet = module.foundation.model_names.claude_sonnet\n  }\n  policy_ids = {\n    dangerous_ops        = module.policies.policy_ids.dangerous_ops\n    container_shell_hitl = module.policies.policy_ids.container_shell_hitl\n  }\n  integration_names = {\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n}"
+      "usage": "module \"ubuntu_cli\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-ubuntu-cli?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops        = module.policies.policy_ids.dangerous_ops\n    container_shell_hitl = module.policies.policy_ids.container_shell_hitl\n  }\n  integration_names = {\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n}"
     },
     {
       "id": "aios-agent-clickhouse-inspector",
@@ -1053,7 +1053,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1070,7 +1070,7 @@
       "outputs": [
         "agent_name"
       ],
-      "usage": "module \"clickhouse_inspector\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-clickhouse-inspector?ref=main\"\n\n  model_names = {\n    gpt4o         = module.foundation.model_names.gpt4o\n    claude_sonnet = module.foundation.model_names.claude_sonnet\n  }\n  policy_ids = {\n    dangerous_ops         = module.policies.policy_ids.dangerous_ops\n    data_risk_pii         = module.policies.policy_ids.data_risk_pii\n    azure_tool_governance = module.policies.policy_ids.azure_tool_governance\n  }\n  integration_names = {\n    clickhouse = module.clickhouse_integration.integration_name\n  }\n}"
+      "usage": "module \"clickhouse_inspector\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-clickhouse-inspector?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops         = module.policies.policy_ids.dangerous_ops\n    data_risk_pii         = module.policies.policy_ids.data_risk_pii\n    azure_tool_governance = module.policies.policy_ids.azure_tool_governance\n  }\n  integration_names = {\n    clickhouse = module.clickhouse_integration.integration_name\n  }\n}"
     },
     {
       "id": "aios-agent-db-optimizer",
@@ -1087,7 +1087,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "map(string)",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1114,7 +1114,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "map(string)",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1151,7 +1151,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1222,7 +1222,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "map(string)",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1275,7 +1275,7 @@
         },
         {
           "n": "model_names",
-          "t": "map(string)",
+          "t": "list(string)",
           "r": true
         }
       ],
@@ -1284,7 +1284,7 @@
         "policy_id",
         "integration_name"
       ],
-      "usage": "module \"stackgen_mcp_agent\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-stackgen-mcp-policy?ref=main\"\n\n  stackgen_mcp_url   = \"https://app.stackgen.com/api/mcp/sse\"\n  stackgen_api_token = var.stackgen_token\n  model_names        = { gpt4o = module.foundation.model_names.gpt4o }\n}"
+      "usage": "module \"stackgen_mcp_agent\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-stackgen-mcp-policy?ref=main\"\n\n  stackgen_mcp_url   = \"https://app.stackgen.com/api/mcp/sse\"\n  stackgen_api_token = var.stackgen_token\n  model_names        = [module.foundation.model_names_by_provider.gpt4o]\n}"
     },
     {
       "id": "aios-agent-sre-incident-commander",
@@ -1301,7 +1301,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "map(string)",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1329,7 +1329,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1380,7 +1380,7 @@
       "vars": [
         {
           "n": "model_names",
-          "t": "object({gpt4o,claude_sonnet,gemini_flash})",
+          "t": "list(string)",
           "r": true
         },
         {
@@ -1426,6 +1426,243 @@
         "webhook_token"
       ],
       "usage": "module \"db_state_splitter\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-db-state-splitter?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n  # stackgen_mcp_integration_name = module.stackgen_mcp.integration_name\n}"
+    },
+    {
+      "id": "aios-agent-resource-janitor",
+      "name": "Resource Janitor",
+      "desc": "Multi-cloud unused-resource detection (≥30 days inactive — Lambda invocations, S3 last-modified, idle compute / disks / public IPs across AWS, Azure, GCP) plus a HITL-gated tag-and-quarantine cleanup workflow with dwell window, blast-radius caps, `dangerous_ops` policy, and an evidence checklist on the destructive workflow.",
+      "layer": 2,
+      "tags": [
+        "finops",
+        "cost",
+        "cleanup",
+        "aws",
+        "azure",
+        "gcp",
+        "hitl"
+      ],
+      "icon": "🧹",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "integration_names",
+          "t": "map(string)",
+          "r": false
+        },
+        {
+          "n": "inactivity_days",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "cleanup_dwell_days",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "max_resources_per_run",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "cleanup_dollar_cap",
+          "t": "number",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_name",
+        "workflow_names",
+        "runbook_names",
+        "evidence_checklist_name"
+      ],
+      "usage": "module \"resource_janitor\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-resource-janitor?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    aws   = module.aws_integration.integration_name\n    slack = module.slack_integration.integration_name\n  }\n}"
+    },
+    {
+      "id": "aios-agent-pipeline-insights",
+      "name": "Pipeline Insights",
+      "desc": "Read-only GitHub pipeline & deployment intelligence: workflow run status, PR merge metadata (who / when / mode / reviewers), deployment statuses with failure log excerpts. Optional Slack ingress `sg_webhook` so a Slack bridge can fire the workflow with a raw question.",
+      "layer": 2,
+      "tags": [
+        "github",
+        "cicd",
+        "deployments",
+        "observability",
+        "read-only",
+        "slack"
+      ],
+      "icon": "🚦",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "integration_names",
+          "t": "map(string)",
+          "r": true
+        },
+        {
+          "n": "deployments_limit",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "enable_slack_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_name",
+        "workflow_name",
+        "runbook_names",
+        "webhook"
+      ],
+      "usage": "module \"pipeline_insights\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-pipeline-insights?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    github = module.github_integration.integration_name\n    slack  = module.slack_integration.integration_name\n  }\n}"
+    },
+    {
+      "id": "aios-agent-release-tracker",
+      "name": "Release Tracker",
+      "desc": "Read-only microservice release tracker: latest GitHub tags + Releases, GHCR image-tag enumeration, deployed-version correlation across environments, ref-to-ref release diffs. Optional service catalog so operators can ask \"what's the latest version of X?\" without naming the repo.",
+      "layer": 2,
+      "tags": [
+        "github",
+        "releases",
+        "containers",
+        "ghcr",
+        "read-only",
+        "microservices"
+      ],
+      "icon": "🏷️",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "integration_names",
+          "t": "map(string)",
+          "r": true
+        },
+        {
+          "n": "tag_limit",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "release_limit",
+          "t": "number",
+          "r": false
+        },
+        {
+          "n": "include_prereleases_default",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "image_namespace_template",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "service_catalog",
+          "t": "map(string)",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_name",
+        "workflow_name",
+        "runbook_names"
+      ],
+      "usage": "module \"release_tracker\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-release-tracker?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    github = module.github_integration.integration_name\n    slack  = module.slack_integration.integration_name\n  }\n\n  service_catalog = {\n    checkout = \"appcd-dev/checkout-service\"\n  }\n}"
+    },
+    {
+      "id": "aios-agent-scenario-author",
+      "name": "Scenario Author",
+      "desc": "Closes the SE feedback loop: triages `scenario-request` GitHub issues, matches existing scenarios, scaffolds new `examples/scenarios/<slug>/` PRs (5 files + `scripts/demo.sh` entry), validates with `tofu fmt`/`tofu validate`, opens a PR, and comments back on the issue. Uses GitHub + Ubuntu CLI integrations (`gh` installed on first use). Strict repo + label gate; optional `sg_webhook` ingress for GitHub `issue` events.",
+      "layer": 2,
+      "tags": [
+        "se",
+        "scenarios",
+        "github",
+        "ubuntu",
+        "automation",
+        "self-service"
+      ],
+      "icon": "✍️",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "integration_names",
+          "t": "object({github,ubuntu_cli})",
+          "r": true
+        },
+        {
+          "n": "repository_full_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "scenario_request_label",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "trigger_event_types",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "name_suffix",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_name",
+        "runbook_sop_names",
+        "webhook_id",
+        "webhook_token"
+      ],
+      "usage": "module \"scenario_author\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-scenario-author?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n\n  repository_full_name = \"appcd-dev/aios-modules\"\n}"
     }
   ]
 }

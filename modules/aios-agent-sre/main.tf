@@ -19,7 +19,7 @@ terraform {
 resource "sg_agent" "sre_triage" {
   name        = "alert-triage-analyst"
   persona     = file("${path.module}/personas/sre-triage.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   integrations = compact([
     lookup(var.integration_names, "grafana", "") != "" ? var.integration_names.grafana : null,
@@ -29,13 +29,13 @@ resource "sg_agent" "sre_triage" {
 resource "sg_agent" "sre_change_correlation" {
   name        = "change-correlation-analyst"
   persona     = file("${path.module}/personas/sre-change-correlation.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "sre_auto_remediation" {
   name        = "auto-remediation-engineer"
   persona     = file("${path.module}/personas/sre-auto-remediation.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = ["run_shell"]
@@ -47,13 +47,13 @@ resource "sg_agent" "sre_auto_remediation" {
 resource "sg_agent" "sre_risk_posture" {
   name        = "risk-posture-assessor"
   persona     = file("${path.module}/personas/sre-risk-posture.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gemini_flash]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "sre_incident" {
   name        = "incident-commander"
   persona     = file("${path.module}/personas/sre-incident.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   integrations = compact([
     lookup(var.integration_names, "grafana", "") != "" ? var.integration_names.grafana : null,

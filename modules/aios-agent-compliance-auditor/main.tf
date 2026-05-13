@@ -19,7 +19,7 @@ resource "sg_policy" "compliance_data_access" {
 resource "sg_agent" "compliance_auditor" {
   name        = "compliance-auditor"
   persona     = file("${path.module}/personas/compliance-auditor.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["web_search", "note", "read_notes"] }
 

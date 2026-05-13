@@ -14,6 +14,23 @@ permalink: module-catalog/
     <p class="catalog-subtitle">Discover, explore, and compose production-ready Terraform modules for AI Operations. Filter by tag, copy the source URL, and wire modules into your IaC root.</p>
   </div>
 
+  <div class="catalog-se-strip" markdown="1">
+
+  > **Solutions engineer?** You probably want a **runnable scenario**, not a single module. Each scenario below is one Terraform root under [`examples/scenarios/`]({{ site.github.repository_url }}/tree/main/examples/scenarios) that finishes inside a 30-minute call.
+  >
+  > | Prospect asked… | Run | Modules wired |
+  > |-----------------|-----|---------------|
+  > | "Fix an AWS incident in front of me." | `make demo SCENARIO=aws-sre-demo` | foundation, policies, integration-aws, agent-aws-sre, integration-slack |
+  > | "Show me FinOps." | `make demo SCENARIO=finops-weekly` | foundation, policies, integration-aws, agent-cost-optimizer, agent-resource-janitor, agent-schedules, integration-slack |
+  > | "What does your CI insight look like?" | `make demo SCENARIO=pipeline-insights` | foundation, policies, integration-github, agent-pipeline-insights, agent-release-tracker, integration-slack |
+  > | "Triage 200 Grafana alerts a day." | `make demo SCENARIO=incident-triage` | foundation, policies, integration-grafana, integration-slack, agent-sre, agent-alert-triage |
+  > | "Take a legacy repo and make IaC." | `make demo SCENARIO=repo-to-iac` | foundation, policies, integration-github, agent-repo-to-iac |
+  > | "Wipe to a clean baseline." | `make demo SCENARIO=clean-tenant-reset` | foundation, policies |
+  >
+  > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}).
+
+  </div>
+
   <!-- Search + Filter Bar -->
   <div class="catalog-toolbar">
     <div class="catalog-search">

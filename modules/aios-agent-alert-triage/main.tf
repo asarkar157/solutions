@@ -14,7 +14,7 @@ terraform {
 resource "sg_agent" "alert_triage_coordinator" {
   name        = "alert-triage-coordinator"
   persona     = "You are an SRE Coordinator responsible for receiving Grafana alerts and orchestrating root cause analysis across AWS, Azure, K8s, and Remote Runner platforms. You dynamically identify the affected system based on alert labels and delegate investigative tasks to the best-fit agent."
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   # Integrates with Grafana to pull the initial alert data and Slack for notifications
   integrations = compact([

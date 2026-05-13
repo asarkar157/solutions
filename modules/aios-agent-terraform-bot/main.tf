@@ -20,7 +20,7 @@ data "sg_remote_runner" "terraform_module_manager" {
 resource "sg_agent" "terraform_module_manager" {
   name        = "terraform-module-manager"
   persona     = file("${path.module}/personas/terraform-module-manager.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 
   remote_runners = length(data.sg_remote_runner.terraform_module_manager) > 0 ? toset([data.sg_remote_runner.terraform_module_manager[0].name]) : null
 

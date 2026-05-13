@@ -12,7 +12,7 @@ terraform {
 resource "sg_agent" "predictive_analyst" {
   name        = "predictive-analyst"
   persona     = file("${path.module}/personas/predictive-analyst.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   integrations = compact([
     lookup(var.integration_names, "github", "") != "" ? var.integration_names.github : null,

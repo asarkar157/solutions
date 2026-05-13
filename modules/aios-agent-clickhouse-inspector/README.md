@@ -20,10 +20,8 @@ Uses a user-provided MCP server image (BYOI pattern) wrapping the official mcp-c
 module "clickhouse_inspector" {
   source = "github.com/appcd-dev/solutions//modules/aios-agent-clickhouse-inspector"
 
-  model_names = {
-    gpt4o         = module.foundation.model_names.gpt4o
-    claude_sonnet = module.foundation.model_names.claude_sonnet
-  }
+  # aios-foundation exposes model_names as list(string); pass it through.
+  model_names = module.foundation.model_names
 
   policy_ids = {
     dangerous_ops         = module.policies.policy_ids.dangerous_ops

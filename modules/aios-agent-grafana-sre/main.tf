@@ -36,7 +36,7 @@ resource "sg_guild_integration" "grafana" {
 resource "sg_agent" "grafana_sre" {
   name         = "grafana-observability-sre"
   persona      = file("${path.module}/personas/grafana-sre.md")
-  model_names  = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names  = compact(var.model_names)
   integrations = [sg_guild_integration.grafana.name]
 }
 

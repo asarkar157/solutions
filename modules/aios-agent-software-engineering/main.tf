@@ -12,7 +12,7 @@ terraform {
 resource "sg_agent" "linear_planner" {
   name         = "linear-planner-agent"
   persona      = file("${path.module}/personas/linear-planner.md")
-  model_names  = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names  = compact(var.model_names)
   integrations = compact([lookup(var.integration_names, "linear_mcp", "")])
 
   hitl = {
@@ -23,7 +23,7 @@ resource "sg_agent" "linear_planner" {
 resource "sg_agent" "cursor_developer" {
   name        = "cursor-developer-agent"
   persona     = file("${path.module}/personas/cursor-developer.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   integrations = compact([
     lookup(var.integration_names, "cursor_mcp", ""),

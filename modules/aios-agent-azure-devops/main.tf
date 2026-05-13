@@ -13,7 +13,7 @@ terraform {
 resource "sg_agent" "azure_devops_sre" {
   name        = "azure-devops-sre"
   persona     = file("${path.module}/personas/azure-devops-sre.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = concat(["azure-production_test_connection"], var.azure_readonly_tools)

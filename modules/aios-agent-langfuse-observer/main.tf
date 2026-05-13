@@ -45,7 +45,7 @@ locals {
 resource "sg_agent" "langfuse_observer" {
   name        = var.agent_name
   persona     = file("${path.module}/personas/langfuse-observer.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gemini_flash])
+  model_names = compact(var.model_names)
 
   integrations = local.observer_integrations
 }

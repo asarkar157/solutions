@@ -11,17 +11,19 @@ variable "integration_names" {
 }
 
 variable "model_names" {
-  type = map(string)
+  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
+  type        = list(string)
+
+  validation {
+    condition     = length(compact(var.model_names)) > 0
+    error_message = "model_names must contain at least one non-empty model name."
+  }
 }
 
 resource "sg_agent" "incident_commander" {
-  name    = "incident-commander"
-  persona = file("${path.module}/personas/incident-commander.md")
-  model_names = compact([
-    lookup(var.model_names, "gpt4o", ""),
-    lookup(var.model_names, "claude_sonnet", ""),
-    lookup(var.model_names, "gemini_flash", "")
-  ])
+  name        = "incident-commander"
+  persona     = file("${path.module}/personas/incident-commander.md")
+  model_names = compact(var.model_names)
   integrations = compact([
     lookup(var.integration_names, "pagerduty", ""),
     lookup(var.integration_names, "slack", ""),

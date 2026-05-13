@@ -17,10 +17,8 @@ Dedicated Linux OS diagnostic agent for read-only triage: network connectivity, 
 module "ubuntu_cli" {
   source = "github.com/appcd-dev/solutions//modules/aios-agent-ubuntu-cli"
 
-  model_names = {
-    gpt4o         = module.foundation.model_names.gpt4o
-    claude_sonnet = module.foundation.model_names.claude_sonnet
-  }
+  # aios-foundation exposes model_names as list(string); pass it through.
+  model_names = module.foundation.model_names
 
   policy_ids = {
     dangerous_ops        = module.policies.policy_ids.dangerous_ops

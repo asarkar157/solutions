@@ -19,25 +19,25 @@ terraform {
 resource "sg_agent" "marketing_content" {
   name        = "content-strategist"
   persona     = file("${path.module}/personas/marketing-content.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "marketing_pr" {
   name        = "pr-communications-lead"
   persona     = file("${path.module}/personas/marketing-pr.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "marketing_analytics" {
   name        = "marketing-analyst"
   persona     = file("${path.module}/personas/marketing-analytics.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "marketing_sales_enablement" {
   name        = "sales-enablement-lead"
   persona     = file("${path.module}/personas/marketing-sales-enablement.md")
-  model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+  model_names = compact(var.model_names)
 }
 
 # ============================================================================

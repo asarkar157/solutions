@@ -31,7 +31,7 @@ This module provisions an `sg_agent` alongside a strict `sg_agent_budget`. The a
 ### Variables
 
 - `integration_names`: Map referencing tools like `aws`, `github`, `slack`, or `splunk`.
-- `model_names`: Map defining the LLMs available (e.g., `gpt4o`).
+- `model_names`: `list(string)` of registered model names exposed to the agent in priority order.
 - `agent_budget`: Maximum daily spending allowed (default: $25).
 - `policy_ids`: Governance policies (e.g., attaching a `read_only` safety guardrail).
 
@@ -47,8 +47,6 @@ module "soc_analyst" {
     splunk = sg_integration_splunk.main.name
   }
 
-  model_names = {
-    gpt4o = sg_model_openai.gpt4o.name
-  }
+  model_names = [sg_model_openai.gpt4o.name]
 }
 ```

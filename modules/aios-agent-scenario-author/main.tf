@@ -1,0 +1,322 @@
+terraform {
+  required_version = ">= 1.5"
+  required_providers {
+    sg = {
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # 0.1.17 — adopt-on-conflict for sg_policy_bundle, already-approved
+      # sg_workflow, sg_guild_model_provider / sg_guild_model; integration env
+      # map; floor that includes evidence-checklist + remediation patterns.
+      version = ">= 0.1.17, < 0.2.0"
+    }
+  }
+}
+
+locals {
+  # Normalize name_suffix: empty → "" (no suffix), non-empty → "-<suffix>"
+  # so every named resource ends up valid kebab-case.
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name             = "scenario-author${local.suffix}"
+  workflow_name          = "scenario-request-triage${local.suffix}"
+  webhook_name           = "github-scenario-request-receiver${local.suffix}"
+  sop_orchestration_name = "scenario-author-orchestration-sop${local.suffix}"
+  sop_triage_name        = "scenario-triage-sop${local.suffix}"
+  sop_scaffold_name      = "scenario-scaffold-sop${local.suffix}"
+  sop_pr_and_notify_name = "scenario-pr-and-notify-sop${local.suffix}"
+}
+
+# =============================================================================
+# Scenario Author — agent
+# =============================================================================
+# Triaged by a GitHub webhook on `repository_full_name`. Reads `scenario-request`
+# issues, decides whether an existing scenario fits, and either replies with a
+# pointer or scaffolds a new scenario PR. The agent never writes outside
+# `examples/scenarios/<slug>/`, `scripts/demo.sh`, and the
+# `docs/se-playbook.md` "Prospect-question → scenario" table (the orchestration
+# SOP encodes that as a hard rule).
+
+resource "sg_agent" "scenario_author" {
+  name        = local.agent_name
+  persona     = file("${path.module}/personas/scenario-author.md")
+  model_names = compact(var.model_names)
+
+  # Both integrations are required (see variable validation).
+  integrations = [
+    var.integration_names.github,
+    var.integration_names.ubuntu_cli,
+  ]
+}
+
+resource "sg_agent_budget" "scenario_author" {
+  agent_name  = sg_agent.scenario_author.name
+  limit_usd   = var.agent_budget
+  period_type = "daily"
+}
+
+resource "sg_agent_policy_attachment" "scenario_author_dangerous_ops" {
+  agent_name = sg_agent.scenario_author.name
+  policy_id  = var.policy_ids.dangerous_ops
+  enabled    = true
+}
+
+# =============================================================================
+# Runbook SOPs — loaded from ./templates/*.md to keep main.tf focused
+# =============================================================================
+
+resource "sg_runbook_sop" "scenario_author_orchestration" {
+  name        = local.sop_orchestration_name
+  approve     = true
+  description = trimspace(file("${path.module}/templates/scenario-author-orchestration.md"))
+}
+
+resource "sg_runbook_sop" "scenario_triage" {
+  name        = local.sop_triage_name
+  approve     = true
+  description = trimspace(file("${path.module}/templates/scenario-triage.md"))
+}
+
+resource "sg_runbook_sop" "scenario_scaffold" {
+  name        = local.sop_scaffold_name
+  approve     = true
+  description = trimspace(file("${path.module}/templates/scenario-scaffold.md"))
+}
+
+resource "sg_runbook_sop" "scenario_pr_and_notify" {
+  name        = local.sop_pr_and_notify_name
+  approve     = true
+  description = trimspace(file("${path.module}/templates/scenario-pr-and-notify.md"))
+}
+
+# =============================================================================
+# Workflow — scenario-request-triage
+# =============================================================================
+# Four stages mapped 1:1 to the orchestration SOP's named subagent phases:
+#   analyze-issue → triage → scaffold-validate-pr → notify-issue-comment
+# notify-issue-comment ALWAYS runs (it's the user-visible output) and
+# branches on captured notes to pick the right comment body (gate-fail,
+# existing match, draft PR, happy PR, blocked).
+
+resource "sg_workflow" "scenario_request_triage" {
+  name        = local.workflow_name
+  domain      = "developer-experience"
+  description = "Triages `scenario-request` GitHub issues filed against the configured aios-modules-style repo. Decides whether an existing demo scenario already fits or scaffolds a brand-new one under examples/scenarios/<slug>/, validates with tofu fmt + tofu validate, opens a PR, and comments back on the issue. Powers the SE feedback loop documented in docs/se-feedback.md and docs/se-playbook.md."
+  approve     = true
+
+  triggers = [
+    { field = "event_type", values = var.trigger_event_types, type = "active", source = "github" }
+  ]
+
+  runbook_refs = [
+    sg_runbook_sop.scenario_author_orchestration.name,
+    sg_runbook_sop.scenario_triage.name,
+    sg_runbook_sop.scenario_scaffold.name,
+    sg_runbook_sop.scenario_pr_and_notify.name,
+  ]
+
+  required_inputs = ["repository_full_name", "issue_or_pr_number"]
+  optional_inputs = ["issue_labels"]
+
+  example_queries = [
+    "A solutions engineer just filed a `scenario-request` issue on appcd-dev/aios-modules asking for an idle-EC2-only demo — triage it",
+    "Issue #123 [scenario] grafana-only incident triage demo — see if an existing scenario fits, else scaffold a PR",
+    "Issue #45 missing the scenario-request label — politely tell the SE how to re-file"
+  ]
+
+  stages = [
+    {
+      stage_id    = "analyze-issue"
+      description = "Extract trigger payload, capture GitHub token via the GitHub integration, fetch the issue body, and run the repo + label gate."
+      note        = "Single-subagent stage. Spawn `analyze-issue-fetch-issue-and-token` (orchestration SOP Template A). Evaluate the §0c gate. If the gate fails, spawn `analyze-issue-comment-gate-fail` (Template F) and stop the workflow at this stage."
+      required    = true
+    },
+    {
+      stage_id    = "triage"
+      description = "Clone the repo, scan existing scenarios, and decide whether one already matches the issue (scenario-triage-sop)."
+      note        = "Single-subagent stage. Spawn `triage-clone` (orchestration SOP Template B + scenario-triage-sop). Persist `existing_match` (or null) and `scenario_slug` + structured fields parsed from the issue body."
+      required    = true
+    },
+    {
+      stage_id    = "scaffold-validate-pr"
+      description = "When no existing match: write the 5 scenario files, register in scripts/demo.sh, tofu fmt + validate, branch + commit + push + open PR."
+      note        = "Two-subagent stage at most. Skip entirely when `existing_match` is non-null OR `gate_result != \"pass\"`. Otherwise spawn `scaffold-write-and-validate` (Template C + scenario-scaffold-sop) THEN `scaffold-pr` (Template D + scenario-pr-and-notify-sop §1-4). Hard cap at 2 subagents."
+      required    = true
+    },
+    {
+      stage_id    = "notify-issue-comment"
+      description = "Always-runs final stage. Branches on captured notes to post exactly one issue comment: gate-fail, existing-match, happy-PR, draft-PR, or blocked."
+      note        = "Single-subagent stage. Spawn `notify-issue-comment` (orchestration SOP Template E + scenario-pr-and-notify-sop §5). This stage MUST run regardless of upstream blockers so the SE always sees a reply."
+      required    = true
+    }
+  ]
+
+  stage_bindings = [
+    {
+      stage_id  = "analyze-issue"
+      agent_ref = sg_agent.scenario_author.name
+      runbook_refs = [
+        sg_runbook_sop.scenario_author_orchestration.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name],
+        try(var.workflow_skill_refs["scenario-request-triage::analyze-issue"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $0.75, ≤ 120s.
+
+        Plan (do this exactly — the gate is what protects the bot from random org-wide noise):
+
+        1. Extract these fields from `trigger_event.payload` and write them to notes BEFORE spawning any subagent:
+             - `repository_full_name`        ← `repository.full_name`
+             - `repository_clone_url`        ← `repository.clone_url`
+             - `repository_default_branch`   ← `repository.default_branch`
+             - `issue_or_pr_number`          ← `issue.number`
+             - `event_type`                  ← `trigger_event.type`
+             - `issue_labels`                ← `[for l in issue.labels : l.name]`
+             - `issue_author`                ← `issue.user.login`
+           If `repository_full_name` or `issue_or_pr_number` is empty, branch to §6(a) of `scenario-author-orchestration-sop` and STOP.
+
+        2. `read_notes` for `issue_details` and `gh_token`. If BOTH are populated (re-entry case), skip to step 4.
+
+        3. Spawn EXACTLY one subagent named `analyze-issue-fetch-issue-and-token` per orchestration-sop Template A. It MUST do both: (a) `gh auth token` → note `gh_token` (sensitive), (b) `gh api /repos/<repository_full_name>/issues/<n>` with the `--jq` filter from Template A → note `issue_details`.
+
+        4. Evaluate the §0c gate using the notes:
+             a) `gate_result = "wrong_repo"` if `repository_full_name` ≠ `${var.repository_full_name}`.
+             b) `gate_result = "missing_label"` if `${var.scenario_request_label}` is not in `issue_labels`.
+             c) Otherwise `gate_result = "pass"`.
+
+        5. If `gate_result` is NOT `pass`: spawn EXACTLY one subagent `analyze-issue-comment-gate-fail` (Template F) which posts the canned gate-fail comment. After it returns, note `stage_summary:analyze-issue="gate ${var.scenario_request_label} -> <gate_result>; commented and stopping"` and STOP the workflow (downstream stages will short-circuit via `read_notes` of `gate_result`).
+
+        6. If `gate_result == "pass"`: note `stage_summary:analyze-issue="gate pass; issue=<n>, slug-candidate=<from-title>, queued for triage"`. NEVER include `gh_token` value in this summary.
+
+        Forbidden:
+        - Cloning the repo (that's `triage-clone`'s job).
+        - Searching the org with `gh repo list` or `gh search issues`.
+        - Spawning more than the two named subagents above.
+      EOT
+    },
+    {
+      stage_id         = "triage"
+      agent_ref        = sg_agent.scenario_author.name
+      stage_depends_on = ["analyze-issue"]
+      runbook_refs = [
+        sg_runbook_sop.scenario_author_orchestration.name,
+        sg_runbook_sop.scenario_triage.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name, local.sop_triage_name],
+        try(var.workflow_skill_refs["scenario-request-triage::triage"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $1.50, ≤ 4 minutes.
+
+        Short-circuit: if `gate_result != "pass"`, this stage MUST be a no-op. `read_notes` for `gate_result` first and bail with `stage_summary:triage="skipped: gate ${var.scenario_request_label} -> <gate_result>"`.
+
+        Plan (happy path):
+
+        1. `read_notes` for `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `gh_token`, `issue_details`, `repo_clone_path`, `existing_scenarios`, `existing_match`.
+
+        2. If `repo_clone_path` is empty, spawn ONE subagent `triage-clone` per orchestration-sop Template B + scenario-triage-sop steps 1-7. Its `goal` MUST inline the full scenario-triage-sop body (subagents cannot see learned skills). On `clone_blocker="auth"` or 404, follow §6(c) (post blocked notification via the final stage) and STOP.
+
+        3. After the subagent returns, read `existing_match`. If non-null, the next stage will short-circuit — note `stage_summary:triage="existing match: <existing_match.name>; routing to notify"` and yield.
+
+        4. If `existing_match` is null, confirm the structured notes the next stage needs: `scenario_slug`, `requested_modules`, `requested_integrations`, `talk_track`, `pitch_quote`. If any is empty AND its absence would block scaffolding, prefer `ask_clarifying_question` ONCE over spawning more subagents.
+
+        5. note `stage_summary:triage` with: clone path, scenario_slug (or null), match-or-not, modules requested, integrations requested.
+
+        Forbidden:
+        - Spawning a second `triage-*` subagent. Re-cloning the repo. `gh api /repos/.../contents/...` for bulk reads (use the clone).
+        - Posting comments here. The `notify-issue-comment` stage owns all comments.
+      EOT
+    },
+    {
+      stage_id         = "scaffold-validate-pr"
+      agent_ref        = sg_agent.scenario_author.name
+      stage_depends_on = ["triage"]
+      runbook_refs = [
+        sg_runbook_sop.scenario_author_orchestration.name,
+        sg_runbook_sop.scenario_scaffold.name,
+        sg_runbook_sop.scenario_pr_and_notify.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name, local.sop_scaffold_name, local.sop_pr_and_notify_name],
+        try(var.workflow_skill_refs["scenario-request-triage::scaffold-validate-pr"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $4.00, ≤ 8 minutes. Reserve ≥ $0.75 for `notify-issue-comment`.
+
+        Short-circuit: this stage is a no-op when ANY of these hold (check `read_notes` first):
+          - `gate_result != "pass"`
+          - `existing_match` is non-null
+          - `scaffold_blocker` is set (e.g. `"conflict"`)
+          - `clone_blocker` is set
+
+        In any short-circuit case: note `stage_summary:scaffold-validate-pr="skipped: <reason>"` and yield.
+
+        Plan (happy path):
+
+        1. `read_notes` for `repo_clone_path`, `scenario_slug`, `pitch_quote`, `gap_rationale`, `requested_modules`, `requested_integrations`, `talk_track`, `demo_length`, `issue_details`, `gh_token`, `repository_full_name`, `repository_default_branch`, `issue_or_pr_number`, `validation_summary`, `pr_url`.
+
+        2. If `validation_summary` is empty AND `scaffold_summary` is empty: spawn `scaffold-write-and-validate` (orchestration-sop Template C). Its `goal` MUST inline `scenario-scaffold-sop` steps 1-9 verbatim plus the current values of all the notes from step 1 (subagents cannot see skills). Persist `scaffold_summary`, `validation_summary`.
+
+        3. If `pr_url` is empty AND `working_branch` is empty AND scaffold step succeeded (either `validation_summary` starts with `ok:` OR `failed:`): spawn `scaffold-pr` (orchestration-sop Template D). Its `goal` MUST inline `scenario-pr-and-notify-sop` steps 1-4 verbatim plus current notes. Persist `working_branch`, `pr_url`. If `validation_summary` starts with `failed:`, the subagent MUST add `--draft` to `gh pr create` and prepend `[draft]` to the title.
+
+        4. note `stage_summary:scaffold-validate-pr` with: scenario_slug, branch, PR URL (or blocker), validation outcome, files created (from `scaffold_summary`).
+
+        Approved subagent names: `scaffold-write-and-validate`, `scaffold-pr`. NO other names. NEVER spawn a second scaffold subagent on validation failure — the SOP encodes a single retry inside the first subagent.
+
+        Forbidden:
+        - Writing files outside `examples/scenarios/<scenario_slug>/` or appending to `scripts/demo.sh`. ANY edit to `modules/`, `docs/`, `examples/complete/`, root files, CI config, or pre-commit hooks is a hard violation; the subagent MUST `git reset` such changes and re-stage only the scenario.
+        - Force-pushing or pushing to `<repository_default_branch>`.
+        - `tofu plan` / `tofu apply` / `tofu destroy` — validation is `fmt + init -backend=false + validate` only.
+      EOT
+    },
+    {
+      stage_id         = "notify-issue-comment"
+      agent_ref        = sg_agent.scenario_author.name
+      stage_depends_on = ["scaffold-validate-pr"]
+      runbook_refs = [
+        sg_runbook_sop.scenario_author_orchestration.name,
+        sg_runbook_sop.scenario_pr_and_notify.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name, local.sop_pr_and_notify_name],
+        try(var.workflow_skill_refs["scenario-request-triage::notify-issue-comment"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $0.50, ≤ 60s. THIS STAGE MUST RUN — it is how the SE sees the bot's output, including blocked-status outputs from upstream stages.
+
+        Plan:
+
+        1. `read_notes` for `gh_token`, `repository_full_name`, `issue_or_pr_number`, `gate_result`, `existing_match`, `pr_url`, `working_branch`, `scenario_slug`, `validation_summary`, `scaffold_summary`, and ALL `stage_summary:*` keys.
+
+        2. Skip the comment entirely IF AND ONLY IF `gate_result != "pass"` (the gate-fail comment was already posted in `analyze-issue`). In that case, note `stage_summary:notify-issue-comment="skipped: gate-fail comment already posted"` and yield.
+
+        3. Otherwise, spawn EXACTLY one subagent `notify-issue-comment` per orchestration-sop Template E + scenario-pr-and-notify-sop §5. The subagent picks ONE body based on captured notes (first match wins, evaluate in order):
+             a) `existing_match` non-null → "Existing scenario match" comment.
+             b) Any `stage_summary:*` value contains `budget` (case-insensitive) AND `pr_url` is empty → "Budget exhausted" comment with retry guidance + the day's spend.
+             c) Any `stage_summary:*` starts with `blocked:` → "Workflow blocked" comment.
+             d) `pr_url` non-empty AND `validation_summary` starts with `ok:` → "Scaffolded a PR" comment.
+             e) `pr_url` non-empty AND `validation_summary` starts with `failed:` → "Draft PR (validation failed)" comment.
+             f) Else (no PR, no match, no clear blocker — only happens when the agent yielded mid-stage with no notes) → "Triaged, no action taken" comment that also asks the SE to re-open the issue.
+
+        4. note `stage_summary:notify-issue-comment` with: chosen comment kind + the issue URL. NEVER include `gh_token` value.
+      EOT
+    }
+  ]
+}
+
+# =============================================================================
+# Webhook ingress — GitHub `issue.created` events
+# =============================================================================
+# `enable_webhook = false` lets operators stage the workflow + agent without
+# wiring an ingress (handy for staging tenants or dry-runs from the Guild UI).
+
+resource "sg_webhook" "github_scenario_request" {
+  count = var.enable_webhook ? 1 : 0
+
+  name        = local.webhook_name
+  target_type = "workflow"
+  target_name = sg_workflow.scenario_request_triage.name
+  action      = "A GitHub issue was filed on the configured aios-modules-style repository. Inspect the payload (repository_full_name, issue.number, issue.labels) and route to the scenario-request-triage workflow. The workflow's analyze-issue stage enforces the repo + label gate; do not pre-filter here."
+  enabled     = true
+}

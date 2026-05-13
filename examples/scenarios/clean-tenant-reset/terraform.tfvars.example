@@ -1,0 +1,12 @@
+# =============================================================================
+# Scenario: clean-tenant-reset — example tfvars
+# =============================================================================
+#   make demo SCENARIO=clean-tenant-reset
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"     # sensitive
+stackgen_project_id = ""
+
+openai_api_key    = ""                         # at least one of these required
+anthropic_api_key = ""
+gemini_api_key    = ""

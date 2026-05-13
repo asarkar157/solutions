@@ -19,7 +19,7 @@ resource "sg_policy" "gcp_tool_governance" {
 resource "sg_agent" "gcp_sre" {
   name        = "gcp-sre"
   persona     = file("${path.module}/personas/gcp-sre.md")
-  model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+  model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = [

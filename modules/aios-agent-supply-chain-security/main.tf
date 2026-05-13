@@ -37,7 +37,7 @@ resource "sg_policy" "phantom_dependency" {
 resource "sg_agent" "supply_chain_analyst" {
   name        = "supply-chain-security-analyst"
   persona     = file("${path.module}/personas/supply-chain-security.md")
-  model_names = [var.model_names.claude_sonnet, var.model_names.gpt4o]
+  model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["github-integration_test_connection"] }
 
