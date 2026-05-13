@@ -15,7 +15,7 @@ The repo serves **three jobs**. Pick the one that matches what you are doing rig
 | You are… | Where to go |
 |----------|-------------|
 | **Demoing Aiden to a prospect in the next 30 minutes.** | [`docs/se-playbook.md`](docs/se-playbook.md) — prospect-question → scenario map. Then run `make demo SCENARIO=<name>` against a root under [`examples/scenarios/`](examples/scenarios/). Each scenario is < 80 lines of HCL and ships with a talk track. |
-| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / integrations / policies / schedules / secret refs. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; phase 2 rewrites that HCL into module form. |
+| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / remote runners. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; integrations / policies / schedules / secrets / webhooks are **not** captured today (no provider data sources yet — hand-merge them) and will be added in Phase 2. Phase 2 also rewrites the raw HCL into module form. |
 | **Composing your own root from individual modules** (advanced / customer extending the library). | Continue with [Quick start](#-quick-start), [`examples/complete/`](examples/complete/), and [`docs/onboarding/`](docs/onboarding/). |
 
 > If your prospect has not seen Aiden yet, **skip the repo** — open the Guild UI. Come back once they nod at the concept.

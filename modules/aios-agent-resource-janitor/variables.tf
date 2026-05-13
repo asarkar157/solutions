@@ -24,14 +24,24 @@ variable "policy_ids" {
 variable "integration_names" {
   description = <<-EOT
     Map of cloud / notification integrations to attach to the resource-janitor agent.
-    Recognized keys (all optional except aws):
-      - aws    : AWS integration name (required for Lambda + S3 + EBS scans)
+    Recognized keys (all optional individually, but at least ONE of aws / azure / gcp
+    must be set — otherwise the agent has no surface to scan):
+      - aws    : AWS integration name (enables Lambda + S3 + EBS + EIP / NAT / snapshot scans)
       - azure  : Azure integration name (extends scans to managed disks / VMs / public IPs)
       - gcp    : GCP integration name (extends scans to compute and persistent disks)
       - slack  : Slack integration name for owner-grouped findings + cleanup notifications
   EOT
   type        = map(string)
   default     = {}
+
+  validation {
+    condition = length(compact([
+      lookup(var.integration_names, "aws", ""),
+      lookup(var.integration_names, "azure", ""),
+      lookup(var.integration_names, "gcp", ""),
+    ])) > 0
+    error_message = "integration_names must include at least one non-empty cloud integration (aws, azure, or gcp); resource-janitor has nothing to scan otherwise."
+  }
 }
 
 variable "agent_budget" {

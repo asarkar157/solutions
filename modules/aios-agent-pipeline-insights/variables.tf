@@ -27,6 +27,11 @@ variable "integration_names" {
       - slack  : Slack integration name (used by the Slack ingress webhook + replies)
   EOT
   type        = map(string)
+
+  validation {
+    condition     = length(trimspace(lookup(var.integration_names, "github", ""))) > 0
+    error_message = "integration_names.github must be set to a non-empty GitHub integration name; the pipeline-insights agent has no usable surface without it."
+  }
 }
 
 variable "agent_budget" {

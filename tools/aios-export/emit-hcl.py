@@ -75,9 +75,15 @@ def hcl_map(d: dict[str, Any]) -> str:
 
 
 def safe_tf_id(name: str) -> str:
-    """Sanitize a Guild name into a Terraform-legal resource address suffix."""
+    """Sanitize a Guild name into a Terraform-legal resource address suffix.
+
+    Collision-unaware: callers that emit multiple addresses of the same
+    resource kind should route through a CollisionResolver so two Guild
+    names that collapse to the same sanitized form (e.g. "foo-bar" and
+    "foo bar" both -> "foo_bar") get unique addresses.
+    """
     out = []
-    for ch in name:
+    for ch in (name or ""):
         if ch.isalnum() or ch == "_":
             out.append(ch)
         else:
@@ -88,6 +94,32 @@ def safe_tf_id(name: str) -> str:
     if cleaned[0].isdigit():
         cleaned = "_" + cleaned
     return cleaned
+
+
+def _id_suffix(resource_id: Any) -> str:
+    s = re.sub(r"[^A-Za-z0-9]+", "", str(resource_id or ""))
+    return s[-8:] or "x"
+
+
+class CollisionResolver:
+    """Per-resource-kind address allocator that guarantees unique TF addresses.
+
+    On first sight of a sanitized base it returns the base unchanged. On
+    subsequent collisions it appends `__<short-id>` (derived from the resource
+    id) so the emitted HCL and the generated `import.sh` never produce
+    duplicate addresses for the same `sg_*` kind.
+    """
+
+    def __init__(self) -> None:
+        self._seen: dict[str, int] = {}
+
+    def resolve(self, name: Any, resource_id: Any) -> str:
+        base = safe_tf_id(str(name) if name is not None else "")
+        count = self._seen.get(base, 0)
+        self._seen[base] = count + 1
+        if count == 0:
+            return base
+        return f"{base}__{_id_suffix(resource_id)}"
 
 
 # -----------------------------------------------------------------------------
@@ -149,9 +181,9 @@ AGENT_LIST_ATTRS = [
 ]
 
 
-def emit_agent(agent: dict) -> str:
+def emit_agent(agent: dict, resolver: CollisionResolver | None = None) -> str:
     name = agent.get("name") or "unnamed"
-    addr = safe_tf_id(name)
+    addr = resolver.resolve(name, agent.get("id")) if resolver else safe_tf_id(name)
     out = [
         f"# Agent: {name}",
         f"# Import: terraform import sg_agent.{addr} {agent.get('id')}",
@@ -191,9 +223,9 @@ WORKFLOW_LIST_ATTRS = [
 ]
 
 
-def emit_workflow(wf: dict) -> str:
+def emit_workflow(wf: dict, resolver: CollisionResolver | None = None) -> str:
     name = wf.get("name") or "unnamed"
-    addr = safe_tf_id(name)
+    addr = resolver.resolve(name, wf.get("id")) if resolver else safe_tf_id(name)
     out = [
         f"# Workflow: {name} (version {wf.get('version')}, status {wf.get('status')})",
         f"# Import: terraform import sg_workflow.{addr} {wf.get('id')}",
@@ -218,9 +250,9 @@ RUNNER_PASSTHROUGH = ["description"]
 RUNNER_LIST_ATTRS = ["capabilities", "attached_agents"]
 
 
-def emit_runner(runner: dict) -> str:
+def emit_runner(runner: dict, resolver: CollisionResolver | None = None) -> str:
     name = runner.get("name") or "unnamed"
-    addr = safe_tf_id(name)
+    addr = resolver.resolve(name, runner.get("id")) if resolver else safe_tf_id(name)
     out = [
         f"# Remote runner: {name} (status {runner.get('status')}, last heartbeat {runner.get('last_heartbeat')})",
         f"# Import: terraform import sg_remote_runner.{addr} {runner.get('id')}",
@@ -406,6 +438,16 @@ def main(argv: list[str] | None = None) -> int:
 
     out = [emit_header(snap)]
 
+    # Per-kind address allocators. Two Guild names that sanitize to the same
+    # base (e.g. "foo-bar" and "foo bar" -> "foo_bar") would otherwise emit
+    # duplicate `resource "sg_agent" "foo_bar"` blocks; the resolver appends a
+    # short id-derived suffix on the second+ occurrence to keep addresses
+    # unique. The companion logic in tools/aios-export/export.sh mirrors this
+    # so the generated import.sh stays in lockstep.
+    agent_resolver = CollisionResolver()
+    workflow_resolver = CollisionResolver()
+    runner_resolver = CollisionResolver()
+
     if registry:
         out.append(
             "# -----------------------------------------------------------------------------\n"
@@ -428,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     if not agents:
         out.append("# (no unmatched agents)\n" if matches else "# (no agents in snapshot)\n")
     for a in agents:
-        out.append(emit_agent(a))
+        out.append(emit_agent(a, agent_resolver))
 
     out.append(
         "# -----------------------------------------------------------------------------\n"
@@ -439,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:
     if not workflows:
         out.append("# (no unmatched workflows)\n" if matches else "# (no workflows in snapshot)\n")
     for w in workflows:
-        out.append(emit_workflow(w))
+        out.append(emit_workflow(w, workflow_resolver))
 
     out.append(
         "# -----------------------------------------------------------------------------\n"
@@ -450,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
     if not runners:
         out.append("# (no remote runners in snapshot)\n")
     for r in runners:
-        out.append(emit_runner(r))
+        out.append(emit_runner(r, runner_resolver))
 
     sys.stdout.write("\n".join(out))
     return 0

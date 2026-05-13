@@ -27,6 +27,11 @@ variable "integration_names" {
       - slack  : Slack integration name (used for periodic digests)
   EOT
   type        = map(string)
+
+  validation {
+    condition     = length(trimspace(lookup(var.integration_names, "github", ""))) > 0
+    error_message = "integration_names.github must be set to a non-empty GitHub integration name; the release-tracker agent cannot resolve tags / releases / image versions without it."
+  }
 }
 
 variable "agent_budget" {
