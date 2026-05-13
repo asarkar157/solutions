@@ -47,3 +47,15 @@ variable "enabled" {
   type    = bool
   default = true
 }
+
+variable "env" {
+  description = <<-EOT
+    Optional map of plain-text environment variables injected into the
+    ClickHouse MCP container at launch (StackGen provider >= 0.1.17). Use for
+    non-sensitive overrides such as query timeouts, proxy URLs, or feature
+    toggles. Sensitive values (host credentials etc.) should go through
+    `sg_secret` and be referenced via `secret_ref_ids`.
+  EOT
+  type        = map(string)
+  default     = {}
+}

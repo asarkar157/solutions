@@ -24,3 +24,15 @@ variable "name_prefix" {
   type    = string
   default = ""
 }
+
+variable "env" {
+  description = <<-EOT
+    Optional map of plain-text environment variables injected into the GCP
+    integration container at launch (StackGen provider >= 0.1.17). Use for
+    non-sensitive overrides such as proxy URLs, regional flags, or feature
+    toggles. Sensitive values should go through `sg_secret` and be
+    referenced via `secret_ref_ids`.
+  EOT
+  type        = map(string)
+  default     = {}
+}

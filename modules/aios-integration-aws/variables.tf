@@ -38,3 +38,15 @@ variable "integration_image" {
   type        = string
   default     = "ghcr.io/appcd-dev/stackgen-guild-integration-aws:main"
 }
+
+variable "env" {
+  description = <<-EOT
+    Optional map of plain-text environment variables injected into the AWS
+    integration container at launch (StackGen provider >= 0.1.17). Use for
+    non-sensitive overrides such as proxy URLs, regional flags, or feature
+    toggles. Sensitive values should still go through `sg_secret` and be
+    referenced via `secret_ref_ids`.
+  EOT
+  type        = map(string)
+  default     = {}
+}

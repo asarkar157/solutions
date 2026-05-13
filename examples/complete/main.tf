@@ -9,8 +9,10 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # Align with AIOS modules (evidence checklists, remote runners, etc.; >= 0.1.13).
-      version = ">= 0.1.13, < 0.2.0"
+      # Align with AIOS modules: 0.1.17 adds integration `env` (consumed by aios-integration-ubuntu and exposed
+      # as optional input on other containerized integrations) and adopt-on-conflict for sg_policy_bundle,
+      # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow.
+      version = ">= 0.1.17, < 0.2.0"
     }
   }
 }

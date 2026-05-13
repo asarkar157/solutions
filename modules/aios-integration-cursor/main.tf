@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.13, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.17, < 0.2.0" }
   }
 }
 
@@ -27,4 +27,6 @@ resource "sg_guild_integration" "cursor" {
   enabled        = true
 
   image = { name = var.integration_image }
+
+  env = var.env
 }

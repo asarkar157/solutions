@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.13, < 0.2.0" }
+    sg      = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.17, < 0.2.0" }
     azuread = { source = "hashicorp/azuread", version = "~> 2.47" }
     azurerm = { source = "hashicorp/azurerm", version = "~> 3.85" }
   }
@@ -80,4 +80,6 @@ resource "sg_guild_integration" "azure" {
   image = {
     name = var.integration_image
   }
+
+  env = var.env
 }

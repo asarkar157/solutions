@@ -44,3 +44,15 @@ variable "integration_image" {
   type        = string
   default     = "ghcr.io/appcd-dev/stackgen-guild-integration-langfuse:main"
 }
+
+variable "env" {
+  description = <<-EOT
+    Optional map of plain-text environment variables injected into the
+    Langfuse integration container at launch (StackGen provider >= 0.1.17).
+    Use for non-sensitive overrides such as proxy URLs, sampling toggles, or
+    region flags. Sensitive values (public/secret keys) should go through
+    `sg_secret` and be referenced via `secret_ref_ids`.
+  EOT
+  type        = map(string)
+  default     = {}
+}
