@@ -83,6 +83,21 @@ If any per-group `tofu plan` is non-empty **or** `create_appstack_action_run` Pl
 
 When `orphans_bundle` is non-empty after registry / AppStack mapping, build `secondary_workflow_payload` and **invoke** **`orphan-iac-module-authoring`** — use workflow-start tooling if present; otherwise `notify` with JSON.
 
+In **`db-monorepo-state-split-convergence`**, this handoff (**`orphans-secondary-pipeline`**) is wired to start **after** `reverse-engineer-and-registry-map` **in parallel** with **`materialize-stackgen-appstacks`** (same DAG layer). That reduces wall-clock time: AppStack MCP work and orphan kickoff do not serialize on each other. **`multi-shard-plan-convergence`** then **fan-in** — it waits until **both** branches complete before TF / StackGen plan matrix.
+
+**Concurrency hygiene:** concurrent stages share the same workflow **notes** store. Prefer **disjoint keys** per branch (`stackgen_appstack_map`, `stackgen_mcp_errors`, `secondary_workflow_payload`, `stage_summary:…`) and avoid two stages rewriting the same JSON blob without read-modify-write discipline.
+
+## Guild workflow DAG (parallel stages)
+
+Guild’s execution plan computes **topological layers** from `stage_depends_on`. Stages in the **same layer** with no mutual dependency run as **concurrent child workflows** (see upstream `ExecutionPlanWorkflow` / `BuildStagePlans`).
+
+| Layer (conceptual) | Stages | Why |
+|--------------------|--------|-----|
+| After reverse IaC | `materialize-stackgen-appstacks` **and** `orphans-secondary-pipeline` | Orphans payload comes from reverse/registry outputs only; AppStack materialization does not gate orphan **invocation**. |
+| Fan-in | `multi-shard-plan-convergence` | Needs **`stackgen_appstack_map`** (or skip note) **and** orphan branch finished (even if skipped when `orphans_bundle` empty). |
+
+Earlier steps stay **linear**: ingest → discover → allocate → count → reverse — each depends on prior artifacts.
+
 ## Integration boundaries
 
 - **GitHub integration** — `gh api` / filtered listings only.  

@@ -138,6 +138,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     Splits a monolithic Terraform/OpenTofu state across **AWS, Azure, and GCP** into **logical resource groups**
     (tags, module paths, grouping policy), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
     reverse-engineered IaC, registry mapping, orphan secondary workflow, and loops until counts match and plans converge.
+    **DAG:** after reverse IaC, **AppStack materialization** and **orphan secondary handoff** run **in parallel**; **multi-shard plan convergence** waits for both (fan-in).
   EOT
   approve     = true
 
@@ -211,13 +212,13 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     },
     {
       stage_id    = "orphans-secondary-pipeline"
-      description = "Trigger orphan-iac-module-authoring with secondary_workflow_payload when orphans_bundle non-empty"
-      note        = "db-state-split-orchestration-sop § Secondary Guild pipeline."
+      description = "Trigger orphan-iac-module-authoring with secondary_workflow_payload when orphans_bundle non-empty (may run in parallel with AppStack materialization)"
+      note        = "db-state-split-orchestration-sop § Secondary Guild pipeline. Runs same DAG layer as materialize-stackgen-appstacks after reverse-engineer; use disjoint note keys vs MCP stage."
       required    = true
     },
     {
       stage_id    = "multi-shard-plan-convergence"
-      description = "tofu plan each TF root + StackGen Plan action runs; loop until all empty"
+      description = "tofu plan each TF root + StackGen Plan action runs; loop until all empty (fan-in: waits for AppStack materialization and orphan-secondary stage)"
       note        = "terraform-substate-convergence-sop § Plan matrix + Loop B."
       required    = true
     },
@@ -325,6 +326,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         If StackGen MCP is attached: for each `logical_group_manifest` entry, run Flow A from playbook (create_appstack → add_resource_to_appstack → connect_resources → create_env_profile when needed → create_appstack_action_run Plan). Persist `stackgen_appstack_map`.
+        This stage may run **concurrently** with `orphans-secondary-pipeline` — use only reverse/registry notes; do not rely on orphan-stage outputs. Prefer disjoint `note` keys from the orphan branch (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`).
         MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` only for stacks you are mutating or just created — avoid listing before every add. Refresh cache only after creates/deletes or stale errors (see stackgen-appstack-mcp-playbook-sop).
         If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp`.
         Optional input `cloud_discovery_id`: when set, prefer Flow B (`create_appstack_from_discovered_resources`) for that discovery id intersected with group resource IDs if your bridge script produced mapping.
@@ -334,7 +336,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "orphans-secondary-pipeline"
       agent_ref        = sg_agent.db_state_split_architect.name
-      stage_depends_on = ["materialize-stackgen-appstacks"]
+      stage_depends_on = ["reverse-engineer-and-registry-map"]
       runbook_refs = [
         sg_runbook_sop.db_state_split_orchestration.name,
         sg_runbook_sop.orphan_iac_module_bootstrap.name,
@@ -344,6 +346,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::orphans-secondary-pipeline"], [])
       )
       note = <<-EOT
+        Same DAG layer as `materialize-stackgen-appstacks` — do not assume AppStacks already exist; read only reverse/registry notes (`orphans_bundle`, `logical_group_manifest`).
         If `orphans_bundle` empty → note skip. Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
         note `stage_summary:orphans-secondary-pipeline`.
       EOT
@@ -351,7 +354,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "multi-shard-plan-convergence"
       agent_ref        = sg_agent.db_state_split_architect.name
-      stage_depends_on = ["orphans-secondary-pipeline"]
+      stage_depends_on = ["materialize-stackgen-appstacks", "orphans-secondary-pipeline"]
       runbook_refs = [
         sg_runbook_sop.terraform_substate_convergence.name,
         sg_runbook_sop.db_state_split_orchestration.name,

@@ -34,3 +34,7 @@ Integration shells often hit **~300s** ceilings. A single long **`ubuntu-cli_exe
 ## Remote execution
 
 When org tooling allows **remote runner** fan-out, run shard plans in parallel there; else sequential Ubuntu CLI with `ubuntu-cli_execute_parallel` for independent shards only after `init` succeeded per shard.
+
+## Workflow DAG (db-monorepo-state-split-convergence)
+
+Guild runs **independent stages in the same topological layer in parallel**. After reverse IaC + registry mapping, **AppStack materialization** and **orphan secondary handoff** are in one layer; **`multi-shard-plan-convergence`** waits for **both** (fan-in) before the plan matrix. See **db-state-split-orchestration-sop** for the full graph and note-key hygiene when stages overlap in time.
