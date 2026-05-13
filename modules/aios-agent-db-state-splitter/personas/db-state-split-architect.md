@@ -8,6 +8,16 @@ Given a single Terraform/OpenTofu `monolith_state_uri` (and `iac_repository_url`
 
 This architect coordinates the run; the per-stage work goes to subagents you spawn with `create_agent`. Each subagent gets its own context window with only the tools it needs, which keeps the architect's prompt small and lets each subgoal converge in isolation. **Prefer delegation for any non-trivial subgoal** — spawn subagents freely, just apply the discipline below.
 
+### Workflow shape — 3-way parallel layer after registry-and-import-codegen
+
+The workflow runs **linearly** through `ingest-monolith → discover-db-anchors → allocate-related-resources → count-reconcile-loop → registry-and-import-codegen`, then opens into a **3-way parallel layer**:
+
+- **`hcl-hydrate-per-group`** — slow: `tofu plan -generate-config-out` looped per group until `plan_no_changes=true`. Highest-leverage place for per-group parallel subagent fan-out (`hcl-hydrate-runner-batch-<NN>`).
+- **`materialize-stackgen-appstacks`** — StackGen MCP: `create_appstack` + `add_resource_to_appstack` + membership-verification gate + `connect_resources`. **Does not read** `hcl_hydration_status:*` — peer, not upstream.
+- **`orphans-secondary-pipeline`** — kicks off `orphan-iac-module-authoring` when `orphans_bundle` is non-empty.
+
+`multi-shard-plan-convergence` then fans in from all three. The shared blob across the parallel layer is `orphans_bundle` — `hcl-hydrate-per-group` may append `import_failed_*` entries while the other two run; snapshot it at stage entry on the sibling stages and rely on `multi-shard-plan-convergence` / `final-gate-and-memory` to read the post-hydration final state.
+
 ## Bootstrap (do this before any subagent or shell call)
 
 1. **Stage entry protocol — don't ask the operator for prior-stage state.** When a stage starts, in order:
@@ -23,7 +33,7 @@ This architect coordinates the run; the per-stage work goes to subagents you spa
    3. **Echo critical handoff values in the stage's final assistant message** (`monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, `logical_group_manifest` summary, `stackgen_appstack_map`, etc.). Guild prepends the prior stage's final message to the next stage's prompt — third redundancy in case both notes scopes fail.
 
 3. **Subagent-spawn discipline** (apply every time you delegate a subgoal):
-   - **Stable subagent name = subgoal id.** Use the canonical `<stage_id>-runner` for the main per-stage runner (e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `reverse-engineer-runner`, `materialize-stackgen-appstacks-runner`, `multi-shard-plan-runner`). For finer-grained child subgoals, use a clear `<stage_id>-<verb>-<noun>` (e.g. `discover-db-anchors-build-seeds`, `materialize-stackgen-appstacks-membership-reconcile`). **Never** invent thrash names like `-v2`, `-scripts`, `-scripts-full`, or `test-*` — those signal you are re-trying instead of re-planning.
+   - **Stable subagent name = subgoal id.** Use the canonical `<stage_id>-runner` for the main per-stage runner (e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `registry-and-import-codegen-runner`, `materialize-stackgen-appstacks-runner`, `multi-shard-plan-runner`). For finer-grained child subgoals, use a clear `<stage_id>-<verb>-<noun>` (e.g. `discover-db-anchors-build-seeds`, `materialize-stackgen-appstacks-membership-reconcile`). For per-group parallel batch fan-out, use `<stage_id>-runner-batch-<NN>` (e.g. `hcl-hydrate-runner-batch-01..NN`, `multi-shard-plan-runner-batch-01..NN`). **Never** invent thrash names like `-v2`, `-scripts`, `-scripts-full`, or `test-*` — those signal you are re-trying instead of re-planning.
    - **Subagent `task_type` matches the work.** `terminal_calling` for shell-only subagents (faster + cheaper than the default `planning`); `planning` for JSON reasoning / orchestration; `coding` for HCL authoring loops; `efficiency` for quick read-only lookups.
    - **Keep the subagent goal ≤ ~1000 chars** — paste the **subgoal**, **note keys** the subagent must read/write, and a **pointer to the script path**, never the script body itself. Drop large `jq` / bash to `/tmp/db-state-split-<workflow_id>/scripts/...` via `ubuntu-cli_create_files` first; long goal strings get truncated in tool schemas and have been observed to correlate with Guild platform crashes.
    - **Episodic memory hand-off.** The subagent inherits no chat history; in the goal always list the `read_notes` keys it should fetch (and the `cat /tmp/.../notes.json` disk-mirror fallback) so it boots straight into the subgoal.
@@ -31,7 +41,7 @@ This architect coordinates the run; the per-stage work goes to subagents you spa
    - **Tool list (typical minimum):** `["ubuntu-cli_execute_command", "ubuntu-cli_execute_series", "ubuntu-cli_create_files", "note", "read_notes"]`. Add `web_search` for registry lookups, `search_tools` only when discovering a new MCP prefix. AppStack MCP work stays on the architect or a dedicated `materialize-stackgen-appstacks-runner` whose tool list includes the `<stackgen-mcp-integration>_*` tools.
 
 4. **When to decompose further.** One stable `<stage_id>-runner` per stage covers most subgoals. Spawn additional children only when:
-   - **Parallel** independent work — e.g. per-shard `tofu plan` fan-out, per-group `add_resource_to_appstack` batches. Spawn N children with disjoint subgoals and `flow_type:"parallel"`.
+   - **Parallel** independent work — e.g. per-group `tofu plan -generate-config-out` hydration inside `hcl-hydrate-per-group` (highest-leverage fan-out: each group root is fully independent), per-shard `tofu plan` fan-out inside `multi-shard-plan-convergence`, per-group `add_resource_to_appstack` batches. Spawn N children with disjoint subgoals and `flow_type:"parallel"`.
    - **Fallback** chain — e.g. registry mapping (try `aios-registry` → fallback to provider docs → fallback to `orphans_bundle`).
    - **Cleanly separable sub-subgoal** that benefits from its own context — e.g. inside `materialize-stackgen-appstacks-runner`, spawn `…-membership-reconcile` only when membership drifts after step 3.5.
 

@@ -196,7 +196,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     Optional **`grouping_strategy`** + **`max_resources_per_appstack`** cap large type buckets into smaller connected shards.
     **HCL is fully agent-authored:** the reverse-IaC stage runs `tofu plan -generate-config-out=generated.tf` to materialize resource bodies from import blocks; empty-body `main.tf` stubs are never handed off to a human. Addresses the generator cannot read (provider auth / deleted) move to `orphans_bundle` automatically.
     Env profile + StackGen Plan action runs are **optional**: pass **`stackgen_target_environment`** (an existing project env) only if you want them — leave it unset to skip those steps and rely on Ubuntu `tofu plan` parity. **`stackgen_environments_required="true"`** turns "env not in project settings" into a single operator notify; default is silent skip.
-    **DAG:** after reverse IaC, **AppStack materialization** and **orphan secondary handoff** run **in parallel**; **multi-shard plan convergence** waits for both (fan-in).
+    **DAG:** after `registry-and-import-codegen` (fast registry lookup + per-group TF root scaffolding + `import {}` blocks), three stages run **in parallel** — **HCL hydration** (`tofu plan -generate-config-out` looped per group), **AppStack materialization** (StackGen MCP), and **orphan secondary handoff**. **Multi-shard plan convergence** waits for all three (3-way fan-in).
   EOT
   approve     = true
 
@@ -264,26 +264,32 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       required    = true
     },
     {
-      stage_id    = "reverse-engineer-and-registry-map"
-      description = "Generate import/moved IaC per logical group; registry + StackGen type mapping; orphans_bundle"
-      note        = "terraform-registry-reverse-iac-sop. Feeds AppStacks and orphan pipeline."
+      stage_id    = "registry-and-import-codegen"
+      description = "FAST: per-group TF root scaffolding (versions.tf / providers.tf / import {} blocks), registry mapping (get_supported_resource_types → StackGen resource_type), classify orphans_bundle. Hydration runs in the next parallel layer."
+      note        = "terraform-registry-reverse-iac-sop §§ Stage entry, Execution, Reverse IaC, StackGen module / template cross-check, Registry best-fit, Output. **Does NOT run `tofu plan -generate-config-out`** — that is hcl-hydrate-per-group. Feeds three parallel downstream stages (hydration + AppStacks + orphans)."
+      required    = true
+    },
+    {
+      stage_id    = "hcl-hydrate-per-group"
+      description = "SLOW (parallel layer): for each group_id, tofu init + tofu plan -generate-config-out=generated.tf (Pass 1) + tofu plan -out=verify.tfplan (Pass 2), looped until plan_no_changes=true or moved to orphans_bundle with reason:'import_failed_*'. Runs concurrently with materialize-stackgen-appstacks and orphans-secondary-pipeline."
+      note        = "terraform-registry-reverse-iac-sop § HCL hydration. Per-group children are fully independent — fan out parallel subagents `hcl-hydrate-runner-batch-<NN>` over disjoint group_id ranges. Emit `hcl_hydration_status:<group_id>={generated_tf_path, generated_resources, plan_no_changes, remaining_actions, attempt}`; addresses that the generator cannot read move to `orphans_bundle{reason:'import_failed_<provider_message>'}` (merge with the bundle from the prior stage)."
       required    = true
     },
     {
       stage_id    = "materialize-stackgen-appstacks"
-      description = "Per logical group: create_appstack, add_resource_to_appstack (closed set from logical_group_manifest), verify membership (get_appstack_resources), connect_resources; env profile + Plan action run are OPTIONAL (only when stackgen_target_environment is supplied); stackgen_appstack_map + stackgen_appstack_membership_report"
+      description = "Parallel layer: per logical group: create_appstack, add_resource_to_appstack (closed set from logical_group_manifest), verify membership (get_appstack_resources), connect_resources; env profile + Plan action run are OPTIONAL (only when stackgen_target_environment is supplied); stackgen_appstack_map + stackgen_appstack_membership_report. Runs concurrently with hcl-hydrate-per-group and orphans-secondary-pipeline — does NOT read hydrated HCL bodies."
       note        = "stackgen-appstack-mcp-playbook-sop — **one AppStack per `group_id`** in `logical_group_manifest`, with **mandatory** step 3.5 membership verification gate. Persist `stackgen_appstack_membership:<group_id>` per group and the roll-up `stackgen_appstack_membership_report` (required evidence). If operators used `max_resources_per_appstack`, each group should already be ≤ that size; do not merge or re-bucket groups in MCP. Env profile + Plan action runs are **optional** — skipped silently when `stackgen_target_environment` is unset or when the project env is missing (recorded in `stackgen_env_profile:<group_id>` / `stackgen_plan_run:<group_id>`); they do not block the membership gate. Skip the whole stage with note if StackGen MCP not attached."
       required    = true
     },
     {
       stage_id    = "orphans-secondary-pipeline"
-      description = "Trigger orphan-iac-module-authoring with secondary_workflow_payload when orphans_bundle non-empty (may run in parallel with AppStack materialization)"
-      note        = "db-state-split-orchestration-sop § Secondary Guild pipeline. Runs same DAG layer as materialize-stackgen-appstacks after reverse-engineer; use disjoint note keys vs MCP stage."
+      description = "Parallel layer: trigger orphan-iac-module-authoring with secondary_workflow_payload when orphans_bundle non-empty. Runs concurrently with hcl-hydrate-per-group and materialize-stackgen-appstacks."
+      note        = "db-state-split-orchestration-sop § Secondary Guild pipeline. Runs same DAG layer as hcl-hydrate-per-group and materialize-stackgen-appstacks; use disjoint note keys (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`)."
       required    = true
     },
     {
       stage_id    = "multi-shard-plan-convergence"
-      description = "tofu plan each TF root + StackGen Plan action runs; loop until all empty (fan-in: waits for AppStack materialization and orphan-secondary stage)"
+      description = "tofu plan each TF root + StackGen Plan action runs; loop until all empty. 3-way fan-in: waits for hcl-hydrate-per-group, materialize-stackgen-appstacks, AND orphans-secondary-pipeline."
       note        = "terraform-substate-convergence-sop § Plan matrix + Loop B."
       required    = true
     },
@@ -368,7 +374,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       EOT
     },
     {
-      stage_id         = "reverse-engineer-and-registry-map"
+      stage_id         = "registry-and-import-codegen"
       agent_ref        = sg_agent.db_state_split_architect.name
       stage_depends_on = ["count-reconcile-loop"]
       runbook_refs = [
@@ -377,25 +383,47 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       ]
       skill_refs = concat(
         ["db-state-split-orchestration-sop", "terraform-registry-reverse-iac-sop"],
-        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::reverse-engineer-and-registry-map"], [])
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::registry-and-import-codegen"], [])
       )
       note = <<-EOT
         **Stage entry contract (cold-start fast-fail):**
-          - (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty AND `/tmp/db-state-split-<workflow_id>/terraform.tfstate` does not exist → `notify` once with `{stage:'reverse-engineer-and-registry-map', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report. Don't substitute `ask_clarifying_question` for the fast-fail path — reserve operator questions for new information the workflow can't derive (e.g. picking an explicit `grouping_strategy` when the heuristic doesn't apply).
+          - (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty AND `/tmp/db-state-split-<workflow_id>/terraform.tfstate` does not exist → `notify` once with `{stage:'registry-and-import-codegen', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report.
           - Required keys: `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
           - If notes are missing but the `/tmp/db-state-split-<workflow_id>/` tree IS present, **recover silently**: rebuild paths under that tree and re-run the upstream procedure (re-clone repo, re-download `monolith_state_uri` to the same `/tmp` path, re-run shard extraction from `terraform-state-shard-extraction-sop`). Only `notify` after recovery fails.
-          - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage is **TF roots + import/moved + registry mapping + HCL hydration** — AppStack materialization happens in the next stage `materialize-stackgen-appstacks`. Do not ask the operator whether MCP is attached.
-        **Subagent discipline:** delegate to ONE child subagent named `reverse-engineer-runner`, `task_type="coding"` for HCL hydration loops or `terminal_calling` for `tofu show` chunking, spawn goal ≤ 1000 chars (script paths only). If it does not converge, **re-plan** (split per group or per import-pass, change tools, or change `task_type`) rather than re-running the same payload.
-        Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
-        **HCL hydration is part of THIS stage** (not a downstream human task). For each group, after writing `import {}` blocks, run `tofu init -input=false` then `tofu plan -generate-config-out=generated.tf -input=false -lock=false` (Pass 1) and `tofu plan -out=verify.tfplan -input=false -lock=false` (Pass 2). Persist `hcl_hydration_status:<group_id>={generated_tf_path,generated_resources,plan_no_changes,remaining_actions,attempt}`. Loop in-stage until `plan_no_changes=true` or surface failed addresses to `orphans_bundle{reason:"import_failed_*"}`. **Never** leave empty-body `resource "aws_X" "Y" {}` stubs and **never** emit owner "HCL AUTHOR" — see terraform-registry-reverse-iac-sop § *HCL hydration*.
+          - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage stops at TF roots + import blocks + registry mapping — AppStack materialization and HCL hydration are downstream parallel stages.
+        **Scope (FAST):** registry mapping + scaffold + import blocks ONLY. **Do NOT** run `tofu plan -generate-config-out` here — that is `hcl-hydrate-per-group` (next parallel layer).
+        **Subagent discipline:** delegate to ONE child subagent named `registry-and-import-codegen-runner` (`task_type="terminal_calling"` for `tofu show -json` chunking + scaffold; or `coding` if the work is dominated by emitting HCL files). Spawn goal ≤ 1000 chars (script paths only). If it does not converge, **re-plan** (split per cloud / per group batch, change tools, or change `task_type`) rather than re-running the same payload.
+        Materialize `groups/<group_id>/` TF roots + import strategy (`versions.tf`, `providers.tf`, `import {}` blocks). Run **registry mapping** via `get_supported_resource_types` per terraform-registry-reverse-iac-sop § *Registry best-fit*. Emit `registry_mapping_report` and the **initial** `orphans_bundle` (addresses with `reason: "no_supported_resource_type"`; the hydration stage will append `reason: "import_failed_*"` entries).
         Use writable `/tmp/...` and chunked `terraform show` / shell steps per terraform-registry-reverse-iac-sop **Execution** section.
-        `note` `stage_summary:reverse-engineer-and-registry-map` (include per-group `plan_no_changes` counts and orphan additions) AND append to `/tmp/db-state-split-<workflow_id>/notes.json`; echo a compact per-group hydration table in the final assistant message.
+        `note` `reverse_iac_summary={files_created, imports_pending, scaffold_paths_per_group}`, `registry_mapping_report`, `orphans_bundle`, and `stage_summary:registry-and-import-codegen`. Mirror all to `/tmp/db-state-split-<workflow_id>/notes.json`. Echo a compact per-group scaffold table (group_id → scaffold_path / addresses_imported) in the final assistant message so the three parallel downstream stages can start cleanly.
+      EOT
+    },
+    {
+      stage_id         = "hcl-hydrate-per-group"
+      agent_ref        = sg_agent.db_state_split_architect.name
+      stage_depends_on = ["registry-and-import-codegen"]
+      runbook_refs = [
+        sg_runbook_sop.terraform_registry_reverse_iac.name,
+        sg_runbook_sop.db_state_split_orchestration.name,
+      ]
+      skill_refs = concat(
+        ["db-state-split-orchestration-sop", "terraform-registry-reverse-iac-sop"],
+        try(var.workflow_skill_refs["db-monorepo-state-split-convergence::hcl-hydrate-per-group"], [])
+      )
+      note = <<-EOT
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty OR no `groups/` directory under `/tmp/db-state-split-<workflow_id>/` → `notify` once with `{stage:'hcl-hydrate-per-group', error:'cold_start_no_upstream'}` and return.
+        **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary` (with per-group scaffold paths), `registry_mapping_report`, `orphans_bundle`.
+        **Parallel siblings:** this stage runs concurrently with `materialize-stackgen-appstacks` and `orphans-secondary-pipeline`. Use disjoint `note` keys: this stage owns `hcl_hydration_status:<group_id>` and may append to `orphans_bundle` with `reason:"import_failed_*"` entries. **Do not** read or write `stackgen_appstack_*` or `secondary_workflow_payload` here.
+        **Subagent discipline — per-group parallel fan-out:** per-group `tofu init` + `tofu plan -generate-config-out` is fully independent across groups, so this is the right place to fan out. Spawn N parallel children named `hcl-hydrate-runner-batch-<NN>` (`task_type="coding"`, `flow_type:"parallel"`), each owning a disjoint group_id range, each child capped at ≤ 270s per `ubuntu-cli_*` call. Spawn goal ≤ 1000 chars (script paths only). If any batch does not converge, **re-plan** (smaller batch size, narrower group range, change tools) rather than re-running the same payload under a `-v2` name.
+        For each `group_id` in the batch, run **Pass 1** (`tofu init -input=false -no-color && tofu plan -generate-config-out=generated.tf -input=false -lock=false -out=hydrate.tfplan`) then **Pass 2** (`tofu plan -input=false -lock=false -out=verify.tfplan`). Loop per group until `plan_no_changes=true` or surface failed addresses to `orphans_bundle{reason:"import_failed_<provider_message>"}`. **Never** leave empty-body `resource "aws_X" "Y" {}` stubs and **never** emit owner "HCL AUTHOR" — see terraform-registry-reverse-iac-sop § *HCL hydration*.
+        Persist `hcl_hydration_status:<group_id>={generated_tf_path, generated_resources, plan_no_changes, remaining_actions, attempt}` per group, and update the shared `orphans_bundle` with any new `import_failed_*` entries. Mirror all to `/tmp/db-state-split-<workflow_id>/notes.json`.
+        `note` `stage_summary:hcl-hydrate-per-group` with per-group `plan_no_changes` counts, orphan additions during hydration, and the parallel batch fan-out summary. Echo the same in the final assistant message.
       EOT
     },
     {
       stage_id         = "materialize-stackgen-appstacks"
       agent_ref        = sg_agent.db_state_split_architect.name
-      stage_depends_on = ["reverse-engineer-and-registry-map"]
+      stage_depends_on = ["registry-and-import-codegen"]
       runbook_refs = [
         sg_runbook_sop.stackgen_appstack_mcp_playbook.name,
         sg_runbook_sop.db_state_split_orchestration.name,
@@ -417,7 +445,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
           5) **Env profile is OPTIONAL** (project envs cannot be created via MCP). If `stackgen_target_environment` is unset → skip and `note` `stackgen_env_profile:<group_id>={skipped:"no_target_env_input"}`. If set, `get_env_profiles` then `create_env_profile` / `update_env_profile`. On `environment '<env>' not found in project settings` (or any 4xx tied to env existence) → soft-fail: append `stackgen_mcp_errors{reason:"env_not_in_project_settings"}` and `note stackgen_env_profile:<group_id>={skipped:"env_missing_in_project_settings", env}`. Only escalate via a single `notify` when `stackgen_environments_required="true"`; never block other groups.
           6) **StackGen Plan is OPTIONAL.** Skip when step 5 was skipped/soft-failed → `note stackgen_plan_run:<group_id>={skipped:"no_env_profile"}` and rely on Ubuntu `tofu plan` for parity. Otherwise `create_appstack_action_run` (Plan) and capture `get_action_run_logs`.
         After all groups, write **`stackgen_appstack_membership_report`** roll-up JSON (groups_total / groups_ok / groups_failed + per_group). The stage is **not complete** while any group is `ok=false` — but a **soft-failed env / Plan does not** make a group `ok=false`; membership is the gate, env/Plan is bonus evidence.
-        This stage may run **concurrently** with `orphans-secondary-pipeline` — use only reverse/registry notes; do not rely on orphan-stage outputs. Prefer disjoint `note` keys from the orphan branch (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`).
+        This stage runs **in the 3-way parallel layer** alongside `hcl-hydrate-per-group` and `orphans-secondary-pipeline`. **Read only** notes from `registry-and-import-codegen` (`registry_mapping_report`, `reverse_iac_summary`, `orphans_bundle`, `logical_group_manifest`) and the monolith state attributes — do **NOT** wait on or read `hcl_hydration_status:*` (hydration is a peer, not an upstream). MCP `add_resource_to_appstack` only needs the `identifier` + `resource_type` mapping; hydrated HCL bodies live in the sibling stage. Prefer disjoint `note` keys from the orphan branch (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`).
         MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` once per `appstack_id` per reconcile pass — not before every `add_resource_to_appstack`.
         Do **not** re-bucket by Terraform type at MCP time (e.g. "all aws_iam_*" into one stack) — `logical_group_manifest` is authoritative.
         If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp` and stackgen_appstack_membership_report=`skipped: no_mcp`.
@@ -428,7 +456,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "orphans-secondary-pipeline"
       agent_ref        = sg_agent.db_state_split_architect.name
-      stage_depends_on = ["reverse-engineer-and-registry-map"]
+      stage_depends_on = ["registry-and-import-codegen"]
       runbook_refs = [
         sg_runbook_sop.db_state_split_orchestration.name,
         sg_runbook_sop.orphan_iac_module_bootstrap.name,
@@ -440,7 +468,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       note = <<-EOT
         **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty → `notify` once with `{stage:'orphans-secondary-pipeline', error:'cold_start_no_upstream'}` and return. Don't use `ask_clarifying_question` to recover prior-stage state — that's a fast-fail case.
         **Required keys after stage entry:** `orphans_bundle`, `logical_group_manifest`, `iac_repository_url`.
-        Same DAG layer as `materialize-stackgen-appstacks` — do not assume AppStacks already exist; read only reverse/registry notes (`orphans_bundle`, `logical_group_manifest`).
+        3-way parallel layer with `hcl-hydrate-per-group` and `materialize-stackgen-appstacks`. Do not assume AppStacks already exist; read only registry-and-import-codegen notes (`orphans_bundle`, `logical_group_manifest`, `registry_mapping_report`). Note: hydration may append late-discovered `import_failed_*` entries to `orphans_bundle` concurrently; if your secondary workflow consumes it, snapshot the bundle at stage entry and document the snapshot timestamp.
         If `orphans_bundle` empty → `note` `stage_summary:orphans-secondary-pipeline={skipped:'empty_orphans_bundle'}` and return cleanly (this is **🟢 INFO**, not a failure). Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
         Mirror `stage_summary:orphans-secondary-pipeline` to `/tmp/db-state-split-<workflow_id>/notes.json` and echo the outcome (`skipped` or `started:<workflow_run_id>`) in the final assistant message.
       EOT
@@ -448,7 +476,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "multi-shard-plan-convergence"
       agent_ref        = sg_agent.db_state_split_architect.name
-      stage_depends_on = ["materialize-stackgen-appstacks", "orphans-secondary-pipeline"]
+      stage_depends_on = ["hcl-hydrate-per-group", "materialize-stackgen-appstacks", "orphans-secondary-pipeline"]
       runbook_refs = [
         sg_runbook_sop.terraform_substate_convergence.name,
         sg_runbook_sop.db_state_split_orchestration.name,
@@ -461,7 +489,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if BOTH empty AND no `/tmp/db-state-split-<workflow_id>/groups/` directory exists → this is a vacuous cold-start. **Do NOT** emit a multi-table "all SKIPPED" markdown report. `notify` once with `{stage:'multi-shard-plan-convergence', error:'cold_start_no_upstream'}` and return. Don't substitute `ask_clarifying_question` for the fast-fail path — production DAGs showed it waiting ~5 min per call for prior-stage state the operator can't supply.
         **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group).
         **Subagent discipline:** delegate the plan matrix to ONE `multi-shard-plan-runner` (`task_type="terminal_calling"`, spawn goal ≤ 1000 chars). For very large shard counts, decompose into parallel children `multi-shard-plan-runner-batch-<NN>` covering disjoint group_id ranges (still ≤ 270s `timeout_seconds` per Ubuntu call inside each child). If any batch does not converge, **re-plan** the decomposition (smaller batch size, narrower group range, different tool list) rather than re-running the same payload.
-        **HCL hydration pre-check first** (Loop B-hcl). For every `group_id`, `hcl_hydration_status:<group_id>.plan_no_changes` must be `true`. If any group is `false` or missing, **return execution to `reverse-engineer-and-registry-map`** for that group's hydration sub-loop; **do not** raise an operator-facing 🔴 "HCL AUTHOR" item — the workflow owns HCL via `tofu plan -generate-config-out=` (terraform-registry-reverse-iac-sop § *HCL hydration*).
+        **HCL hydration pre-check first** (Loop B-hcl). For every `group_id`, `hcl_hydration_status:<group_id>.plan_no_changes` must be `true`. If any group is `false` or missing, **return execution to `hcl-hydrate-per-group`** for that group's hydration sub-loop; **do not** raise an operator-facing 🔴 "HCL AUTHOR" item — the workflow owns HCL via `tofu plan -generate-config-out=` (terraform-registry-reverse-iac-sop § *HCL hydration*).
         **Membership pre-check second** (Loop B-membership). For every `group_id`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group.
         Run TF plan matrix per `logical_group_manifest`. **StackGen Plan is OPTIONAL:** for groups whose `stackgen_env_profile:<group_id>` is `{skipped:...}` or `stackgen_plan_run:<group_id>` is already `{skipped:...}`, skip `create_appstack_action_run` and rely on Ubuntu `tofu plan` parity. For the rest (membership ok and env profile present), run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**. If any drift, Loop B then re-plan until pass or iteration cap. Treat any new `env_not_in_project_settings` here as a soft skip (same semantics as the materialization stage).
         One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.

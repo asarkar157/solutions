@@ -24,7 +24,7 @@ For every `group_id` in `logical_group_manifest`, read **`hcl_hydration_status:<
 - `plan_no_changes == true`, OR
 - `remaining_actions == { add: 0, change: 0, destroy: 0 }` after generated config + state alignment.
 
-If a group has empty / stub `main.tf` files (e.g. `resource "aws_X" "Y" {}` with no attributes) and missing hydration status, **do not** start the plan matrix for that group. Instead, **return execution to `reverse-engineer-and-registry-map`** (Loop B-hcl) and run `tofu plan -generate-config-out=generated.tf` per the reverse-IaC SOP, then re-enter this stage. Do **not** raise an operator-facing "author 402 main.tf stubs" blocker — the workflow owns HCL authorship.
+If a group has empty / stub `main.tf` files (e.g. `resource "aws_X" "Y" {}` with no attributes) and missing hydration status, **do not** start the plan matrix for that group. Instead, **return execution to `hcl-hydrate-per-group`** (Loop B-hcl) and run `tofu plan -generate-config-out=generated.tf` per the reverse-IaC SOP, then re-enter this stage. Do **not** raise an operator-facing "author 402 main.tf stubs" blocker — the workflow owns HCL authorship.
 
 ## Plan matrix
 

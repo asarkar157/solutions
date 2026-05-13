@@ -2,6 +2,33 @@ Skill: Orchestration for **multi-cloud monorepo state splitting** — logical gr
 
 Keywords: terraform state split, monorepo, opentofu, tfstate, aws, azure, gcp, azurerm, google, tags, logical groups, appstack, stackgen mcp, state mv, moved block, import, convergence, remote runner, ubuntu cli, guild workflow, orphan module.
 
+## Workflow DAG (3-way parallel after registry-and-import-codegen)
+
+```
+ingest-monolith
+ → discover-db-anchors
+   → allocate-related-resources
+     → count-reconcile-loop
+       → registry-and-import-codegen          (FAST: registry + scaffold + import {} blocks + orphans_bundle)
+         ├→ hcl-hydrate-per-group             (SLOW: tofu plan -generate-config-out loop, per-group parallel children)
+         ├→ materialize-stackgen-appstacks    (StackGen MCP: create_appstack + add_resource_to_appstack + membership gate)
+         └→ orphans-secondary-pipeline        (kick off orphan-iac-module-authoring when orphans_bundle non-empty)
+                                              └→ multi-shard-plan-convergence    (3-way fan-in)
+                                                  → final-gate-and-memory
+```
+
+The parallel layer matters because `hcl-hydrate-per-group` and `materialize-stackgen-appstacks` have **no real data dependency** on each other: MCP `add_resource_to_appstack` only needs `identifier` + `resource_type` (from the registry mapping), not the hydrated `generated.tf` bodies. Running them sequentially (the pre-split shape) was the single biggest source of primary-workflow wall-time on large states.
+
+**Disjoint note-key ownership in the parallel layer** (no cross-reads between siblings):
+
+| Stage | Owns | Reads (from registry-and-import-codegen upstream) |
+|-------|------|---------------------------------------------------|
+| `hcl-hydrate-per-group` | `hcl_hydration_status:<group_id>`, appends `import_failed_*` entries to `orphans_bundle` | `reverse_iac_summary`, `logical_group_manifest`, `repo_clone_path` |
+| `materialize-stackgen-appstacks` | `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>`, `stackgen_appstack_membership_report`, `stackgen_env_profile:<group_id>`, `stackgen_plan_run:<group_id>` | `registry_mapping_report`, `logical_group_manifest`, `orphans_bundle` (read-only snapshot) |
+| `orphans-secondary-pipeline` | `secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline` | `orphans_bundle` (snapshot at entry; the hydrate stage may append concurrently), `logical_group_manifest`, `iac_repository_url` |
+
+`multi-shard-plan-convergence` then fans in: `hcl_hydration_status:* = plan_no_changes=true` for every group, `stackgen_appstack_membership:* = ok=true` for every group, and the orphan secondary handoff outcome.
+
 ## Stage entry protocol — `read_notes` → disk-mirror → cold-start fast-fail
 
 Every stage starts with this exact sequence — no probes, no synchronous questions for things prior stages should have produced:
@@ -21,10 +48,11 @@ Every stage starts with this exact sequence — no probes, no synchronous questi
 | `discover-db-anchors` | `repo_clone_path`, `monolith_state_local_path`, `monolith_resource_count`, optional `grouping_policy_json`, `grouping_strategy`, `max_resources_per_appstack` | — |
 | `allocate-related-resources` | `logical_group_seeds`, `db_anchor_inventory`, plus the discover-stage keys above | — |
 | `count-reconcile-loop` | `logical_group_manifest` (or `shard_manifest`), `per_group_resource_counts`, `monolith_resource_count` | — |
-| `reverse-engineer-and-registry-map` | `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest`, `count_reconciliation_ok` | StackGen MCP availability via `search_tools` for `*_create_appstack` / `*_get_appstacks` (this stage is **TF-roots + import + registry mapping only**; AppStack materialization is the next stage) |
-| `materialize-stackgen-appstacks` | `logical_group_manifest`, `repo_clone_path`, optional `stackgen_project_name` | StackGen MCP attached → `search_tools`; project UUID → `me` if not in notes |
-| `orphans-secondary-pipeline` | `orphans_bundle`, `logical_group_manifest`, `iac_repository_url` | — |
-| `multi-shard-plan-convergence` | `logical_group_manifest`, `repo_clone_path`, `stackgen_appstack_map`, `stackgen_appstack_membership:*` | — |
+| `registry-and-import-codegen` | `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest`, `count_reconciliation_ok` | StackGen `resource_type` mapping via `get_supported_resource_types`; MCP availability via `search_tools` for `*_create_appstack` / `*_get_appstacks` (this stage stops at scaffold + import blocks + registry mapping; hydration and MCP are downstream parallel stages) |
+| `hcl-hydrate-per-group` (parallel) | `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary` (scaffold paths from prior stage), `registry_mapping_report`, `orphans_bundle` | per-group `tofu init` + `tofu plan -generate-config-out` is fully independent — fan out parallel `hcl-hydrate-runner-batch-<NN>` children |
+| `materialize-stackgen-appstacks` (parallel) | `logical_group_manifest`, `repo_clone_path`, `registry_mapping_report`, `reverse_iac_summary`, `orphans_bundle` (snapshot), optional `stackgen_project_name` | StackGen MCP attached → `search_tools`; project UUID → `me` if not in notes. Does NOT read `hcl_hydration_status:*` — peer, not upstream |
+| `orphans-secondary-pipeline` (parallel) | `orphans_bundle` (snapshot at entry), `logical_group_manifest`, `iac_repository_url` | — |
+| `multi-shard-plan-convergence` (3-way fan-in) | `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:*` | — |
 | `final-gate-and-memory` | `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report` + every required `submit_evidence` item | — |
 
 ## When `ask_clarifying_question` is appropriate (and when it isn't)
@@ -55,7 +83,7 @@ The Guild workflow's per-stage notes store appears to be **scoped per-stage exec
 
 Prefer delegating each stage's subgoal to a dedicated subagent (via `create_agent`) rather than doing all the shell work in the architect's own context. Subagents run in isolated context windows with only the tools they need, which keeps token usage low and the architect free to coordinate. Spawn subagents freely — just apply the discipline below.
 
-- **Stable subagent name = subgoal id.** Use `<stage_id>-runner` for the main per-stage runner — e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `reverse-engineer-runner`, `multi-shard-plan-runner`. For finer-grained child subgoals use `<stage_id>-<verb>-<noun>`. **Never** use suffixes like `-v2`, `-scripts`, `-scripts-full`, or one-off experiment names like `test-*`, `recovery-probe` — those signal retry-thrash, not re-planning.
+- **Stable subagent name = subgoal id.** Use `<stage_id>-runner` for the main per-stage runner — e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `registry-and-import-codegen-runner`, `multi-shard-plan-runner`. For finer-grained child subgoals use `<stage_id>-<verb>-<noun>`; for parallel batch fan-out use `<stage_id>-runner-batch-<NN>` (e.g. `hcl-hydrate-runner-batch-01..NN`, `multi-shard-plan-runner-batch-01..NN`). **Never** use suffixes like `-v2`, `-scripts`, `-scripts-full`, or one-off experiment names like `test-*`, `recovery-probe` — those signal retry-thrash, not re-planning.
 - **`task_type="terminal_calling"`** for shell-only subagents. The default `planning` is twice as expensive per round-trip and unnecessary for "write a file and run a script."
 - **`goal` length ≤ 1000 characters.** Write the actual `jq` / bash to `/tmp/db-state-split-<workflow_id>/scripts/...` via `ubuntu-cli_create_files`; the `goal` references the script **path**, not the script body.
 - **No retry-thrash on the same subgoal.** If a subagent doesn't converge (timeout, partial output, refusal), **re-plan** the subgoal — split it into smaller children, change tool list, or change `task_type` — and spawn the next attempt with a clearly different name (e.g. `<stage_id>-runner-build-seeds`). Re-running an identical spawn payload is the anti-pattern; either decompose further or fall back to in-line `ubuntu-cli_*` for that one subgoal.
@@ -202,20 +230,22 @@ When emitting "Blocking Items for Iteration N" in `stage_summary:*` or final `no
 
 When `orphans_bundle` is non-empty after registry / AppStack mapping, build `secondary_workflow_payload` and **invoke** **`orphan-iac-module-authoring`** — use workflow-start tooling if present; otherwise `notify` with JSON.
 
-In **`db-monorepo-state-split-convergence`**, this handoff (**`orphans-secondary-pipeline`**) is wired to start **after** `reverse-engineer-and-registry-map` **in parallel** with **`materialize-stackgen-appstacks`** (same DAG layer). That reduces wall-clock time: AppStack MCP work and orphan kickoff do not serialize on each other. **`multi-shard-plan-convergence`** then **fan-in** — it waits until **both** branches complete before TF / StackGen plan matrix.
+In **`db-monorepo-state-split-convergence`**, this handoff (**`orphans-secondary-pipeline`**) is wired to start **after** `registry-and-import-codegen` **in the 3-way parallel layer** alongside **`hcl-hydrate-per-group`** and **`materialize-stackgen-appstacks`**. That reduces wall-clock time: HCL hydration, AppStack MCP work, and orphan kickoff do not serialize on each other. **`multi-shard-plan-convergence`** then **fans in** — it waits until **all three** branches complete before the TF / StackGen plan matrix.
 
-**Concurrency hygiene:** concurrent stages share the same workflow **notes** store. Prefer **disjoint keys** per branch (`stackgen_appstack_map`, `stackgen_mcp_errors`, `secondary_workflow_payload`, `stage_summary:…`) and avoid two stages rewriting the same JSON blob without read-modify-write discipline.
+**Concurrency hygiene:** concurrent stages share the same workflow **notes** store. Prefer **disjoint keys** per branch (`hcl_hydration_status:<group_id>`, `stackgen_appstack_map`, `stackgen_mcp_errors`, `secondary_workflow_payload`, `stage_summary:…`) and avoid two stages rewriting the same JSON blob without read-modify-write discipline. The one shared blob in the parallel layer is **`orphans_bundle`** — `hcl-hydrate-per-group` may append `import_failed_*` entries to it; `orphans-secondary-pipeline` and `materialize-stackgen-appstacks` should snapshot the bundle at their stage entry and operate on the snapshot, with the bundle's true final state observed by `multi-shard-plan-convergence` and `final-gate-and-memory`.
 
 ## Guild workflow DAG (parallel stages)
 
-Guild’s execution plan computes **topological layers** from `stage_depends_on`. Stages in the **same layer** with no mutual dependency run as **concurrent child workflows** (see upstream `ExecutionPlanWorkflow` / `BuildStagePlans`).
+Guild's execution plan computes **topological layers** from `stage_depends_on`. Stages in the **same layer** with no mutual dependency run as **concurrent child workflows** (see upstream `ExecutionPlanWorkflow` / `BuildStagePlans`).
 
 | Layer (conceptual) | Stages | Why |
 |--------------------|--------|-----|
-| After reverse IaC | `materialize-stackgen-appstacks` **and** `orphans-secondary-pipeline` | Orphans payload comes from reverse/registry outputs only; AppStack materialization does not gate orphan **invocation**. |
-| Fan-in | `multi-shard-plan-convergence` | Needs **`stackgen_appstack_map`** (or skip note) **and** orphan branch finished (even if skipped when `orphans_bundle` empty). |
+| After registry-and-import-codegen (3-way parallel) | `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, `orphans-secondary-pipeline` | Hydration is `tofu plan -generate-config-out` per group; MCP only needs `identifier` + `resource_type` (registry mapping); orphan handoff only needs `orphans_bundle`. No cross-reads between siblings. |
+| Fan-in | `multi-shard-plan-convergence` | Needs `hcl_hydration_status:<group_id>=true` per group, **`stackgen_appstack_map`** (or skip note), and orphan branch finished (even if skipped when `orphans_bundle` empty). |
 
-Earlier steps stay **linear**: ingest → discover → allocate → count → reverse — each depends on prior artifacts.
+Earlier steps stay **linear**: ingest → discover → allocate → count → registry-and-import-codegen — each depends on prior artifacts.
+
+**Per-group parallel fan-out inside hydration:** within `hcl-hydrate-per-group`, spawn parallel children `hcl-hydrate-runner-batch-<NN>` (each owning a disjoint group_id range, `flow_type:"parallel"`, `task_type="coding"`). Per-group `tofu init` + `tofu plan -generate-config-out` is fully independent, so this is the highest-leverage spot for subagent fan-out — the bigger the group count, the bigger the win. The same pattern applies inside `multi-shard-plan-convergence` (`multi-shard-plan-runner-batch-<NN>`).
 
 ## Integration boundaries
 

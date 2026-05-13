@@ -85,8 +85,11 @@ variable "workflow_skill_refs" {
     Optional extra skill_refs per primary-workflow stage binding. Keys:
     "db-monorepo-state-split-convergence::<stage_id>" where stage_id is one of:
     ingest-monolith, discover-db-anchors, allocate-related-resources, count-reconcile-loop,
-    reverse-engineer-and-registry-map, materialize-stackgen-appstacks, orphans-secondary-pipeline,
-    multi-shard-plan-convergence, final-gate-and-memory.
+    registry-and-import-codegen, hcl-hydrate-per-group, materialize-stackgen-appstacks,
+    orphans-secondary-pipeline, multi-shard-plan-convergence, final-gate-and-memory.
+    Note: `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, and `orphans-secondary-pipeline`
+    are the 3-way parallel layer after `registry-and-import-codegen`; `multi-shard-plan-convergence`
+    fans in from all three.
     **Avoid duplicating runbooks:** each stage already has `runbook_refs` + `skill_refs` from this module.
     Adding the same `*-sop` name here forces Guild to prepend `[Skills] load_skill` for content already
     inlined under `[Runbook Context]` — only add **extra** skills that are not the runbook SOPs.

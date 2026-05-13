@@ -58,6 +58,23 @@ module "db_state_splitter" {
 Primary workflow **required inputs**: `monolith_state_uri`, `iac_repository_url`.  
 Notable **optional inputs**: `grouping_policy_json`, `grouping_strategy` (`policy_first` \| `connectivity` \| `connectivity_capped`), `max_resources_per_appstack` (e.g. `80`), `stackgen_project_name`, `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
 
+### Workflow shape (3-way parallel after registry-and-import-codegen)
+
+```
+ingest-monolith
+ → discover-db-anchors
+   → allocate-related-resources
+     → count-reconcile-loop
+       → registry-and-import-codegen          (fast: registry + scaffold + import {} blocks)
+         ├→ hcl-hydrate-per-group             (slow: tofu plan -generate-config-out loop; per-group parallel children)
+         ├→ materialize-stackgen-appstacks    (StackGen MCP: create_appstack + add_resource_to_appstack + membership gate)
+         └→ orphans-secondary-pipeline        (kick off orphan-iac-module-authoring)
+                                              └→ multi-shard-plan-convergence    (3-way fan-in)
+                                                  → final-gate-and-memory
+```
+
+HCL hydration (`tofu plan -generate-config-out`) and StackGen MCP materialization have **no real data dependency** on each other — MCP `add_resource_to_appstack` only needs `identifier` + `resource_type` from the registry mapping, not the hydrated `generated.tf` bodies. Splitting `reverse-engineer-and-registry-map` into a fast `registry-and-import-codegen` + a slow `hcl-hydrate-per-group` (which then runs alongside MCP materialization and the orphan handoff) collapses the dominant serial dependency for large states. Per-group `tofu init` + `tofu plan -generate-config-out` is also fully independent across groups, so the hydration stage is designed for **per-group parallel subagent fan-out** (`hcl-hydrate-runner-batch-<NN>`).
+
 ## AppStack membership integrity
 
 Earlier production runs created the right number of AppStacks but populated each with the wrong set of resources (e.g. type-bucketed "all IAM" stack instead of the connectivity group). This is now enforced as a **hard gate**:
