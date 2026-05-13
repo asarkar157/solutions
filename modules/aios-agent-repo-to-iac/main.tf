@@ -318,7 +318,7 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
         ["platform-stackgen-export-github", "stackgen-mcp-consumer-tool-catalog-sop"],
         try(var.workflow_skill_refs["repo-scan-appstack-github-export::export-iac-to-github"], [])
       )
-      note = "Architect executes StackGen Export or push-appstack-to-git toward export_github_repo."
+      note = "Architect executes StackGen Export (product) or GitHub/Ubuntu automation toward export_github_repo — do not assume git-push MCP tools on the default user MCP."
     },
     {
       stage_id         = "summarize-handoff"

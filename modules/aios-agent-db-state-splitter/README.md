@@ -7,7 +7,7 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 - **StackGen provider** `>= 0.1.12` (this module pins that minimum for `sg_agent.remote_runners` and `data.sg_remote_runner`).
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops` (typical stack).
 - `modules/aios-integration-github` and `modules/aios-integration-ubuntu`.
-- **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable `create_appstack`, `add_resource_to_appstack`, `create_appstack_from_discovered_resources`, `download-iac`, etc. Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
+- **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable AppStack tools (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**). Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
 
 ## Operator prerequisites (outside Terraform)
 
@@ -36,7 +36,7 @@ module "db_state_splitter" {
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
 
-  # Optional: StackGen MCP integration name for AppStack / discovery tools.
+  # Optional: StackGen MCP integration name for AppStack (user MCP) tools.
   # stackgen_mcp_integration_name = module.your_stackgen_mcp.integration_name
 
   # Optional: Guild remote runner — documents in SOPs; set attach to bind on the agent (runner must exist at plan).
@@ -56,7 +56,7 @@ module "db_state_splitter" {
 | `orphan-iac-module-authoring` | Scaffold modules from `orphans_bundle`, validate, persist `orphan_modularization_memory` |
 
 Primary workflow **required inputs**: `monolith_state_uri`, `iac_repository_url`.  
-Notable **optional inputs**: `grouping_policy_json`, `stackgen_project_name`, `cloud_discovery_id` (for `create_appstack_from_discovered_resources` flows).
+Notable **optional inputs**: `grouping_policy_json`, `stackgen_project_name`, `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
 
 ## Reliability (what the prompts optimize for)
 

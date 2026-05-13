@@ -8,7 +8,7 @@ ${remote_runner_block}
 
 ## Third execution surface — StackGen MCP
 
-When the agent has the **StackGen MCP** integration attached, **AppStack** operations (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_from_discovered_resources`, `download-iac`, `create_appstack_action_run`, etc.) run through those **MCP tools** on the lead or a dedicated subagent whose `tool_names` include the StackGen integration — **not** through Ubuntu CLI and **not** through GitHub HTTP.
+When the agent has the **StackGen MCP** integration attached, **AppStack** operations (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`, `get_appstacks`, `create_env_profile`, `create_snapshot`, etc. — see **`stackgen-appstack-mcp-playbook-sop`**) run through those **MCP tools** on the lead or a dedicated subagent whose `tool_names` include the StackGen integration — **not** through Ubuntu CLI and **not** through GitHub HTTP.
 
 Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen MCP is **not** attached, skip AppStack materialization (note `stackgen_appstack_map` as `skipped: no_mcp`) but still complete TF-only grouping and plans.
 
@@ -64,8 +64,8 @@ Guild/Ubuntu MCP sandboxes often expose a **read-only** project root, cwd, or wo
 **Required recovery — use `/tmp` for ephemeral disk:**
 
 1. **Create a unique writable root** under `/tmp`, e.g. `/tmp/db-state-split-<workflow-or-session-or-timestamp>/` (one directory per run; avoid collisions).
-2. **Re-run failed work under that tree:** fresh **`git clone`** of the IaC repository URL (or unpack/copy inputs), download **`monolith_state_uri`** into **`monolith_state_local_path`**, `terraform show -json` scratch files, per-shard TF workdirs, **`download-iac`** output directories, plan JSON / log artifacts.
-3. **`note` the canonical paths** used in practice: set **`repo_clone_path`** and **`monolith_state_local_path`** (and **`remote_runner_artifacts`** when applicable) to the **actual** `/tmp/...` locations so later stages (`discover-db-anchors`, plan matrix, MCP `download-iac` parity checks) read the same files. Prefer **`chmod 700`** on that directory when the integration allows it.
+2. **Re-run failed work under that tree:** fresh **`git clone`** of the IaC repository URL (or unpack/copy inputs), download **`monolith_state_uri`** into **`monolith_state_local_path`**, `terraform show -json` scratch files, per-shard TF workdirs, StackGen **Plan** log excerpts under **`/tmp/...`**, plan JSON / log artifacts.
+3. **`note` the canonical paths** used in practice: set **`repo_clone_path`** and **`monolith_state_local_path`** (and **`remote_runner_artifacts`** when applicable) to the **actual** `/tmp/...` locations so later stages (`discover-db-anchors`, plan matrix, StackGen **`get_action_run_logs`** evidence paths) read the same files. Prefer **`chmod 700`** on that directory when the integration allows it.
 4. Do **not** bulk-fetch state via GitHub HTTP; keep large state and clones on **Ubuntu CLI** under `/tmp` (or remote runner paths) only.
 5. After a successful run, **remove** large `terraform.tfstate` copies from shared **`/tmp`** when your org policy allows, so credentials in state are not left behind for unrelated jobs.
 
@@ -102,7 +102,7 @@ Earlier steps stay **linear**: ingest → discover → allocate → count → re
 
 - **GitHub integration** — `gh api` / filtered listings only.  
 - **Ubuntu CLI** — state pull, `jq`, `tofu`/`terraform`, local plan matrix, `git`.  
-- **StackGen MCP** — AppStack CRUD, discovery import, `download-iac`, action runs, env profiles.
+- **StackGen MCP** — AppStack CRUD, TF blocks on stacks, env profiles, Plan action runs + logs, snapshots, `get_current_violations` (see **`stackgen-appstack-mcp-playbook-sop`** / **`stackgen-mcp-consumer-tool-catalog-sop`** for the exact user-MCP matrix).
 
 ## Subagent discipline
 

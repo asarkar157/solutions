@@ -6,8 +6,8 @@ import rego.v1
 # tool names pass. Other tool invocations (non-MCP) are allowed so this policy can attach
 # without blocking unrelated integrations.
 #
-# Guild often prefixes MCP tools with the integration name (e.g. stackgen-mothership-mcp_get_appstacks);
-# we allow short names (docs examples) and suffix matches for real Consumer/Mothership tools.
+# Guild often prefixes MCP tools with the integration name (e.g. stackgen-mcp_get_appstacks);
+# we allow short names (optional graph-style tools) and suffix matches aligned with StackGen user MCP reads.
 
 default allow := false
 
@@ -41,7 +41,9 @@ allowed_short_names := {
 	"get_operation_schema",
 }
 
-# Suffixes after integration prefix (stackgen-mcp_*, stackgen-mothership-mcp_*, etc.)
+# Suffixes after integration prefix (stackgen-mcp_*, stackgen-mothership-mcp_*, etc.).
+# Read-only allow list for integration_type == "mcp". Includes StackGen **user / AppStack**
+# MCP (`…/api/mcp/user`) get_* tools; other products may expose extra tools — extend here if policy should allow them.
 allowed_name_suffixes := {
 	"_get_appstacks",
 	"_get_application_graph",
@@ -59,22 +61,10 @@ allowed_name_suffixes := {
 	"_get_current_violations",
 	"_get_action_run",
 	"_get_action_run_logs",
-	"_get_module_versions",
-	"_module_usage_in_appstacks",
-	"_get_policies",
-	"_get_scan_results",
-	"_list_cloud_discoveries",
-	"_get_resources_from_discovery",
-	"_list-git-configuration",
-	"_list-available-secrets",
-	"_get_stackgen_projects",
 	"_get_appstack_tf_variables",
 	"_get_appstack_tf_locals",
 	"_get_appstack_tf_outputs",
 	"_get_appstack_tf_providers",
-	"_get_stackgen_policy_schema",
-	"download-iac",
-	"detect-drift",
 }
 
 deny_reason := sprintf(

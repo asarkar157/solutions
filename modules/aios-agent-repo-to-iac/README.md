@@ -1,6 +1,6 @@
 # AIOS — Repository to IaC (StackGen MCP)
 
-Registers one agent and **two workflows**: (1) **repository-to-iac** — analyze a repo and generate IaC via StackGen MCP; (2) **repo-scan-appstack-github-export** — scan a repo, infer modules/resource types, materialize an **appStack**, produce a **deployable artifact**, then **Export** or **push** IaC to GitHub. Runbook **`stackgen-mcp-consumer-tool-catalog-sop`** documents the full Consumer MCP tool matrix (`create_appstack`, `download-iac`, `create_appstack_from_discovered_resources`, `push-appstack-to-git`, policies, modules, etc.).
+Registers one agent and **two workflows**: (1) **repository-to-iac** — analyze a repo and generate IaC via StackGen MCP; (2) **repo-scan-appstack-github-export** — scan a repo, infer modules/resource types, materialize an **appStack**, produce a **deployable artifact**, then **Export** (product) or Git push via **GitHub/Ubuntu** automation. Runbook **`stackgen-mcp-consumer-tool-catalog-sop`** documents the **StackGen user / AppStack** MCP tool matrix (`create_appstack`, `get_appstacks`, `create_appstack_action_run`, env profiles, snapshots, etc.).
 
 ## Prerequisites
 

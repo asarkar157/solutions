@@ -1,6 +1,6 @@
 Skill: **Reverse-engineer IaC** from allocated state slices and **best-fit map** to the org module registry (AIOS / internal catalog) and **StackGen resource types**.
 
-Keywords: import block, terraform import, moved block, module registry, stackgen mcp, get_module_versions, github.com/appcd-dev/solutions, aios-foundation, brownfield, codegen, aws, azure, gcp.
+Keywords: import block, terraform import, moved block, module registry, stackgen mcp, get_supported_resource_types, github.com/appcd-dev/solutions, aios-foundation, brownfield, codegen, aws, azure, gcp.
 
 ## Execution (Ubuntu + large states)
 
@@ -18,7 +18,7 @@ Keywords: import block, terraform import, moved block, module registry, stackgen
 
 ## StackGen module / template cross-check
 
-Use MCP **`get_module_versions`** (filter `cloud_provider`, `module_resource_type`, `project_id`) and **`module_usage_in_appstacks`** to see how similar modules are already used before proposing new custom types. Prefer existing **templates** (`get_appstacks` with `labels: ["template"]`) + `create_appstack` with `appstack_ref_id` when they fit a whole group.
+The StackGen **user** MCP (`…/api/mcp/user`) does **not** expose Terraform module catalog tools (`get_module_versions`, `module_usage_in_appstacks`). For **StackGen** alignment use **`get_supported_resource_types`**, **`get_resource_type_configurations`**, and **`get_appstacks`** (e.g. `labels: ["template"]`) plus **`get_appstack_resources`** on candidate templates. For **Terraform** module sources (AIOS `github.com/appcd-dev/solutions`, pins, double-slash paths), use **Ubuntu CLI** + `git` / registry browser patterns in this runbook — not MCP module-metadata calls unless a **different** integration provides them.
 
 ## Registry best-fit (AIOS-oriented inventory — align versions with consumer)
 

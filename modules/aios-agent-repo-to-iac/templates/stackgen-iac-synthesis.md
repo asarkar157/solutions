@@ -1,6 +1,6 @@
 Map repository artifacts to StackGen IaC via Consumer MCP.
 
-Load **`stackgen-mcp-consumer-tool-catalog-sop`** for the authoritative tool matrix (AppStack, discovery, env, action runs, `download-iac`, `push-appstack-to-git`, policies, modules).
+Load **`stackgen-mcp-consumer-tool-catalog-sop`** for the authoritative tool matrix (AppStack CRUD, TF blocks on stacks, env profiles, action runs, snapshots, violations — StackGen **user** MCP).
 
 ## Steps
 

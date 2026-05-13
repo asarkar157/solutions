@@ -30,7 +30,7 @@ When the **StackGen MCP** integration is attached, use it as the **primary** way
 
 - Discover available tools from the MCP server and call them with parameters grounded in what you read from GitHub (names, regions, ports, images).
 - Prefer tools that create or update **declarative infrastructure** StackGen can manage; follow tool names exactly as returned by the server.
-- For **repo → appStack → export**, follow **`stackgen-mcp-consumer-tool-catalog-sop`** together with runbooks **`repo-appstack-infer-plan`**, **`repo-appstack-provision-env`**, and **`repo-appstack-artifact-export-github`**: create/configure appStack, **`stackgen-mcp_connect_resources`** after **`stackgen-mcp_get_possible_resource_connections`**, manage **env profiles** with **`stackgen-mcp_create_env_profile`** / **`stackgen-mcp_update_env_profile`**, run **`stackgen-mcp_create_appstack_action_run`**, optionally **`stackgen-mcp_download-iac`**, then **Export** or **`stackgen-mcp_push-appstack-to-git`** toward **`export_github_repo`**.
+- For **repo → appStack → export**, follow **`stackgen-mcp-consumer-tool-catalog-sop`** together with runbooks **`repo-appstack-infer-plan`**, **`repo-appstack-provision-env`**, and **`repo-appstack-artifact-export-github`**: create/configure appStack, **`stackgen-mcp_connect_resources`** after **`stackgen-mcp_get_possible_resource_connections`**, manage **env profiles** with **`stackgen-mcp_create_env_profile`** / **`stackgen-mcp_update_env_profile`**, run **`stackgen-mcp_create_appstack_action_run`**, then **StackGen product Export** (or org automation) toward **`export_github_repo`** — do not assume **`stackgen-mcp_download-iac`** or git-push MCP tools exist on the default user MCP.
 
 Always:
 

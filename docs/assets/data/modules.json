@@ -673,7 +673,7 @@
     {
       "id": "aios-agent-repo-to-iac",
       "name": "Repo to IaC",
-      "desc": "GitHub→IaC workflow plus repo-scan→appStack→export-to-GitHub. Includes stackgen-mcp-consumer-tool-catalog-sop (full StackGen Consumer MCP matrix: create_appstack, add_resource_to_appstack, discovery, download-iac, push-appstack-to-git, policies, modules).",
+      "desc": "GitHub→IaC workflow plus repo-scan→appStack→export-to-GitHub. Includes stackgen-mcp-consumer-tool-catalog-sop (StackGen user MCP: AppStacks, TF blocks, env profiles, action runs, snapshots, violations).",
       "layer": 2,
       "tags": [
         "iac",
@@ -752,7 +752,7 @@
     {
       "id": "aios-agent-sdlc",
       "name": "SDLC",
-      "desc": "Nine agents, release pipeline, developer request intake; expanded stackgen-mcp-iac (discovery, create_appstack_from_discovered_resources, provision_appstack, download-iac). Optionally attach stackgen-mcp-consumer-tool-catalog-sop from repo-to-iac for the full tool list.",
+      "desc": "Nine agents, release pipeline, developer request intake; stackgen-mcp-iac aligned with StackGen user MCP (AppStacks, plans, snapshots). Optionally attach stackgen-mcp-consumer-tool-catalog-sop from repo-to-iac.",
       "layer": 2,
       "tags": [
         "sdlc",
@@ -1250,7 +1250,7 @@
     {
       "id": "aios-agent-stackgen-mcp-policy",
       "name": "StackGen MCP + Guardrails",
-      "desc": "StackGen MCP Guild integration (Vault Other/mcp) plus read-only OPA guardrails. stackgen-audit runbook documents read-only MCP tools (list_cloud_discoveries, get_module_versions, download-iac, detect-drift, …).",
+      "desc": "StackGen MCP Guild integration (Vault Other/mcp) plus read-only OPA guardrails. stackgen-audit runbook documents read-only user-MCP tools (get_appstacks, get_appstack_resources, get_action_run_logs, get_current_violations, …).",
       "layer": 2,
       "tags": [
         "stackgen",

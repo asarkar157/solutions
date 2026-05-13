@@ -325,11 +325,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-stackgen-appstacks"], [])
       )
       note = <<-EOT
-        If StackGen MCP is attached: for each `logical_group_manifest` entry, run Flow A from playbook (create_appstack → add_resource_to_appstack → connect_resources → create_env_profile when needed → create_appstack_action_run Plan). Persist `stackgen_appstack_map`.
+        If StackGen MCP is attached: for each `logical_group_manifest` entry, run the **state → AppStack** flow from **`stackgen-appstack-mcp-playbook-sop`** (`create_appstack` → `add_resource_to_appstack` → `connect_resources` → `create_env_profile` when needed → `create_appstack_action_run` Plan). Persist `stackgen_appstack_map`.
         This stage may run **concurrently** with `orphans-secondary-pipeline` — use only reverse/registry notes; do not rely on orphan-stage outputs. Prefer disjoint `note` keys from the orphan branch (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`).
         MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` only for stacks you are mutating or just created — avoid listing before every add. Refresh cache only after creates/deletes or stale errors (see stackgen-appstack-mcp-playbook-sop).
         If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp`.
-        Optional input `cloud_discovery_id`: when set, prefer Flow B (`create_appstack_from_discovered_resources`) for that discovery id intersected with group resource IDs if your bridge script produced mapping.
+        Optional workflow input `cloud_discovery_id` is a **correlation id** only — the default StackGen **user** MCP does not expose discovery-import tools; do not plan on `create_appstack_from_discovered_resources` unless a **different** MCP integration documents it.
         note `stage_summary:materialize-stackgen-appstacks`.
       EOT
     },
@@ -364,7 +364,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::multi-shard-plan-convergence"], [])
       )
       note = <<-EOT
-        Run TF plan matrix per `logical_group_manifest`; if `stackgen_appstack_map` has entries, run **`create_appstack_action_run`** (Plan) per AppStack and optionally **`download-iac`** + local `tofu plan` for parity. If any drift, Loop B then re-plan until pass or iteration cap.
+        Run TF plan matrix per `logical_group_manifest`; if `stackgen_appstack_map` has entries, run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**; compare with Ubuntu `tofu plan` on the per-group TF roots under **`repo_clone_path`** (no `download-iac` on user MCP). If any drift, Loop B then re-plan until pass or iteration cap.
         One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.
         Set `multi_plan_zero_diff_ok`. note `stage_summary:multi-shard-plan-convergence`.
       EOT

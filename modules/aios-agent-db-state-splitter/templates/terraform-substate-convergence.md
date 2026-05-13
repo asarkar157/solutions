@@ -13,7 +13,7 @@ Keywords: tofu plan -json, plan file, aggregate counts, drift, loop, workspace, 
 1. For each **logical group** Terraform root under `repo_clone_path` (or dedicated workdir — if the default tree is read-only, use a writable path under **`/tmp`** and align with orchestration SOP **`note`** keys), run:
    - `tofu init -backend=false -input=false` (or real backend when safe)
    - `tofu plan -no-color -input=false` (add `-lock=false` only if org policy allows)
-2. When **`stackgen_appstack_map`** is populated, for each AppStack run **`create_appstack_action_run`** with `action_type` = **Plan** (StackGen MCP) and confirm success; optionally **`download-iac`** into the Ubuntu sandbox and run `tofu plan` on the download for cross-check.
+2. When **`stackgen_appstack_map`** is populated, for each AppStack run **`create_appstack_action_run`** with `action_type` = **Plan** (StackGen MCP) and confirm success; capture evidence with **`get_action_run`** / **`get_action_run_logs`**. For cross-check with local IaC, use the **per-group Terraform roots** already materialized under **`repo_clone_path`** (Ubuntu `tofu plan`) — the user MCP does not expose **`download-iac`**.
 3. Collect exit codes and whether each plan contains **no** create/change/destroy (parse `-json` if available).
 4. Set `multi_plan_zero_diff_ok=true` only if **all** group TF roots **and** all StackGen plans (when in scope) pass.
 

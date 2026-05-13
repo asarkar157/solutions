@@ -1,8 +1,9 @@
 variable "stackgen_mcp_integration_name" {
   description = <<-EOT
     Optional Guild integration name for the **StackGen MCP** server (same pattern as `aios-agent-repo-to-iac`).
-    When non-empty, the agent can call AppStack / discovery tools (`create_appstack`, `add_resource_to_appstack`,
-    `create_appstack_from_discovered_resources`, `download-iac`, etc.). When empty, SOPs instruct skipping
+    When non-empty, the agent can call AppStack / integrations tools (`create_appstack`, `add_resource_to_appstack`,
+    `connect_resources`, `create_appstack_action_run`, `get_appstacks`, env profiles, snapshots, etc. — see
+    **`stackgen-mcp-consumer-tool-catalog-sop`** for the user-MCP matrix). When empty, SOPs instruct skipping
     StackGen materialization while still performing TF-only grouping and plans.
   EOT
   type        = string
