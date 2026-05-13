@@ -209,7 +209,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 **When consuming these modules in your own stack:**
 
 - **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.10, < 0.2.0` from `releases.stackgen.com` ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
+- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** `>= 0.1.12, < 0.2.0` from `releases.stackgen.com` when using `sg_agent.remote_runners` or listing runners (`sg_remote_runner` / `sg_remote_runners`); otherwise `>= 0.1.10` remains valid for stacks that do not use those attributes ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
 - LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License

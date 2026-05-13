@@ -4,9 +4,10 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 
 ## Requirements
 
+- **StackGen provider** `>= 0.1.12` (this module pins that minimum for `sg_agent.remote_runners` and `data.sg_remote_runner`).
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops` (typical stack).
 - `modules/aios-integration-github` and `modules/aios-integration-ubuntu`.
-- **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable `create_appstack`, `add_resource_to_appstack`, `create_appstack_from_discovered_resources`, `download-iac`, etc. Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs).
+- **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable `create_appstack`, `add_resource_to_appstack`, `create_appstack_from_discovered_resources`, `download-iac`, etc. Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
 
 ## Usage
 
@@ -25,8 +26,9 @@ module "db_state_splitter" {
   # Optional: StackGen MCP integration name for AppStack / discovery tools.
   # stackgen_mcp_integration_name = module.your_stackgen_mcp.integration_name
 
-  # Optional: operator-configured Guild remote runner for heavy plan fan-out (see variables.tf).
-  # remote_runner_name = "org-tofu-runner"
+  # Optional: Guild remote runner — documents in SOPs; set attach to bind on the agent (runner must exist at plan).
+  # remote_runner_name             = "org-tofu-runner"
+  # remote_runner_attach_to_agent  = true
 
   # Optional: GitHub ingress to primary workflow (default false to avoid duplicate webhooks).
   # enable_github_webhook = true
@@ -45,4 +47,4 @@ Notable **optional inputs**: `grouping_policy_json`, `stackgen_project_name`, `c
 
 ## Outputs
 
-See `outputs.tf` — agent name, workflow names, optional webhook id/token.
+See `outputs.tf` — agent name, workflow names, `stackgen_mcp_auto_approve_policy_id`, optional webhook id/token.

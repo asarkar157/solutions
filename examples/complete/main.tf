@@ -8,8 +8,9 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.10, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # Align with modules that use sg_agent.remote_runners / sg_remote_runner (>= 0.1.12).
+      version = ">= 0.1.12, < 0.2.0"
     }
   }
 }
@@ -203,6 +204,10 @@ module "terraform_bot" {
     github     = module.github_integration.integration_name
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
+
+  # Optional remote runner (provider >= 0.1.12): set name + remote_runner_attach_to_agent = true
+  # remote_runner_name              = "my-org-tofu-runner"
+  # remote_runner_attach_to_agent   = true
 }
 
 module "db_state_splitter" {
@@ -219,6 +224,10 @@ module "db_state_splitter" {
   stackgen_mcp_integration_name = ""
 
   enable_github_webhook = false
+
+  # Optional: Guild remote runner — SOP text only unless attach is true (requires runner to exist at plan time).
+  # remote_runner_name              = "my-org-tofu-runner"
+  # remote_runner_attach_to_agent   = true
 }
 
 # =============================================================================

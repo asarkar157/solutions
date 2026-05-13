@@ -5,6 +5,11 @@ output "agent_names" {
   }
 }
 
+output "stackgen_mcp_auto_approve_policy_id" {
+  description = "Intervention policy id for stackgen-mcp_* HITL waiver (db-state-split-stackgen-mcp-auto-approve)."
+  value       = sg_policy.db_state_split_stackgen_mcp_auto_approve.id
+}
+
 output "workflow_names" {
   description = "Primary and secondary workflow names."
   value = {

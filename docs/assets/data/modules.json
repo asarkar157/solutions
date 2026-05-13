@@ -1120,6 +1120,16 @@
           "n": "integration_names",
           "t": "map(string)",
           "r": false
+        },
+        {
+          "n": "remote_runner_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "remote_runner_attach_to_agent",
+          "t": "bool",
+          "r": false
         }
       ],
       "outputs": [],
@@ -1330,6 +1340,16 @@
           "n": "integration_names",
           "t": "object({github,ubuntu_cli})",
           "r": true
+        },
+        {
+          "n": "remote_runner_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "remote_runner_attach_to_agent",
+          "t": "bool",
+          "r": false
         }
       ],
       "outputs": [
@@ -1380,6 +1400,11 @@
         {
           "n": "remote_runner_name",
           "t": "string",
+          "r": false
+        },
+        {
+          "n": "remote_runner_attach_to_agent",
+          "t": "bool",
           "r": false
         },
         {

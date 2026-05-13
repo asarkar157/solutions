@@ -1,7 +1,10 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.10, < 0.2.0" }
+    sg = {
+      source  = "releases.stackgen.com/stackgen/stackgen"
+      version = ">= 0.1.12, < 0.2.0"
+    }
   }
 }
 
@@ -23,6 +26,31 @@ variable "workflow_skill_refs" {
   default     = {}
 }
 
+variable "remote_runner_name" {
+  description = <<-EOT
+    Optional Guild remote runner name. When `remote_runner_attach_to_agent` is true, looked up with
+    `data.sg_remote_runner` and set on `sg_agent.remote_runners` (provider **>= 0.1.12**).
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_attach_to_agent" {
+  description = "When true, attach `remote_runner_name` to the drift agent. Requires non-empty `remote_runner_name`."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.remote_runner_attach_to_agent || trimspace(var.remote_runner_name) != ""
+    error_message = "remote_runner_attach_to_agent requires a non-empty remote_runner_name."
+  }
+}
+
+data "sg_remote_runner" "iac_drift_detective" {
+  count = var.remote_runner_attach_to_agent ? 1 : 0
+  name  = trimspace(var.remote_runner_name)
+}
+
 resource "sg_agent" "iac_drift_detective" {
   name    = "iac-drift-detective"
   persona = file("${path.module}/personas/drift-detective.md")
@@ -31,6 +59,7 @@ resource "sg_agent" "iac_drift_detective" {
     lookup(var.model_names, "claude_sonnet", ""),
     lookup(var.model_names, "gemini_flash", "")
   ])
+  remote_runners = length(data.sg_remote_runner.iac_drift_detective) > 0 ? toset([data.sg_remote_runner.iac_drift_detective[0].name]) : null
   integrations = compact([
     lookup(var.integration_names, "github", ""),
     lookup(var.integration_names, "aws", ""),

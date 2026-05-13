@@ -2,13 +2,22 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.10, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # remote_runners on sg_agent + sg_remote_runner lookup (attach) require >= 0.1.12
+      version = ">= 0.1.12, < 0.2.0"
     }
   }
 }
 
+data "sg_remote_runner" "db_state_split_architect" {
+  count = var.remote_runner_attach_to_agent ? 1 : 0
+  name  = trimspace(var.remote_runner_name)
+}
+
 locals {
+  # Guild tool names are <integration_name>_<mcp_tool>; pattern suffix * bypasses HITL for all MCP tools on that integration.
+  stackgen_mcp_hitl_patterns = trimspace(var.stackgen_mcp_integration_name) != "" ? ["${trimspace(var.stackgen_mcp_integration_name)}_*"] : []
+
   remote_runner_block = trimspace(var.remote_runner_name) != "" ? trimspace(<<-RUNNER
     Operator supplied **remote_runner_name** = "${var.remote_runner_name}".
     When the Guild agent exposes a **remote runner** or delegated execution tool bound to that name, use it for **fan-out** `tofu plan` / heavy `terraform show -json` over many shards so the Ubuntu MCP sandbox does not time out. Persist artifact paths (plan JSON, state snapshots) via `note` keys `remote_runner_artifacts`.
@@ -21,6 +30,17 @@ locals {
 }
 
 # =============================================================================
+# Policy — auto-approve StackGen Consumer MCP tools (stackgen-mcp_*)
+# =============================================================================
+
+resource "sg_policy" "db_state_split_stackgen_mcp_auto_approve" {
+  name        = "db-state-split-stackgen-mcp-auto-approve"
+  description = "Companion intervention policy for db-state-split-architect; when stackgen_mcp_integration_name is set, hitl.always_allowed includes <integration>_* so Consumer MCP tools skip HITL."
+  type        = "intervention"
+  rego_source = file("${path.module}/policies/stackgen-mcp-auto-approve.rego")
+}
+
+# =============================================================================
 # Agent — DB / monorepo state split architect
 # =============================================================================
 
@@ -28,6 +48,14 @@ resource "sg_agent" "db_state_split_architect" {
   name        = "db-state-split-architect"
   persona     = file("${path.module}/personas/db-state-split-architect.md")
   model_names = compact([var.model_names.claude_sonnet, var.model_names.gpt4o])
+
+  hitl = {
+    # Provider: tool names or patterns — e.g. stackgen-mcp_* matches every tool with prefix stackgen-mcp_
+    # when `stackgen_mcp_integration_name` is `stackgen-mcp`.
+    always_allowed = concat(["web_search", "note", "read_notes"], local.stackgen_mcp_hitl_patterns)
+  }
+
+  remote_runners = length(data.sg_remote_runner.db_state_split_architect) > 0 ? toset([data.sg_remote_runner.db_state_split_architect[0].name]) : null
 
   integrations = compact([
     var.integration_names.github,
@@ -45,6 +73,12 @@ resource "sg_agent_budget" "db_state_split_architect" {
 resource "sg_agent_policy_attachment" "db_state_split_architect_dangerous_ops" {
   agent_name = sg_agent.db_state_split_architect.name
   policy_id  = var.policy_ids.dangerous_ops
+  enabled    = true
+}
+
+resource "sg_agent_policy_attachment" "db_state_split_architect_stackgen_mcp_auto_approve" {
+  agent_name = sg_agent.db_state_split_architect.name
+  policy_id  = sg_policy.db_state_split_stackgen_mcp_auto_approve.id
   enabled    = true
 }
 

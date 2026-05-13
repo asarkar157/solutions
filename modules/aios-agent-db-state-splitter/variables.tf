@@ -54,6 +54,22 @@ variable "remote_runner_name" {
   default     = ""
 }
 
+variable "remote_runner_attach_to_agent" {
+  description = <<-EOT
+    When true, looks up `remote_runner_name` with `data.sg_remote_runner` and sets `remote_runners`
+    on the Guild agent so tool dispatch may use that runner (provider **>= 0.1.12**). Requires a
+    non-empty `remote_runner_name` and provider `project_id` / `org_id` when the API is org-scoped.
+    Leave false to only document the runner in SOPs without Terraform-level attachment.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.remote_runner_attach_to_agent || trimspace(var.remote_runner_name) != ""
+    error_message = "remote_runner_attach_to_agent requires a non-empty remote_runner_name."
+  }
+}
+
 variable "enable_github_webhook" {
   description = "When true, creates sg_webhook targeting the primary split workflow (GitHub issue/PR ingress)."
   type        = bool

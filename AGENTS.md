@@ -19,6 +19,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
+      # Use >= 0.1.12 when you set sg_agent.remote_runners or rely on remote-runner attach patterns in AIOS modules.
       version = ">= 0.1.10, < 0.2.0"
     }
   }
@@ -46,7 +47,7 @@ This repo consumes the **`sg`** provider from `releases.stackgen.com`; it does *
 | [`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md) | Schema tag conventions (`sg:"..."`) and implementation patterns |
 | `tofu providers schema -json` / `terraform providers schema -json` | Full machine-readable schema (key = your `required_providers.sg.source`) |
 
-**Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
+**Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`. From provider **v0.1.12**, `sg_agent` also accepts **`remote_runners`** (set of runner names/IDs) so Terraform can **attach** allowed runners to an agent; modules such as `aios-agent-db-state-splitter`, `aios-agent-terraform-bot`, and `aios-agent-iac-drift-detective` expose optional `remote_runner_attach_to_agent` + `remote_runner_name` wiring that uses `data.sg_remote_runner` at plan time. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
 
 ## Module source (how customers reference this repo)
 

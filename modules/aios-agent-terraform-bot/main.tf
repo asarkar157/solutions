@@ -1,10 +1,16 @@
 terraform {
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.10, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # sg_agent.remote_runners + sg_remote_runner lookup require >= 0.1.12
+      version = ">= 0.1.12, < 0.2.0"
     }
   }
+}
+
+data "sg_remote_runner" "terraform_module_manager" {
+  count = var.remote_runner_attach_to_agent ? 1 : 0
+  name  = trimspace(var.remote_runner_name)
 }
 
 # ============================================================================
@@ -15,6 +21,8 @@ resource "sg_agent" "terraform_module_manager" {
   name        = "terraform-module-manager"
   persona     = file("${path.module}/personas/terraform-module-manager.md")
   model_names = [var.model_names.gpt4o, var.model_names.claude_sonnet]
+
+  remote_runners = length(data.sg_remote_runner.terraform_module_manager) > 0 ? toset([data.sg_remote_runner.terraform_module_manager[0].name]) : null
 
   # Both integrations are required (see variable validation). Do not use compact() —
   # an empty ubuntu_cli would silently drop CLI tools while the SOPs still reference ubuntu-cli_*.
