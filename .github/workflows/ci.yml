@@ -61,15 +61,19 @@ jobs:
           ./scripts/opa-check-all.sh
 
   persona-length:
-    name: Persona length cap
+    name: Persona length cap + per-module guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Hard rule: every modules/aios-agent-*/personas/**/*.md must be within
-      # Guild's 15000-byte cap (internal/guild/agentrouter/config.go). The
-      # script exits non-zero on the first violation so PRs that ship an
-      # oversized persona never reach apply.
-      - name: Verify persona files are within the Guild byte cap
+      # Hard rules enforced in one step (see scripts/verify-persona-length.sh):
+      #   1. Every modules/aios-agent-*/personas/**/*.md is within Guild's
+      #      15000-byte cap (internal/guild/agentrouter/config.go).
+      #   2. Every aios-agent-* module that wires `persona = file(...)` ships
+      #      a sibling _persona_guard.tf with the canonical terraform_data
+      #      precondition, so a new module can't silently skip the plan-time
+      #      guard.
+      # Either failure exits non-zero and blocks the PR before terraform apply.
+      - name: Verify persona byte cap and per-module guard files
         run: |
           set -euo pipefail
           chmod +x ./scripts/verify-persona-length.sh

@@ -21,7 +21,7 @@ help:
 	@echo "  make opa-fmt-check  Fail if Rego formatting differs (CI)"
 	@echo "  make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
 	@echo "  make validate       $(TF) init -backend=false && validate per module/example + db-state-split tftpl smoke"
-	@echo "  make verify-persona-length  Fail if any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap)"
+	@echo "  make verify-persona-length  Fail if (a) any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap), or (b) any aios-agent-* module is missing _persona_guard.tf"
 	@echo "  make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, validate"
 	@echo "  make clean          remove .terraform caches under modules/ and examples/"
 	@echo ""
@@ -56,10 +56,14 @@ validate-db-state-split-templates:
 	@chmod +x "$(CURDIR)/scripts/verify-db-state-split-templates.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/verify-db-state-split-templates.sh"
 
-# verify-persona-length enforces Guild's 15000-byte agent persona cap across every
-# modules/aios-agent-*/personas/**/*.md file. See scripts/verify-persona-length.sh
-# for rationale (the cap is checked server-side; catching it pre-merge avoids
-# tainted resources and cascading apply failures).
+# verify-persona-length enforces two hard rules in one pass:
+#   1. Guild's 15000-byte agent persona cap on every modules/*/personas/**/*.md.
+#   2. Every aios-agent-* module that wires `persona = file(...)` ships a
+#      sibling _persona_guard.tf with the canonical `terraform_data` precondition.
+# See scripts/verify-persona-length.sh for rationale (the cap is enforced
+# server-side; catching it pre-merge avoids tainted resources and cascading
+# apply failures, and the per-module guard turns Guild's runtime 500 into a
+# plan-time failure for module consumers).
 verify-persona-length:
 	@chmod +x "$(CURDIR)/scripts/verify-persona-length.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/verify-persona-length.sh"
