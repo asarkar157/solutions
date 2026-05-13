@@ -9,8 +9,8 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # Align with modules that use sg_agent.remote_runners / sg_remote_runner (>= 0.1.12).
-      version = ">= 0.1.12, < 0.2.0"
+      # Align with AIOS modules (evidence checklists, remote runners, etc.; >= 0.1.13).
+      version = ">= 0.1.13, < 0.2.0"
     }
   }
 }
@@ -205,7 +205,7 @@ module "terraform_bot" {
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
 
-  # Optional remote runner (provider >= 0.1.12): set name + remote_runner_attach_to_agent = true
+  # Optional remote runner: set name + remote_runner_attach_to_agent = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true
 }

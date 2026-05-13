@@ -3,7 +3,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.12, < 0.2.0"
+      version = ">= 0.1.13, < 0.2.0"
     }
   }
 }
@@ -29,7 +29,7 @@ variable "workflow_skill_refs" {
 variable "remote_runner_name" {
   description = <<-EOT
     Optional Guild remote runner name. When `remote_runner_attach_to_agent` is true, looked up with
-    `data.sg_remote_runner` and set on `sg_agent.remote_runners` (provider **>= 0.1.12**).
+    `data.sg_remote_runner` and set on `sg_agent.remote_runners`.
   EOT
   type        = string
   default     = ""

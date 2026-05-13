@@ -2,8 +2,8 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # sg_agent.remote_runners + sg_remote_runner lookup require >= 0.1.12
-      version = ">= 0.1.12, < 0.2.0"
+      # sg_agent.remote_runners + sg_remote_runner lookup
+      version = ">= 0.1.13, < 0.2.0"
     }
   }
 }

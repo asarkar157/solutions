@@ -44,7 +44,7 @@ variable "workflow_skill_refs" {
 variable "remote_runner_name" {
   description = <<-EOT
     Optional Guild remote runner name (`runner_id`). When `remote_runner_attach_to_agent` is true, the module
-    looks it up with `data.sg_remote_runner` and sets `remote_runners` on the agent (provider **>= 0.1.12**).
+    looks it up with `data.sg_remote_runner` and sets `remote_runners` on the agent (provider **>= 0.1.13**).
     Use for heavy `terraform`/`tofu` work off the default MCP sandbox when your org provisions runners.
   EOT
   type        = string

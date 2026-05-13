@@ -4,7 +4,7 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 
 ## Requirements
 
-- **StackGen provider** `>= 0.1.12` (this module pins that minimum for `sg_agent.remote_runners` and `data.sg_remote_runner`).
+- **StackGen provider** `>= 0.1.13` (repo-wide minimum; includes `sg_agent.remote_runners` and `data.sg_remote_runner`).
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops` (typical stack).
 - `modules/aios-integration-github` and `modules/aios-integration-ubuntu`.
 - **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable AppStack tools (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**). Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
