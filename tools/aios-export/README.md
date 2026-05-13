@@ -62,7 +62,7 @@ After the run, `out/` contains:
 
 ```bash
 mkdir customer-aiden && cd customer-aiden
-cp /path/to/aios-modules/tools/aios-export/out/tenant.tf .
+cp /path/to/solutions/tools/aios-export/out/tenant.tf .
 cat > provider.tf <<'EOF'
 terraform {
   required_providers {
@@ -78,7 +78,7 @@ provider "sg" {
 }
 EOF
 tofu init
-bash /path/to/aios-modules/tools/aios-export/out/import.sh
+bash /path/to/solutions/tools/aios-export/out/import.sh
 tofu plan      # should show 'no changes' if integrations / policies were hand-merged
 ```
 

@@ -50,7 +50,7 @@ variable "repository_full_name" {
     stops. Default targets the public scenario library repo.
   EOT
   type        = string
-  default     = "appcd-dev/aios-modules"
+  default     = "appcd-dev/solutions"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.repository_full_name))

@@ -397,9 +397,9 @@ module "scenario_author" {
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
 
-  # Defaults: appcd-dev/aios-modules + scenario-request label.
+  # Defaults: appcd-dev/solutions + scenario-request label.
   # Override repository_full_name for forks or staging tenants.
-  # repository_full_name   = "appcd-dev/aios-modules"
+  # repository_full_name   = "appcd-dev/solutions"
   # scenario_request_label = "scenario-request"
 }
 
@@ -494,7 +494,7 @@ output "terraform_bot_webhook" {
 }
 
 output "scenario_author_webhook" {
-  description = "Webhook endpoint for the Scenario Author bot — wire this into the aios-modules repo's GitHub Issues webhook to auto-triage scenario-request issues."
+  description = "Webhook endpoint for the Scenario Author bot — wire this into the appcd-dev/solutions repo's GitHub Issues webhook to auto-triage scenario-request issues."
   value = {
     id    = module.scenario_author.webhook_id
     token = module.scenario_author.webhook_token

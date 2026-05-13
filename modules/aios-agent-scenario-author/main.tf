@@ -99,7 +99,7 @@ resource "sg_runbook_sop" "scenario_pr_and_notify" {
 resource "sg_workflow" "scenario_request_triage" {
   name        = local.workflow_name
   domain      = "developer-experience"
-  description = "Triages `scenario-request` GitHub issues filed against the configured aios-modules-style repo. Decides whether an existing demo scenario already fits or scaffolds a brand-new one under examples/scenarios/<slug>/, validates with tofu fmt + tofu validate, opens a PR, and comments back on the issue. Powers the SE feedback loop documented in docs/se-feedback.md and docs/se-playbook.md."
+  description = "Triages `scenario-request` GitHub issues filed against the configured solutions-style repo (default `appcd-dev/solutions`). Decides whether an existing demo scenario already fits or scaffolds a brand-new one under examples/scenarios/<slug>/, validates with tofu fmt + tofu validate, opens a PR, and comments back on the issue. Powers the SE feedback loop documented in docs/se-feedback.md and docs/se-playbook.md."
   approve     = true
 
   triggers = [
@@ -117,7 +117,7 @@ resource "sg_workflow" "scenario_request_triage" {
   optional_inputs = ["issue_labels"]
 
   example_queries = [
-    "A solutions engineer just filed a `scenario-request` issue on appcd-dev/aios-modules asking for an idle-EC2-only demo — triage it",
+    "A solutions engineer just filed a `scenario-request` issue on appcd-dev/solutions asking for an idle-EC2-only demo — triage it",
     "Issue #123 [scenario] grafana-only incident triage demo — see if an existing scenario fits, else scaffold a PR",
     "Issue #45 missing the scenario-request label — politely tell the SE how to re-file"
   ]
@@ -317,6 +317,6 @@ resource "sg_webhook" "github_scenario_request" {
   name        = local.webhook_name
   target_type = "workflow"
   target_name = sg_workflow.scenario_request_triage.name
-  action      = "A GitHub issue was filed on the configured aios-modules-style repository. Inspect the payload (repository_full_name, issue.number, issue.labels) and route to the scenario-request-triage workflow. The workflow's analyze-issue stage enforces the repo + label gate; do not pre-filter here."
+  action      = "A GitHub issue was filed on the configured solutions-style repository (default `appcd-dev/solutions`). Inspect the payload (repository_full_name, issue.number, issue.labels) and route to the scenario-request-triage workflow. The workflow's analyze-issue stage enforces the repo + label gate; do not pre-filter here."
   enabled     = true
 }

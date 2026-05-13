@@ -1,6 +1,6 @@
 Skill: Operating manual for the Scenario Author. Read BEFORE anything else in any stage. It encodes planner/executor split, integration boundaries, GitHub auth flow, subagent budgets, note discipline, and the bounded §6 fallbacks every other SOP depends on.
 
-Keywords for skill discovery: scenario, scenario-request, examples/scenarios, solutions repo, github issue, github webhook, gh cli, ubuntu cli, planner, subagent, create_agent, note, validate, tofu, terraform, demo, se-playbook, integration boundaries.
+Keywords for skill discovery: scenario, scenario-request, examples/scenarios, appcd-dev/solutions, solutions repo, github issue, github webhook, gh cli, ubuntu cli, planner, subagent, create_agent, note, validate, tofu, terraform, demo, se-playbook, integration boundaries.
 
 ========================================================================
 0) Reality check — you are a planner, not an executor
@@ -40,7 +40,7 @@ Hard rule: do NOT attempt anonymous `git clone https://github.com/...` for priva
 This workflow is triggered by a GitHub webhook (StackGen normalized event `issue.created`). The webhook payload contains the EXACT repo + issue identifiers. You MUST extract these from the payload rather than searching the org for "the repo with the scenario-request issue".
 
 Canonical extraction paths (all available on the trigger event):
-  `repository_full_name`     = `trigger_event.payload.repository.full_name`        (e.g. "appcd-dev/aios-modules")
+  `repository_full_name`     = `trigger_event.payload.repository.full_name`        (e.g. "appcd-dev/solutions")
   `repository_clone_url`     = `trigger_event.payload.repository.clone_url`
   `repository_default_branch`= `trigger_event.payload.repository.default_branch`
   `issue_or_pr_number`       = `trigger_event.payload.issue.number`
@@ -54,7 +54,7 @@ The `analyze-issue` stage MUST persist ALL of these (under those exact note keys
 0c) Repo + label gate (fail closed)
 ========================================================================
 
-This workflow targets exactly ONE repository (the `repository_full_name` configured at `sg_webhook` creation time, default `appcd-dev/aios-modules`) and exactly ONE label (`scenario_request_label`, default `scenario-request`).
+This workflow targets exactly ONE repository (the `repository_full_name` configured at `sg_webhook` creation time, default `appcd-dev/solutions`) and exactly ONE label (`scenario_request_label`, default `scenario-request`).
 
 Gate evaluation in `analyze-issue` (BEFORE any clone or scaffold work):
 

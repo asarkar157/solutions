@@ -2,7 +2,7 @@
 
 Closes the **solutions-engineer (SE) feedback loop** for this repository. When
 an SE files a `scenario-request` issue against the configured GitHub repo
-(default `appcd-dev/aios-modules`), the agent:
+(default `appcd-dev/solutions`), the agent:
 
 1. Parses the structured issue body (the
    `.github/ISSUE_TEMPLATE/scenario-request.md` template).
@@ -50,7 +50,7 @@ co-exist in the same tenant against the same GitHub org — the label gate
 
 ```hcl
 module "scenario_author" {
-  source = "github.com/appcd-dev/aios-modules//modules/aios-agent-scenario-author?ref=main"
+  source = "github.com/appcd-dev/solutions//modules/aios-agent-scenario-author?ref=main"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
@@ -60,8 +60,8 @@ module "scenario_author" {
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
 
-  # Optional — defaults to the public modules repo.
-  repository_full_name   = "appcd-dev/aios-modules"
+  # Optional — defaults to the public solutions repo.
+  repository_full_name   = "appcd-dev/solutions"
   scenario_request_label = "scenario-request"
 
   # Optional — defaults to $10/day, enough for ~3-5 happy-path runs.
@@ -94,7 +94,7 @@ After `tofu apply`, wire the webhook in GitHub:
 | `model_names`            | `list(string)`                                      | _required_                                       | Same shape every other agent module takes — pass `module.foundation.model_names`.                                                                            |
 | `policy_ids`             | `object({ dangerous_ops = string })`                | _required_                                       | Only the `dangerous_ops` key is consumed; pass other keys if convenient (they will be ignored).                                                              |
 | `integration_names`      | `object({ github, ubuntu_cli })`                    | _required_                                       | Both must be non-empty. GitHub is for `gh api`/`gh auth token`; Ubuntu CLI is for `gh repo clone`, `gh pr create`, `git`, `tofu`, etc.                       |
-| `repository_full_name`   | `string`                                            | `appcd-dev/aios-modules`                         | Hard repo gate. Any other repo's webhook events get a "wrong repo" comment. **Gotcha**: if the GitHub repo is renamed, re-apply with the new name.            |
+| `repository_full_name`   | `string`                                            | `appcd-dev/solutions`                            | Hard repo gate. Any other repo's webhook events get a "wrong repo" comment. **Gotcha**: if the GitHub repo is renamed, re-apply with the new name.            |
 | `scenario_request_label` | `string`                                            | `scenario-request`                               | Hard label gate. Issues without this label get a "missing label" comment.                                                                                    |
 | `agent_budget`           | `number`                                            | `10`                                             | Daily USD spend cap. Happy-path runs cost ~$2-$4 so $10/day buys 2-3 runs. Raise if multiple SEs file in a single day. Budget-exhausted runs comment back.    |
 | `enable_webhook`         | `bool`                                              | `true`                                           | Disable for staging tenants or dry-runs; agent + workflow still register, you just invoke from Guild "Run workflow" UI.                                       |

@@ -16,8 +16,8 @@ This stage runs **after** ingest / discover / allocate / count-reconcile. Always
 ## Execution (Ubuntu + large states)
 
 - All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`/tmp/db-state-split-.../`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
-- **Chunk** work by `group_id` (or by cloud): one bounded **`ubuntu-cli_execute_series`** / command batch per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation).  
-- Prefer **`ubuntu-cli_create_files`** for generated HCL/scripts, then short **`execute_series`** steps.
+- **Chunk** work by `group_id` (or by cloud): one bounded **`ubuntu-cli_execute_series`** per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation). Per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*, multi-step shell work is **always** one `execute_series` — never N concurrent `ubuntu-cli_execute_command` calls in the same turn. `ubuntu-cli_execute_command` is reserved for a single cohesive command; `ubuntu-cli_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned way to fan out independent work.  
+- Prefer **`ubuntu-cli_create_files`** for generated HCL/scripts, then short **`execute_series`** steps that reference the script path.
 
 ## Reverse IaC
 

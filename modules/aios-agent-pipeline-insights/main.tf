@@ -86,12 +86,12 @@ resource "sg_workflow" "pipeline_insights" {
   ]
 
   example_queries = [
-    "Did the latest CI run pass on appcd-dev/aios-modules main?",
-    "Who merged PR #1234 in appcd-dev/aios-modules and when?",
+    "Did the latest CI run pass on appcd-dev/solutions main?",
+    "Who merged PR #1234 in appcd-dev/solutions and when?",
     "Show me the last 5 production deployments for the payments service",
     "Which workflow is failing on the release/3.0 branch of order-service?",
     "Was the deployment for sha abc123 in checkout-api successful?",
-    "List PRs merged into main in appcd-dev/aios-modules since yesterday",
+    "List PRs merged into main in appcd-dev/solutions since yesterday",
   ]
 
   stages = [

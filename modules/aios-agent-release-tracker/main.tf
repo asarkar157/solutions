@@ -98,7 +98,7 @@ resource "sg_workflow" "release_tracking" {
 
   example_queries = [
     "What's the latest tag of payments-service?",
-    "Show me the last 5 releases of appcd-dev/aios-modules",
+    "Show me the last 5 releases of appcd-dev/solutions",
     "Which version of order-service is currently deployed in production?",
     "What changed between v2.4.0 and v2.5.0 of checkout-api?",
     "List the latest GHCR image tags for the search service",

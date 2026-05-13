@@ -51,8 +51,8 @@ When emitting per-iteration "blocking items" output (e.g. "Blocking Items for It
 
 Integration shells often hit **~300s** ceilings. A single long **`ubuntu-cli_execute_command`** that runs `init` + `plan` for every shard in one shot is a common source of **timeout-shaped failures** in DAG exports.
 
-- **One shard per shell step** (or a small fixed batch) with a conservative **`timeout_seconds`** per command; persist plan logs under your **`/tmp/...`** workdir and **`note`** paths to excerpts.  
-- Prefer **`ubuntu-cli_execute_series`** with **short** steps over one megacommand.  
+- **One shard per shell step** (or a small fixed batch) with a conservative **`timeout_seconds`** per command; persist plan logs under your **`/tmp/...`** workdir and **`note`** paths to excerpts.
+- **`ubuntu-cli_execute_series` is the default for multi-step shell work** (per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*) — never N rapid-succession `ubuntu-cli_execute_command` calls in the same turn. Each shard's `tofu init` + `tofu plan` + `tofu show` belongs in **one** `execute_series`, not three separate `execute_command` calls.
 - When **`remote_runner_name`** is configured on the module, **fan out** heavy `plan` / `terraform show -json` there (see **`db-state-split-orchestration-sop`**) instead of wedging everything through one Ubuntu session.
 
 ## Looping
@@ -63,7 +63,7 @@ Integration shells often hit **~300s** ceilings. A single long **`ubuntu-cli_exe
 
 ## Remote execution
 
-When org tooling allows **remote runner** fan-out, run shard plans in parallel there; else sequential Ubuntu CLI with `ubuntu-cli_execute_parallel` for independent shards only after `init` succeeded per shard.
+When org tooling allows **remote runner** fan-out, run shard plans in parallel there; else use **`ubuntu-cli_execute_parallel`** (or `flow_type:"parallel"` subagent batches `multi-shard-plan-runner-batch-<NN>`) for independent shards once `init` has succeeded per shard. The only sanctioned ways to fan out independent shard work are `ubuntu-cli_execute_parallel` and parallel subagent batches — **never** N concurrent `ubuntu-cli_execute_command` calls in a single turn (forbidden by **db-state-split-orchestration-sop** § *Execution Optimization Protocol*).
 
 ## Workflow DAG (db-monorepo-state-split-convergence)
 

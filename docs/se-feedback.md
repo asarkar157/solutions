@@ -29,8 +29,8 @@ flowchart LR
 
 ## Channels
 
-- **Slack:** `#aios-modules-se` (request a scenario, ask about a pitch, share what worked on a call).
-- **Office hours:** **Wednesdays, 11:00 PT, 30 min** (recurring; calendar invite owned by the engineering lead). Skip when nothing is queued — pinging Slack the day before counts as your RSVP. If office hours are not yet on your calendar, ping `#aios-modules-se` to be added.
+- **Slack:** `#solutions-se` (request a scenario, ask about a pitch, share what worked on a call).
+- **Office hours:** **Wednesdays, 11:00 PT, 30 min** (recurring; calendar invite owned by the engineering lead). Skip when nothing is queued — pinging Slack the day before counts as your RSVP. If office hours are not yet on your calendar, ping `#solutions-se` to be added.
 - **Async triage:** new [scenario-request issues]({{ site.github.repository_url }}/issues?q=is%3Aissue+label%3Ascenario-request) are reviewed in office hours; urgent prospect-driven ones get tagged `urgent` and ship out of band.
 
 ## Filing a scenario request

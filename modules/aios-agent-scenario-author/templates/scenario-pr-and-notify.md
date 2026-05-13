@@ -242,7 +242,7 @@ yielded mid-stage (transient model error or sandbox issue).
 Recovery: close and re-open this issue (the bot re-triages on the next
 `issue.created` event) or wait — the workflow will fire again on any
 future event. If this is the second consecutive "no action taken" reply,
-please ping the engineering lead in `#aios-modules-se`.
+please ping the engineering lead in `#solutions-se`.
 ```
 
 Choose exactly ONE body and call `gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file - <<'EOF' ... EOF`. After the comment, note `stage_summary:notify` with the comment kind chosen and the issue URL.

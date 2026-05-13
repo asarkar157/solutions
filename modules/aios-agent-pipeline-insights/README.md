@@ -80,7 +80,7 @@ module "pipeline_insights_schedules" {
     {
       name       = "daily-prod-deploy-digest"
       expression = "0 16 * * *" # 16:00 UTC every day
-      action     = "Summarize the last 24h of production deployments across appcd-dev/aios-modules and appcd-dev/payments. Group by repository, show success/failure counts and link any failed deploy to its log."
+      action     = "Summarize the last 24h of production deployments across appcd-dev/solutions and appcd-dev/payments. Group by repository, show success/failure counts and link any failed deploy to its log."
     },
     {
       name       = "morning-ci-health"

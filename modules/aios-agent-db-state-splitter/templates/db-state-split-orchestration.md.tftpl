@@ -125,10 +125,49 @@ When the agent has the **StackGen MCP** integration attached, **AppStack** opera
 
 Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen MCP is **not** attached, skip AppStack materialization (note `stackgen_appstack_map` as `skipped: no_mcp`) but still complete TF-only grouping and plans.
 
+## Execution Optimization Protocol — batch Ubuntu CLI calls
+
+This is a **hard rule**, not a recommendation. Audit logs on long runs surfaced bursts of **8 simultaneous `ubuntu-cli_execute_command` calls at a single timestamp** instead of one batched `ubuntu-cli_execute_series` — that pattern inflates latency, races against the shared `/tmp/db-state-split-<workflow_id>/` workspace and the `notes.json` disk-mirror, multiplies system load, and shreds the audit trail. The protocol below replaces ad-hoc command bursts with deterministic batching.
+
+**Tool decision matrix** — pick exactly one per "step in your plan":
+
+| Situation | Tool | Rationale |
+|-----------|------|-----------|
+| **One** single command, no follow-up in this turn (e.g. `cat /tmp/db-state-split-<workflow_id>/notes.json` at stage entry) | `ubuntu-cli_execute_command` | Cheapest path; reserved for genuine single-command interactions. |
+| **Two or more related commands** that must run in order (`mktemp -d` + `chmod 700` + `touch .write_test`; `git clone` + `cd` + `git rev-parse HEAD`; `tofu init` + `tofu plan` + `tofu show`; jq pipeline + write-back to `notes.json`) | **`ubuntu-cli_execute_series`** | One tool call, deterministic ordering, one audit-log row, one timeout budget. **Default for everything multi-step.** |
+| **Independent** per-group / per-shard work where ordering doesn't matter (per-group `tofu plan -generate-config-out` across N groups; per-shard `tofu plan` across N shards) | `ubuntu-cli_execute_parallel` **or** `flow_type:"parallel"` subagent children (`hcl-hydrate-runner-batch-<NN>`, `multi-shard-plan-runner-batch-<NN>`) | Real parallelism with explicit fan-out semantics. **Never** N rapid-succession `execute_command` calls in the same turn. |
+| Many small commands sharing the same `jq` / bash / `terraform show -json` logic | Drop the logic to `/tmp/db-state-split-<workflow_id>/scripts/<name>.sh` via **one** `ubuntu-cli_create_files`, then **one** `ubuntu-cli_execute_series` referencing the script path | Replaces a multi-command burst with two cohesive tool calls; spawn goals stay ≤ 1000 chars. |
+
+**Hard rules:**
+
+1. **Never fire concurrent or rapid-succession `ubuntu-cli_execute_command` calls in the same turn.** If you're about to issue your second `execute_command` for the same stage step, **stop** and rewrite both as one `execute_series`. The audit trail showed agents issuing 8 `execute_command` calls at timestamp `15:48:15` — that is exactly the pattern this protocol forbids.
+2. **Batch then chunk, not chunk then batch.** Group all commands for the current step into a single `execute_series` first; if the resulting series exceeds the integration's ~300s ceiling, split it into **fewer, larger** series steps (one per cloud, one per group batch) — never into many small `execute_command` calls.
+3. **Plan the CLI interaction tree before invoking.** Each stage's note enumerates the commands the agent will run; map them to series steps **before** the first tool call. Minimize total tool invocations: prefer one `create_files` + one `execute_series` over many ad-hoc commands.
+4. **Per-command `timeout_seconds` inside the series** keeps each step bounded (~**270s** target, **300s** hard ceiling); when chunking, write per-shard summaries to disk inside the series so a downstream `execute_series` can ingest them without a separate `execute_command` round-trip.
+5. **Parallel work uses parallel tools, not parallel `execute_command`s.** When per-group / per-shard work is independent, use `ubuntu-cli_execute_parallel` for shell-level fan-out or `flow_type:"parallel"` subagent children for subagent-level fan-out. Both produce one audit-log group with N children; N separate `execute_command` calls produce N orphan audit rows that lose the parent context.
+
+**Stage-by-stage application** (each stage's `note` already inlines this — the table below is the contract):
+
+| Stage | Step requiring batching | Required tool |
+|-------|------------------------|---------------|
+| `ingest-monolith` | `mktemp` + `chmod 700` + `touch .write_test`; `git clone` + checkout; state download + `jq '.resources | length'` | One `execute_series` per phase (preflight, clone, state-download) |
+| `discover-db-anchors` | Anchor extraction + tag/module histogram + seed write | One `execute_series` driving `/tmp/.../scripts/anchors.sh` |
+| `allocate-related-resources` | Manifest build + count tally + disk-mirror write | One `execute_series` |
+| `registry-and-import-codegen` | Per-cloud scaffolding (`versions.tf` + `providers.tf` + `imports.tf`) + `tofu fmt` | One `execute_series` per cloud or per group batch |
+| `hcl-hydrate-per-group` | Per group: `tofu init` + `tofu plan -generate-config-out=generated.tf` + `tofu plan -out=verify.tfplan` + `tofu fmt` | One `execute_series` per group; **parallel fan-out** across groups via `flow_type:"parallel"` batch children |
+| `multi-shard-plan-convergence` | Per shard: `tofu init` + `tofu plan` + plan-summary jq | One `execute_series` per shard; parallel batches across shards |
+
+**Anti-patterns:**
+
+- Issuing `mkdir -p /tmp/.../repo`, then `cd /tmp/.../repo`, then `git clone …`, then `git rev-parse HEAD` as four separate `execute_command` calls. **Fix:** one `execute_series` with the four steps.
+- Looping `for group_id in $manifest: ubuntu-cli_execute_command "tofu plan …"` at the agent level instead of one `execute_parallel` (shell-level) or `hcl-hydrate-runner-batch-<NN>` subagent fan-out.
+- Re-running the same set of probe commands (`ls /tmp/...`, `cat /tmp/.../notes.json`, `find /tmp/... -type d`) as three separate `execute_command` calls when one `execute_series` covers them.
+
 ## Tooling hygiene (fewer DAG nodes, fewer failures)
 
 - **At run start:** runbook prose is often already in the user message — **skip `search_skill`** for anything covered there. For **`[Skills]`** lines: use **`load_skill`** only when that name is **not** already present as a **`### Runbook:`** section above (avoid duplicate loads).
 - **Delegate per subgoal, not per shell call.** See **Subagent-spawn discipline** above — group related shell work under one `<stage_id>-runner` (or `<stage_id>-<verb>-<noun>` child) instead of spawning one subagent per command. If a subagent fails to converge, re-plan the decomposition (split / change tools / change `task_type`) rather than re-running the same payload under a new name.
+- **Default to `ubuntu-cli_execute_series` for multi-command steps** — see **Execution Optimization Protocol** above. `ubuntu-cli_execute_command` is for a single cohesive command; never fire N `execute_command`s in the same turn.
 - **Ubuntu timeouts:** keep each **`ubuntu-cli_execute_command`** / series step **well under** typical integration ceilings (~**300s**, prefer ≤ **270s**). For large `jq` / `terraform show -json`, write a script file and **chunk** work (count → sample → full extract) or use a **remote runner** when configured — avoid one shell call that streams megabytes back to the agent in a single response.
 - **StackGen list calls:** **`get_appstacks`** / **`get_appstack_resources`** are expensive in trace size and rate limits. **Cache** summarized results in **`stackgen_appstack_list_cache`** after each successful list; reuse until mutations or explicit errors.
 
