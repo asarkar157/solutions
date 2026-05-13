@@ -75,7 +75,7 @@ All parsing / `jq` / heavy JSON via **Ubuntu CLI**. StackGen MCP is used **after
 
 ### Large states (speed + reliability)
 
-- **Do not** paste full state JSON into chat or into **`create_agent`** goals — use **`ubuntu-cli_create_files`** to write `*.jq` / shell scripts under **`/tmp/...`**, then **`ubuntu-cli_execute_series`** with short commands.  
+- **Do not** paste full state JSON into chat or into a subagent's spawn goal — use **`ubuntu-cli_create_files`** to write `*.jq` / shell scripts under **`/tmp/...`**, then **`ubuntu-cli_execute_series`** with short commands. The subagent receives only the script **path** in its goal.  
 - **Progressive passes:** instance count → provider/module histogram → manifest build, instead of one giant `jq` that materializes everything at once (avoids OOM, timeouts, and truncated tool args).  
 - Keep each **`ubuntu-cli_*`** step under typical integration time limits; split by module prefix or by cloud if the monolith is huge.
 

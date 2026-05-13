@@ -306,10 +306,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Budget: ≤ 2 Ubuntu-CLI subagents, ≤ $2, ≤ 6m.
-        0) First Ubuntu action: `mktemp -d` (or `mkdir -p`) under `/tmp`, verify write with `touch`, then `note` `repo_clone_path` / `monolith_state_local_path` under that tree. Avoid `/workspace` unless proven writable.
-        1) read_notes; clone IAC to `repo_clone_path` if missing — if clone/update fails (read-only filesystem, permission denied), use a fresh directory under `/tmp` (e.g. `/tmp/db-state-split-<id>/repo`), then `note` the real `repo_clone_path`. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
-        2) Download state from `monolith_state_uri` → `monolith_state_local_path` (same `/tmp` tree if needed); compute `monolith_resource_count`.
-        3) note `stage_summary:ingest-monolith`.
+        **Subagent discipline:** delegate this stage to ONE child subagent named exactly `ingest-monolith-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars (script paths only — never inline `jq`/bash). No `-v2`/`-scripts`/etc. suffixes; re-plan instead of re-trying. See db-state-split-orchestration-sop **Subagent-spawn discipline**.
+        0) First Ubuntu action: `mktemp -d` (or `mkdir -p`) under `/tmp/db-state-split-<workflow_id>/` (deterministic per workflow run id), verify write with `touch`, then `note` `repo_clone_path` / `monolith_state_local_path` under that tree. Avoid `/workspace` unless proven writable. **Also write `/tmp/db-state-split-<workflow_id>/notes.json`** (jq merge) for every canonical note you persist this stage — this disk-mirror is the cross-stage fallback when `read_notes` returns 0 keys (see db-state-split-orchestration-sop **Stage notes disk mirror**).
+        1) read_notes (then `cat notes.json` if present); clone IAC to `repo_clone_path` if missing — if clone/update fails (read-only filesystem, permission denied), use a fresh directory under `/tmp` (e.g. `/tmp/db-state-split-<id>/repo`), then `note` the real `repo_clone_path`. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
+        2) Download state from `monolith_state_uri` → `monolith_state_local_path` (same `/tmp` tree if needed); compute `monolith_resource_count`. If `monolith_resource_count > 5000` AND workflow inputs did not set `grouping_strategy` / `max_resources_per_appstack`, auto-promote: `note grouping_strategy="connectivity_capped"`, `note max_resources_per_appstack="80"`, and call this out in `stage_summary:ingest-monolith` — see db-state-split-orchestration-sop **Large-state auto-promote heuristic**.
+        3) `note` `stage_summary:ingest-monolith` AND append the same JSON to `/tmp/db-state-split-<workflow_id>/notes.json`. Include the final assistant message with `monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, and any auto-promoted grouping inputs so the next stage's prompt carries them even if notes are wiped.
       EOT
     },
     {
@@ -322,10 +323,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::discover-db-anchors"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, optional `grouping_policy_json` / `grouping_strategy` / `max_resources_per_appstack`. Do not ask the operator — recover under `/tmp/db-state-split-<workflow_id>/` if a path is missing (see db-state-split-orchestration-sop **Stage entry protocol**).
-        One Ubuntu-CLI subagent: apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory`.
-        Prefer **`ubuntu-cli_create_files`** + **`ubuntu-cli_execute_series`** for heavy `jq` (see terraform-state-shard-extraction-sop) instead of embedding long programs in **`create_agent`** goals.
-        note `stage_summary:discover-db-anchors`.
+        **Stage entry contract (cold-start fast-fail):** in order, (1) `read_notes` (2) if 0 keys, `ubuntu-cli_execute_command` `cat /tmp/db-state-split-<workflow_id>/notes.json` and import the JSON into your working context (3) if both empty AND no `/tmp/db-state-split-<workflow_id>/` tree exists, do **not** invent recovery — `notify` once with `{stage:'discover-db-anchors', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report. Reserve `ask_clarifying_question` for cases where the operator genuinely has new information to give (missing cloud creds, an explicit `grouping_strategy` decision the workflow can't auto-derive) — not for confirming prior-stage outputs that should already be in notes/disk-mirror. See db-state-split-orchestration-sop **Cold-start fast-fail**.
+        **Required keys after stage entry:** `monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, optional `grouping_policy_json` / `grouping_strategy` / `max_resources_per_appstack`. If only `monolith_state_local_path` is missing but the `/tmp/db-state-split-<workflow_id>/terraform.tfstate` file exists, adopt that path silently — do **not** ask the operator.
+        **Subagent discipline:** delegate to ONE child subagent named exactly `discover-db-anchors-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars referencing the script path (never inline `jq`). If the subagent does not converge, **re-plan** the subgoal (split into smaller children like `discover-db-anchors-build-seeds` / `discover-db-anchors-build-inventory`, change tool list, or change `task_type`) rather than re-running the same payload under a new name.
+        Apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory` (and mirror to `notes.json`). Auto-promote to `connectivity_capped` if `monolith_resource_count > 5000` and no operator input set the strategy (see large-state heuristic).
+        `note` `stage_summary:discover-db-anchors` AND echo the same in the final assistant message so it propagates if the notes store is wiped.
       EOT
     },
     {
@@ -338,9 +340,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::allocate-related-resources"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `logical_group_seeds`, `db_anchor_inventory`, `monolith_state_local_path`, `repo_clone_path`. Do not ask the operator.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) both empty → `notify` once with `{stage:'allocate-related-resources', error:'cold_start_no_upstream'}` and return. Don't use `ask_clarifying_question` to ask the operator for prior-stage notes — that's what the cold-start fast-fail path is for.
+        **Required keys after stage entry:** `logical_group_seeds`, `db_anchor_inventory`, `monolith_state_local_path`, `repo_clone_path`.
+        **Subagent discipline:** delegate to ONE child subagent named `allocate-related-resources-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars (script paths only). If it does not converge, **re-plan** (split into smaller children, change tools, or change `task_type`) rather than re-running the same payload.
         Build `logical_group_manifest` and mirror `shard_manifest`. Emit `per_group_resource_counts`. If shared ambiguity, document under `logical_group_manifest.notes`.
-        note `stage_summary:allocate-related-resources`.
+        `note` `stage_summary:allocate-related-resources` AND append to `/tmp/db-state-split-<workflow_id>/notes.json`. Echo `logical_group_manifest` summary (group_id → count) in the final assistant message.
       EOT
     },
     {
@@ -356,9 +360,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::count-reconcile-loop"], [])
       )
       note = <<-EOT
-        Enforce count equality. If false, loop back (re-invoke allocation subagent) until `max_convergence_iterations` from module — read orchestration SOP Loop A.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) both empty → `notify` once with `{stage:'count-reconcile-loop', error:'cold_start_no_upstream'}` and return. Don't ask the operator to re-supply prior-stage notes via `ask_clarifying_question` — use the fast-fail path.
+        **Required keys after stage entry:** `logical_group_manifest` (or `shard_manifest`), `per_group_resource_counts`, `monolith_resource_count`.
+        Enforce count equality. If false, loop back (re-invoke allocation subagent named `allocate-related-resources-runner`) until `max_convergence_iterations` from module — read orchestration SOP Loop A.
         Verify **no duplicate addresses** across groups, no **unallocated** managed instances, and that **`data.*`** / **deposed** handling matches how `monolith_resource_count` was computed (terraform-state-shard-extraction-sop).
-        note `count_reconciliation_ok` and `stage_summary:count-reconcile-loop`.
+        `note` `count_reconciliation_ok` (`"true"` / `"false"`) and `stage_summary:count-reconcile-loop`; mirror both to `/tmp/db-state-split-<workflow_id>/notes.json` and echo the boolean in the final assistant message.
       EOT
     },
     {
@@ -374,14 +380,16 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::reverse-engineer-and-registry-map"], [])
       )
       note = <<-EOT
-        **Stage entry (do not ask the operator):**
-          - `read_notes` for `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
-          - If a required key is missing, **recover** before asking: rebuild paths under `/tmp/db-state-split-<workflow_id>/` and re-run the upstream procedure (re-clone repo, re-download `monolith_state_uri` to the same `/tmp` path, re-run shard extraction from `terraform-state-shard-extraction-sop`). Only `notify` after recovery fails — see db-state-split-orchestration-sop **Stage entry protocol**.
+        **Stage entry contract (cold-start fast-fail):**
+          - (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty AND `/tmp/db-state-split-<workflow_id>/terraform.tfstate` does not exist → `notify` once with `{stage:'reverse-engineer-and-registry-map', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report. Don't substitute `ask_clarifying_question` for the fast-fail path — reserve operator questions for new information the workflow can't derive (e.g. picking an explicit `grouping_strategy` when the heuristic doesn't apply).
+          - Required keys: `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
+          - If notes are missing but the `/tmp/db-state-split-<workflow_id>/` tree IS present, **recover silently**: rebuild paths under that tree and re-run the upstream procedure (re-clone repo, re-download `monolith_state_uri` to the same `/tmp` path, re-run shard extraction from `terraform-state-shard-extraction-sop`). Only `notify` after recovery fails.
           - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage is **TF roots + import/moved + registry mapping + HCL hydration** — AppStack materialization happens in the next stage `materialize-stackgen-appstacks`. Do not ask the operator whether MCP is attached.
+        **Subagent discipline:** delegate to ONE child subagent named `reverse-engineer-runner`, `task_type="coding"` for HCL hydration loops or `terminal_calling` for `tofu show` chunking, spawn goal ≤ 1000 chars (script paths only). If it does not converge, **re-plan** (split per group or per import-pass, change tools, or change `task_type`) rather than re-running the same payload.
         Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
         **HCL hydration is part of THIS stage** (not a downstream human task). For each group, after writing `import {}` blocks, run `tofu init -input=false` then `tofu plan -generate-config-out=generated.tf -input=false -lock=false` (Pass 1) and `tofu plan -out=verify.tfplan -input=false -lock=false` (Pass 2). Persist `hcl_hydration_status:<group_id>={generated_tf_path,generated_resources,plan_no_changes,remaining_actions,attempt}`. Loop in-stage until `plan_no_changes=true` or surface failed addresses to `orphans_bundle{reason:"import_failed_*"}`. **Never** leave empty-body `resource "aws_X" "Y" {}` stubs and **never** emit owner "HCL AUTHOR" — see terraform-registry-reverse-iac-sop § *HCL hydration*.
         Use writable `/tmp/...` and chunked `terraform show` / shell steps per terraform-registry-reverse-iac-sop **Execution** section.
-        note `stage_summary:reverse-engineer-and-registry-map` (include per-group `plan_no_changes` counts and orphan additions).
+        `note` `stage_summary:reverse-engineer-and-registry-map` (include per-group `plan_no_changes` counts and orphan additions) AND append to `/tmp/db-state-split-<workflow_id>/notes.json`; echo a compact per-group hydration table in the final assistant message.
       EOT
     },
     {
@@ -397,7 +405,9 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-stackgen-appstacks"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`, optional `stackgen_project_name`, optional `stackgen_target_environment`, optional `stackgen_environments_required`. Detect StackGen MCP via `search_tools` for `*_create_appstack` / `*_get_appstacks`. Resolve project UUID by calling `me` when `stackgen_project_name` is absent. Do not ask the operator.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty → `notify` once with `{stage:'materialize-stackgen-appstacks', error:'cold_start_no_upstream'}` and return. Don't use `ask_clarifying_question` to recover prior-stage state — that's a fast-fail case.
+        **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`, optional `stackgen_project_name`, optional `stackgen_target_environment`, optional `stackgen_environments_required`. Detect StackGen MCP via `search_tools` for `*_create_appstack` / `*_get_appstacks`. Resolve project UUID by calling `me` when `stackgen_project_name` is absent. Do not ask the operator.
+        **Subagent discipline:** AppStack MCP work stays on this agent (the lead) or on a dedicated `materialize-stackgen-appstacks-runner` whose tool list includes the `<stackgen-mcp-integration>_*` tools — do not split a single AppStack's MCP flow across multiple short-lived subagents. For shell-side `tofu show` chunking spawn ONE `materialize-stackgen-appstacks-shell-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars. If a subagent does not converge, **re-plan** (split per AppStack or per membership-reconcile pass, change tools, or change `task_type`) rather than re-running the same payload.
         If StackGen MCP is attached: for **each** `group_id` in `logical_group_manifest`, run the **state → AppStack** flow from **`stackgen-appstack-mcp-playbook-sop`** in this exact order:
           1) `create_appstack` (record `stackgen_appstack_map[group_id]` immediately).
           2) Build `identifier_for_address:<group_id>` from `group.resource_addresses` (deterministic snake_case sanitizer; resources without a mapped `resource_type` go to `orphans_bundle` — never silently dropped).
@@ -412,7 +422,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         Do **not** re-bucket by Terraform type at MCP time (e.g. "all aws_iam_*" into one stack) — `logical_group_manifest` is authoritative.
         If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp` and stackgen_appstack_membership_report=`skipped: no_mcp`.
         Optional workflow input `cloud_discovery_id` is a **correlation id** only — the default StackGen **user** MCP does not expose discovery-import tools; do not plan on `create_appstack_from_discovered_resources` unless a **different** MCP integration documents it.
-        note `stage_summary:materialize-stackgen-appstacks` (include groups_ok / groups_failed and counts of env/Plan skips).
+        `note` `stage_summary:materialize-stackgen-appstacks` (include groups_ok / groups_failed and counts of env/Plan skips) AND append to `/tmp/db-state-split-<workflow_id>/notes.json`. Echo `stackgen_appstack_map` and the membership-report summary in the final assistant message.
       EOT
     },
     {
@@ -428,10 +438,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::orphans-secondary-pipeline"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `orphans_bundle`, `logical_group_manifest`, `iac_repository_url`. Do not ask the operator.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty → `notify` once with `{stage:'orphans-secondary-pipeline', error:'cold_start_no_upstream'}` and return. Don't use `ask_clarifying_question` to recover prior-stage state — that's a fast-fail case.
+        **Required keys after stage entry:** `orphans_bundle`, `logical_group_manifest`, `iac_repository_url`.
         Same DAG layer as `materialize-stackgen-appstacks` — do not assume AppStacks already exist; read only reverse/registry notes (`orphans_bundle`, `logical_group_manifest`).
-        If `orphans_bundle` empty → note skip. Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
-        note `stage_summary:orphans-secondary-pipeline`.
+        If `orphans_bundle` empty → `note` `stage_summary:orphans-secondary-pipeline={skipped:'empty_orphans_bundle'}` and return cleanly (this is **🟢 INFO**, not a failure). Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
+        Mirror `stage_summary:orphans-secondary-pipeline` to `/tmp/db-state-split-<workflow_id>/notes.json` and echo the outcome (`skipped` or `started:<workflow_run_id>`) in the final assistant message.
       EOT
     },
     {
@@ -447,12 +458,14 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::multi-shard-plan-convergence"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group). Do not ask the operator.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if BOTH empty AND no `/tmp/db-state-split-<workflow_id>/groups/` directory exists → this is a vacuous cold-start. **Do NOT** emit a multi-table "all SKIPPED" markdown report. `notify` once with `{stage:'multi-shard-plan-convergence', error:'cold_start_no_upstream'}` and return. Don't substitute `ask_clarifying_question` for the fast-fail path — production DAGs showed it waiting ~5 min per call for prior-stage state the operator can't supply.
+        **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group).
+        **Subagent discipline:** delegate the plan matrix to ONE `multi-shard-plan-runner` (`task_type="terminal_calling"`, spawn goal ≤ 1000 chars). For very large shard counts, decompose into parallel children `multi-shard-plan-runner-batch-<NN>` covering disjoint group_id ranges (still ≤ 270s `timeout_seconds` per Ubuntu call inside each child). If any batch does not converge, **re-plan** the decomposition (smaller batch size, narrower group range, different tool list) rather than re-running the same payload.
         **HCL hydration pre-check first** (Loop B-hcl). For every `group_id`, `hcl_hydration_status:<group_id>.plan_no_changes` must be `true`. If any group is `false` or missing, **return execution to `reverse-engineer-and-registry-map`** for that group's hydration sub-loop; **do not** raise an operator-facing 🔴 "HCL AUTHOR" item — the workflow owns HCL via `tofu plan -generate-config-out=` (terraform-registry-reverse-iac-sop § *HCL hydration*).
         **Membership pre-check second** (Loop B-membership). For every `group_id`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group.
         Run TF plan matrix per `logical_group_manifest`. **StackGen Plan is OPTIONAL:** for groups whose `stackgen_env_profile:<group_id>` is `{skipped:...}` or `stackgen_plan_run:<group_id>` is already `{skipped:...}`, skip `create_appstack_action_run` and rely on Ubuntu `tofu plan` parity. For the rest (membership ok and env profile present), run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**. If any drift, Loop B then re-plan until pass or iteration cap. Treat any new `env_not_in_project_settings` here as a soft skip (same semantics as the materialization stage).
         One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.
-        Set `multi_plan_zero_diff_ok` based on **all per-group TF roots** plus **only the StackGen Plans that actually ran** (skipped Plans do not block the gate). note `stage_summary:multi-shard-plan-convergence` with skip counts and a *per-iteration blocking-items report* using db-state-split-orchestration-sop § *Iteration report — blocker classification* (env-missing → 🟢 INFO; empty-body stubs → 🟡 self-fixable, never 🔴).
+        Set `multi_plan_zero_diff_ok` based on **all per-group TF roots** plus **only the StackGen Plans that actually ran** (skipped Plans do not block the gate). `note` `stage_summary:multi-shard-plan-convergence` with skip counts and a *per-iteration blocking-items report* using db-state-split-orchestration-sop § *Iteration report — blocker classification* (env-missing → 🟢 INFO; empty-body stubs → 🟡 self-fixable, never 🔴). Mirror `multi_plan_zero_diff_ok` to `/tmp/db-state-split-<workflow_id>/notes.json` and echo the boolean in the final assistant message.
       EOT
     },
     {
@@ -468,10 +481,12 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::final-gate-and-memory"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_membership_report`, `stackgen_env_profile:<group_id>` / `stackgen_plan_run:<group_id>` (per group), `orphan_modularization_memory`, all `stage_summary:*`. Do not ask the operator for any of these — the upstream stages already wrote them.
+        **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if BOTH empty → this is a vacuous cold-start. **Do NOT** emit a multi-table "all SKIPPED" markdown report. `notify` once with `{stage:'final-gate-and-memory', error:'cold_start_no_upstream'}` and **exit with error status** so the evidence checklist correctly fails. Don't use `ask_clarifying_question` to recover the run — there is nothing the operator can supply at this point that earlier stages didn't already.
+        **Required keys after stage entry:** `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_membership_report`, `stackgen_env_profile:<group_id>` / `stackgen_plan_run:<group_id>` (per group), `orphan_modularization_memory`, all `stage_summary:*`.
+        **Evidence gate (mandatory before success):** verify that the workflow's `evidence_checklist_ref` (`db-monorepo-state-split-evidence`) has a successful `submit_evidence` call for **every** required item: `monolith_resource_count_recorded`, `aggregate_shard_count_matches_monolith`, `hcl_hydration_no_changes_per_group`, `stackgen_appstack_membership_report_attached`, `appstack_membership_verified_per_group`, `multi_shard_plan_zero_diff_evidence`. If any are missing or `count_reconciliation_ok != "true"` or `multi_plan_zero_diff_ok != "true"`, **this stage MUST fail** with `notify({status:'evidence_missing', missing_items:[…]})`. Do NOT return "vacuous gate complete" — that produced silent no-op runs in production (trace 019e20308ea374c8bbc134d5c0ef0860).
         Verify `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, **all `hcl_hydration_status:<group_id>.plan_no_changes==true`**, and **`stackgen_appstack_membership_report.summary.groups_failed == 0`** (when StackGen MCP was used). Env-profile / StackGen-Plan skips are **not** failures.
         Final `notify` / PR comment with tables (per-group expected vs actual counts, hydration outcome, missing/unexpected highlights) + PR links. Apply db-state-split-orchestration-sop § *Iteration report — blocker classification* to any remaining items: env-missing → 🟢 INFO ("optional — operator may register the env in StackGen Project Settings to also see StackGen-side Plan logs"); never emit 🔴 ADMIN for the env unless `stackgen_environments_required="true"` AND `stackgen_target_environment` was supplied. Never emit owner "HCL AUTHOR".
-        note `stage_summary:final-gate-and-memory`.
+        `note` `stage_summary:final-gate-and-memory` and mirror to `/tmp/db-state-split-<workflow_id>/notes.json`.
       EOT
     },
   ]

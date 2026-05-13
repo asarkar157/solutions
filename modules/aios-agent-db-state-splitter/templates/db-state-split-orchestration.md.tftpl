@@ -2,12 +2,21 @@ Skill: Orchestration for **multi-cloud monorepo state splitting** — logical gr
 
 Keywords: terraform state split, monorepo, opentofu, tfstate, aws, azure, gcp, azurerm, google, tags, logical groups, appstack, stackgen mcp, state mv, moved block, import, convergence, remote runner, ubuntu cli, guild workflow, orphan module.
 
-## Stage entry protocol — `read_notes` first, never ask the operator
+## Stage entry protocol — `read_notes` → disk-mirror → cold-start fast-fail
 
-Every stage starts by calling **`read_notes`** to fetch the inputs from earlier stages. The Guild workflow stores stage handoff in notes; **do not** `notify` the operator with questions like "what is the working directory" or "is StackGen MCP attached" — those answers are already written by upstream stages or are discoverable with **`search_tools`**.
+Every stage starts with this exact sequence — no probes, no synchronous questions for things prior stages should have produced:
 
-| Stage | `read_notes` keys (required → recover if missing) | Discoverable, do not ask |
-|-------|---------------------------------------------------|--------------------------|
+1. **`read_notes`** — fetch keys written by earlier stages.
+2. **If `count == 0`**, run **`ubuntu-cli_execute_command`** `cat /tmp/db-state-split-<workflow_id>/notes.json` (deterministic path per workflow run id) and import any JSON keys you find. This **disk-mirror** is the cross-stage handoff fallback — see **Stage notes disk mirror** below.
+3. **If both step 1 and step 2 return empty AND no `/tmp/db-state-split-<workflow_id>/` tree exists**, this is **cold-start fast-fail** territory:
+   - Call **`notify`** exactly once with `{stage:'<stage_id>', error:'cold_start_no_upstream'}` and **return**.
+   - Do **NOT** emit a multi-table "all SKIPPED" markdown report.
+   - Do **NOT** spawn recovery probes (`recovery-probe`, `stage-entry-recovery`, `mcp-probe-and-recovery`, `discover-db-anchors-v2`, etc.).
+   - Do **NOT** use `ask_clarifying_question` to ask the operator to re-supply prior-stage state — they don't have it, and a synchronous question will just block for ~5 min before timing out (observed in production trace `019e20308ea374c8bbc134d5c0ef0860`). `ask_clarifying_question` is for **new information the workflow legitimately needs from the operator** (missing cloud creds, an explicit `grouping_strategy` choice the heuristic can't make, a real `cross_group_bleed` decision) — not for recovering missing notes.
+4. If `/tmp/db-state-split-<workflow_id>/` exists but specific keys are missing, **recover silently** by re-running the upstream procedure on that same tree (re-clone repo, re-download state, re-run shard extraction). Only `notify` after recovery has been attempted and failed.
+
+| Stage | Required keys (after read_notes + disk-mirror) | Discoverable, do not ask |
+|-------|------------------------------------------------|--------------------------|
 | `ingest-monolith` | workflow inputs: `monolith_state_uri`, `iac_repository_url` (always present) | — |
 | `discover-db-anchors` | `repo_clone_path`, `monolith_state_local_path`, `monolith_resource_count`, optional `grouping_policy_json`, `grouping_strategy`, `max_resources_per_appstack` | — |
 | `allocate-related-resources` | `logical_group_seeds`, `db_anchor_inventory`, plus the discover-stage keys above | — |
@@ -16,13 +25,67 @@ Every stage starts by calling **`read_notes`** to fetch the inputs from earlier 
 | `materialize-stackgen-appstacks` | `logical_group_manifest`, `repo_clone_path`, optional `stackgen_project_name` | StackGen MCP attached → `search_tools`; project UUID → `me` if not in notes |
 | `orphans-secondary-pipeline` | `orphans_bundle`, `logical_group_manifest`, `iac_repository_url` | — |
 | `multi-shard-plan-convergence` | `logical_group_manifest`, `repo_clone_path`, `stackgen_appstack_map`, `stackgen_appstack_membership:*` | — |
-| `final-gate-and-memory` | `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report` | — |
+| `final-gate-and-memory` | `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report` + every required `submit_evidence` item | — |
 
-**Recovery (only when a required note is missing):**
+## When `ask_clarifying_question` is appropriate (and when it isn't)
 
-1. Re-derive paths under **`/tmp/db-state-split-<workflow_id>/`** (deterministic per workflow run id).
-2. If the upstream artifact itself is missing (e.g. `logical_group_manifest`), re-invoke the previous stage's procedure on the same `/tmp` tree from `monolith_state_local_path` — do **not** ask the operator to recompute.
-3. Only after both fail, escalate via `notify` with the exact missing key, the recovery you attempted, and the error.
+`ask_clarifying_question` is available — use it when the operator has information the workflow legitimately can't derive on its own. **Use it for:**
+
+- Missing cloud credentials, missing GitHub integration, or any real blocker that requires human action.
+- A genuine ambiguity the heuristic can't resolve — e.g. `monolith_resource_count <= 5000` AND multiple plausible `grouping_strategy` candidates, AND the operator did not pass one in.
+- An unresolvable `cross_group_bleed` after `max_convergence_iterations` (operator needs to choose: merge groups vs. accept disconnected refs).
+
+**Don't use it for** prior-stage outputs that should already be in notes/disk-mirror (`repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest`, `stackgen_appstack_map`, …). The operator doesn't have those values in their head; asking just stalls for ~5 min before timing out (observed in production trace `019e20308ea374c8bbc134d5c0ef0860`). For prior-stage state, the correct path is **cold-start fast-fail** above: `notify` once and return so the platform can re-route to the upstream stage.
+
+## Stage notes disk mirror (`/tmp/db-state-split-<workflow_id>/notes.json`)
+
+The Guild workflow's per-stage notes store appears to be **scoped per-stage execution** in practice — `read_notes` returned `count: 0` at every stage entry in `019e20308ea374c8bbc134d5c0ef0860`, even though prior stages had written keys like `monolith_state_local_path` and `logical_group_manifest`. Until that platform-side behavior is fixed, this module's agent maintains a **disk mirror** as the source of truth for cross-stage handoff:
+
+1. **Every `note` call must be followed by a mirror append.** After `note(key=K, value=V)`, run:
+   ```bash
+   jq --arg k "<K>" --arg v "<V>" '. + {($k): $v}' /tmp/db-state-split-<workflow_id>/notes.json > /tmp/.notes.json.tmp \
+     && mv /tmp/.notes.json.tmp /tmp/db-state-split-<workflow_id>/notes.json
+   ```
+   (Initialize with `echo '{}' > /tmp/db-state-split-<workflow_id>/notes.json` in `ingest-monolith` if absent.)
+2. **Every stage's read_notes-fallback step** does `cat /tmp/db-state-split-<workflow_id>/notes.json` and merges those keys into its working context.
+3. **Echo critical handoff values in the stage's final assistant message** as a third redundancy — Guild prepends the prior stage's final message to the next stage's prompt.
+4. **At `final-gate-and-memory`**, after success, optionally `rm /tmp/db-state-split-<workflow_id>/notes.json` if your org policy requires cleanup.
+
+## Subagent-spawn discipline
+
+Prefer delegating each stage's subgoal to a dedicated subagent (via `create_agent`) rather than doing all the shell work in the architect's own context. Subagents run in isolated context windows with only the tools they need, which keeps token usage low and the architect free to coordinate. Spawn subagents freely — just apply the discipline below.
+
+- **Stable subagent name = subgoal id.** Use `<stage_id>-runner` for the main per-stage runner — e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `reverse-engineer-runner`, `multi-shard-plan-runner`. For finer-grained child subgoals use `<stage_id>-<verb>-<noun>`. **Never** use suffixes like `-v2`, `-scripts`, `-scripts-full`, or one-off experiment names like `test-*`, `recovery-probe` — those signal retry-thrash, not re-planning.
+- **`task_type="terminal_calling"`** for shell-only subagents. The default `planning` is twice as expensive per round-trip and unnecessary for "write a file and run a script."
+- **`goal` length ≤ 1000 characters.** Write the actual `jq` / bash to `/tmp/db-state-split-<workflow_id>/scripts/...` via `ubuntu-cli_create_files`; the `goal` references the script **path**, not the script body.
+- **No retry-thrash on the same subgoal.** If a subagent doesn't converge (timeout, partial output, refusal), **re-plan** the subgoal — split it into smaller children, change tool list, or change `task_type` — and spawn the next attempt with a clearly different name (e.g. `<stage_id>-runner-build-seeds`). Re-running an identical spawn payload is the anti-pattern; either decompose further or fall back to in-line `ubuntu-cli_*` for that one subgoal.
+- **Minimum tool list:** `["ubuntu-cli_execute_command", "ubuntu-cli_execute_series", "ubuntu-cli_create_files", "note", "read_notes"]`. Add `web_search` only when the task involves registry lookups.
+
+## Large-state auto-promote heuristic
+
+When **`monolith_resource_count > 5000`** AND the workflow did **not** supply `grouping_strategy` / `max_resources_per_appstack`, the architect MUST during `discover-db-anchors`:
+
+```
+note("grouping_strategy", "connectivity_capped")
+note("max_resources_per_appstack", "80")
+```
+
+and include "auto-promoted to `connectivity_capped` due to monolith_resource_count=<N>" in `stage_summary:discover-db-anchors`.
+
+Rationale: `policy_first` on 12 K+ resources produces hairball groups that cannot be cleanly mapped to AppStacks (observed: 12 726 AWS resources with no `grouping_policy_json` in `019e20308ea374c8bbc134d5c0ef0860` — `policy_first` could not converge). Operators always override; this heuristic is the safer default for large states.
+
+## Evidence gate at `final-gate-and-memory`
+
+Before declaring success, verify a successful `submit_evidence` call exists in this workflow run for each `required_items` entry of **`db-monorepo-state-split-evidence`**:
+
+- `monolith_resource_count_recorded`
+- `aggregate_shard_count_matches_monolith`
+- `hcl_hydration_no_changes_per_group`
+- `stackgen_appstack_membership_report_attached`
+- `appstack_membership_verified_per_group`
+- `multi_shard_plan_zero_diff_evidence`
+
+If any are missing OR `count_reconciliation_ok != "true"` OR `multi_plan_zero_diff_ok != "true"`, this stage **MUST** fail with `notify({status:'evidence_missing', missing_items:[…]})`. Returning "vacuous gate complete" is a workflow defect — it produced silent no-op runs in `019e20308ea374c8bbc134d5c0ef0860`.
 
 ## Remote runner vs Ubuntu CLI
 
@@ -37,7 +100,8 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 ## Tooling hygiene (fewer DAG nodes, fewer failures)
 
 - **At run start:** runbook prose is often already in the user message — **skip `search_skill`** for anything covered there. For **`[Skills]`** lines: use **`load_skill`** only when that name is **not** already present as a **`### Runbook:`** section above (avoid duplicate loads).
-- **Ubuntu timeouts:** keep each **`ubuntu-cli_execute_command`** / series step **well under** typical integration ceilings (~**300s**). For large `jq` / `terraform show -json`, write a script file and **chunk** work (count → sample → full extract) or use a **remote runner** when configured — avoid one shell call that streams megabytes back to the agent in a single response.
+- **Delegate per subgoal, not per shell call.** See **Subagent-spawn discipline** above — group related shell work under one `<stage_id>-runner` (or `<stage_id>-<verb>-<noun>` child) instead of spawning one subagent per command. If a subagent fails to converge, re-plan the decomposition (split / change tools / change `task_type`) rather than re-running the same payload under a new name.
+- **Ubuntu timeouts:** keep each **`ubuntu-cli_execute_command`** / series step **well under** typical integration ceilings (~**300s**, prefer ≤ **270s**). For large `jq` / `terraform show -json`, write a script file and **chunk** work (count → sample → full extract) or use a **remote runner** when configured — avoid one shell call that streams megabytes back to the agent in a single response.
 - **StackGen list calls:** **`get_appstacks`** / **`get_appstack_resources`** are expensive in trace size and rate limits. **Cache** summarized results in **`stackgen_appstack_list_cache`** after each successful list; reuse until mutations or explicit errors.
 
 ## State fetch prerequisites (operator + runtime)
