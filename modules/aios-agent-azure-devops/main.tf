@@ -92,7 +92,6 @@ resource "sg_runbook_sop" "blob_storage_monitoring" {
 resource "sg_remediation_pattern" "restart_azure_function" {
   name              = "restart-azure-function"
   description       = trimspace(templatefile("${path.module}/templates/remediation-restart-azure-function.md", {}))
-  version           = 1
   risk_level        = "medium"
   blast_radius      = "single-function"
   requires_approval = true
@@ -102,7 +101,6 @@ resource "sg_remediation_pattern" "restart_azure_function" {
 resource "sg_remediation_pattern" "redeploy_log_processor" {
   name              = "redeploy-log-processor"
   description       = trimspace(templatefile("${path.module}/templates/remediation-redeploy-log-processor.md", {}))
-  version           = 1
   risk_level        = "high"
   blast_radius      = "data-pipeline"
   requires_approval = true
@@ -113,7 +111,6 @@ resource "sg_remediation_pattern" "redeploy_log_processor" {
 resource "sg_evidence_checklist" "azure_devops_incident" {
   name        = "azure-devops-incident"
   description = trimspace(templatefile("${path.module}/templates/evidence-azure-devops-incident.md", {}))
-  version     = 1
   approve     = true
   required_items = [
     "clickhouse_diagnostics_summary",

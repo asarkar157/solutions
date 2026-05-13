@@ -65,7 +65,6 @@ resource "sg_runbook_sop" "cost_anomaly_detection" {
 resource "sg_evidence_checklist" "finops_review_evidence" {
   name        = "finops-review-evidence"
   description = "Proof-of-work for FinOps review: idle scan, rightsizing, commitments, and anomaly explanations before executive summary."
-  version     = 1
   approve     = true
   required_items = [
     "idle_resource_findings_documented",

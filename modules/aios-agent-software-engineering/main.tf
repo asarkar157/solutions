@@ -88,7 +88,6 @@ resource "sg_runbook_sop" "github_pr_submission" {
 resource "sg_evidence_checklist" "feature_development_evidence" {
   name        = "feature-development-evidence"
   description = "Proof-of-work for Linear-driven feature work: requirements digest, implementation notes, and PR link."
-  version     = 1
   approve     = true
   required_items = [
     "linear_requirements_summary",

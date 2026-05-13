@@ -95,7 +95,6 @@ resource "sg_runbook_sop" "npm_manifest_anomaly" {
 resource "sg_remediation_pattern" "block_unverified_package" {
   name              = "block-unverified-package"
   description       = trimspace(templatefile("${path.module}/templates/remediation-block-unverified-package.md", {}))
-  version           = 1
   risk_level        = "medium"
   blast_radius      = "single-repo"
   requires_approval = true
@@ -105,7 +104,6 @@ resource "sg_remediation_pattern" "block_unverified_package" {
 resource "sg_remediation_pattern" "quarantine_phantom" {
   name              = "quarantine-phantom-dependency"
   description       = trimspace(templatefile("${path.module}/templates/remediation-quarantine-phantom-dependency.md", {}))
-  version           = 1
   risk_level        = "medium"
   blast_radius      = "single-repo"
   requires_approval = true
@@ -115,7 +113,6 @@ resource "sg_remediation_pattern" "quarantine_phantom" {
 resource "sg_evidence_checklist" "supply_chain_incident" {
   name        = "supply-chain-incident-evidence"
   description = trimspace(templatefile("${path.module}/templates/evidence-supply-chain-incident-body.md", {}))
-  version     = 1
   approve     = true
   required_items = [
     "npm_audit_or_provenance_report_linked",

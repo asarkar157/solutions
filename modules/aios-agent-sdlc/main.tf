@@ -393,7 +393,6 @@ resource "sg_workflow" "release_pipeline" {
 resource "sg_evidence_checklist" "developer_request_intake_evidence" {
   name        = "sdlc-developer-request-intake-evidence"
   description = "Proof-of-work for developer platform requests: classification, tracking issue, policy evaluation, and execution evidence before closing."
-  version     = 1
   approve     = true
   required_items = [
     "request_classification_recorded",

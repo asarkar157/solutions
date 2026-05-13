@@ -134,7 +134,6 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
 resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
   name        = "db-monorepo-state-split-evidence"
   description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, and handoff artifacts."
-  version     = 1
   approve     = true
   required_items = [
     "monolith_resource_count_recorded",
@@ -152,7 +151,6 @@ resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
 resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
   name        = "orphan-iac-module-authoring-evidence"
   description = "Proof-of-work for orphan module pipeline: bundle classified, module scaffold validated, memory and PR handoff."
-  version     = 1
   approve     = true
   required_items = [
     "orphans_bundle_classification_summary",

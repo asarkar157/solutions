@@ -311,7 +311,6 @@ resource "sg_runbook_sop" "incident_communications" {
 resource "sg_remediation_pattern" "restart_pod" {
   name              = "restart-pod"
   description       = trimspace(templatefile("${path.module}/templates/remediation-restart-pod.md", {}))
-  version           = 1
   risk_level        = "low"
   blast_radius      = "single-pod"
   requires_approval = false
@@ -321,7 +320,6 @@ resource "sg_remediation_pattern" "restart_pod" {
 resource "sg_remediation_pattern" "scale_up_hpa" {
   name              = "scale-up-hpa"
   description       = trimspace(templatefile("${path.module}/templates/remediation-scale-up-hpa.md", {}))
-  version           = 1
   risk_level        = "low"
   blast_radius      = "single-deployment"
   requires_approval = false
@@ -331,7 +329,6 @@ resource "sg_remediation_pattern" "scale_up_hpa" {
 resource "sg_remediation_pattern" "scale_up_asg" {
   name              = "scale-up-asg"
   description       = trimspace(templatefile("${path.module}/templates/remediation-scale-up-asg.md", {}))
-  version           = 1
   risk_level        = "medium"
   blast_radius      = "single-az"
   requires_approval = true
@@ -341,7 +338,6 @@ resource "sg_remediation_pattern" "scale_up_asg" {
 resource "sg_remediation_pattern" "cordon_drain_node" {
   name              = "cordon-drain-node"
   description       = trimspace(templatefile("${path.module}/templates/remediation-cordon-drain-node.md", {}))
-  version           = 1
   risk_level        = "medium"
   blast_radius      = "single-node"
   requires_approval = true
@@ -351,7 +347,6 @@ resource "sg_remediation_pattern" "cordon_drain_node" {
 resource "sg_remediation_pattern" "rollback_deploy" {
   name              = "rollback-deploy"
   description       = trimspace(templatefile("${path.module}/templates/remediation-rollback-deploy.md", {}))
-  version           = 1
   risk_level        = "high"
   blast_radius      = "service-wide"
   requires_approval = true
@@ -361,7 +356,6 @@ resource "sg_remediation_pattern" "rollback_deploy" {
 resource "sg_remediation_pattern" "failover_rds" {
   name              = "failover-rds"
   description       = trimspace(templatefile("${path.module}/templates/remediation-failover-rds.md", {}))
-  version           = 1
   risk_level        = "high"
   blast_radius      = "database-cluster"
   requires_approval = true
@@ -371,7 +365,6 @@ resource "sg_remediation_pattern" "failover_rds" {
 resource "sg_remediation_pattern" "rotate_secrets" {
   name              = "rotate-secrets"
   description       = trimspace(templatefile("${path.module}/templates/remediation-rotate-secrets.md", {}))
-  version           = 1
   risk_level        = "high"
   blast_radius      = "multi-service"
   requires_approval = true
@@ -381,7 +374,6 @@ resource "sg_remediation_pattern" "rotate_secrets" {
 resource "sg_remediation_pattern" "enable_circuit_breaker" {
   name              = "enable-circuit-breaker"
   description       = trimspace(templatefile("${path.module}/templates/remediation-enable-circuit-breaker.md", {}))
-  version           = 1
   risk_level        = "low"
   blast_radius      = "single-upstream"
   requires_approval = false
@@ -395,7 +387,6 @@ resource "sg_remediation_pattern" "enable_circuit_breaker" {
 resource "sg_evidence_checklist" "post_incident_review" {
   name        = "post-incident-review"
   description = trimspace(templatefile("${path.module}/templates/evidence-post-incident-review.md", {}))
-  version     = 1
   approve     = true
   required_items = [
     "incident_timeline_documented",
@@ -413,7 +404,6 @@ resource "sg_evidence_checklist" "post_incident_review" {
 resource "sg_evidence_checklist" "change_validation" {
   name        = "change-validation"
   description = trimspace(templatefile("${path.module}/templates/evidence-change-validation.md", {}))
-  version     = 1
   approve     = true
   required_items = [
     "change_ticket_linked",
@@ -431,7 +421,6 @@ resource "sg_evidence_checklist" "change_validation" {
 resource "sg_evidence_checklist" "security_incident" {
   name        = "security-incident-response"
   description = trimspace(templatefile("${path.module}/templates/evidence-security-incident-response.md", {}))
-  version     = 1
   approve     = true
   required_items = [
     "ioc_or_attack_vector_documented",
@@ -449,7 +438,6 @@ resource "sg_evidence_checklist" "security_incident" {
 resource "sg_evidence_checklist" "incident_quick_triage" {
   name        = "incident-quick-triage"
   description = "Lightweight proof-of-work for fast P3/P4 triage: confirm signals and next step before closing or escalating."
-  version     = 1
   approve     = true
   required_items = [
     "primary_alert_or_ticket_linked",

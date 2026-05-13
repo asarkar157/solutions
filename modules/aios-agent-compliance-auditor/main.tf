@@ -83,7 +83,6 @@ resource "sg_runbook_sop" "audit_log_analysis" {
 resource "sg_evidence_checklist" "compliance_assessment_evidence" {
   name        = "compliance-assessment-evidence"
   description = "Proof-of-work for SOC2 / change-management / audit-log review stages before publishing a compliance report."
-  version     = 1
   approve     = true
   required_items = [
     "access_control_sample_evidence",

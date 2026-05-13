@@ -65,7 +65,6 @@ resource "sg_runbook_sop" "deliverable_handoff" {
 resource "sg_evidence_checklist" "repository_to_iac_evidence" {
   name        = "repository-to-iac-evidence"
   description = "Proof-of-work for repo→IaC: GitHub facts, stack classification, MCP actions or gap, and deliverable summary."
-  version     = 1
   approve     = true
   required_items = [
     "github_manifest_inventory_summary",
@@ -83,7 +82,6 @@ resource "sg_evidence_checklist" "repository_to_iac_evidence" {
 resource "sg_evidence_checklist" "repo_scan_appstack_github_export_evidence" {
   name        = "repo-scan-appstack-github-export-evidence"
   description = "Proof-of-work for scan→AppStack→export: scan summary, appStack IDs, artifact/plan evidence, export PR link."
-  version     = 1
   approve     = true
   required_items = [
     "source_repo_scan_summary",
