@@ -45,6 +45,10 @@ module "db_state_splitter" {
 Primary workflow **required inputs**: `monolith_state_uri`, `iac_repository_url`.  
 Notable **optional inputs**: `grouping_policy_json`, `stackgen_project_name`, `cloud_discovery_id` (for `create_appstack_from_discovered_resources` flows).
 
+## Reliability (what the prompts optimize for)
+
+Guild traces on long runs showed **skill-search noise**, **`/workspace` read-only** sandboxes, **~300s Ubuntu timeouts** on monolithic shell commands, and **many redundant `get_appstacks` / `get_appstack_resources`** calls. The persona and runbooks in this module now steer the agent toward: **`/tmp` preflight**, **trusting prepended `[Runbook Context]` / `### Runbook:` text** (Guild injects runbook summaries per stage — avoid redundant **`search_skill`**), **short `create_agent` goals** (scripts via `ubuntu-cli_create_files` instead of huge embedded `jq`), **`stackgen_appstack_list_cache`**, **one shard per plan step** (or remote-runner fan-out), and **MCP list caching** during AppStack materialization.
+
 ## Outputs
 
 See `outputs.tf` — agent name, workflow names, `stackgen_mcp_auto_approve_policy_id`, optional webhook id/token.

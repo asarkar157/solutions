@@ -17,6 +17,14 @@ Keywords: tofu plan -json, plan file, aggregate counts, drift, loop, workspace, 
 3. Collect exit codes and whether each plan contains **no** create/change/destroy (parse `-json` if available).
 4. Set `multi_plan_zero_diff_ok=true` only if **all** group TF roots **and** all StackGen plans (when in scope) pass.
 
+### Timeouts and chunking (Ubuntu + traces)
+
+Integration shells often hit **~300s** ceilings. A single long **`ubuntu-cli_execute_command`** that runs `init` + `plan` for every shard in one shot is a common source of **timeout-shaped failures** in DAG exports.
+
+- **One shard per shell step** (or a small fixed batch) with a conservative **`timeout_seconds`** per command; persist plan logs under your **`/tmp/...`** workdir and **`note`** paths to excerpts.  
+- Prefer **`ubuntu-cli_execute_series`** with **short** steps over one megacommand.  
+- When **`remote_runner_name`** is configured on the module, **fan out** heavy `plan` / `terraform show -json` there (see **`db-state-split-orchestration-sop`**) instead of wedging everything through one Ubuntu session.
+
 ## Looping
 
 - If count fails → go back to **shard extraction / graph allocation** (per orchestration SOP Loop A).

@@ -7,6 +7,15 @@ Keywords: create_appstack, add_resource_to_appstack, connect_resources, create_a
 - Guild agent has the **StackGen MCP** integration attached (same pattern as `aios-agent-repo-to-iac`). For a **single canonical catalog** of Consumer MCP tools (including git export, policies, and modules), also load **`stackgen-mcp-consumer-tool-catalog-sop`** from the repo-to-iac module when composing stacks in the same org.
 - Workflow notes must include `logical_group_manifest` (or legacy `shard_manifest`), `stackgen_project_name` / project UUID, and per-group inferred `cloud_provider` ∈ {`aws`,`azure`,`gcp`}.
 
+## List traffic and note cache (reliability + smaller traces)
+
+DAGs from long runs often show dozens of **`get_appstacks`** / **`get_appstack_resources`** calls. That burns latency, hits rate limits, and duplicates spans in telemetry.
+
+1. **One list pass per materialization wave** — call **`get_appstacks`** once (with the filters you need, e.g. `labels: ["template"]` when using templates), then **`note`** a compact JSON snapshot under **`stackgen_appstack_list_cache`** (`{ updated_at, stacks: [{ id, name, labels? }] }`).  
+2. **Per-stack resource listing** — call **`get_appstack_resources`** only for the `appstack_id` you are actively mutating, or immediately after **`create_appstack`** / append flows to verify membership — not before every **`add_resource_to_appstack`**.  
+3. **After mutations** — refresh **`stackgen_appstack_list_cache`** only when you create/delete/rename stacks or when a follow-up call returns a stale/not-found error.  
+4. **Do not** interleave **`search_skill`** / **`load_skill`** here; use this playbook + **`db-state-split-orchestration-sop`** (runbooks on the workflow).
+
 ## Tool catalog (StackGen MCP — use these names)
 
 **Discovery (alternative to pure state grouping)**  
@@ -58,6 +67,7 @@ Keywords: create_appstack, add_resource_to_appstack, connect_resources, create_a
 ## Persistence (notes)
 
 - `stackgen_appstack_map` — JSON: `group_id -> { appstack_id, appstack_name, cloud_provider, project_name, plan_run_id? }`.  
+- `stackgen_appstack_list_cache` — optional: last **`get_appstacks`** / resource listing snapshot + `updated_at` (see **List traffic and note cache** above).  
 - `stackgen_mcp_errors` — append-only log of tool failures + remediation.
 
 ## Anti-patterns

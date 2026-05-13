@@ -9,13 +9,13 @@ Keywords: orphan resources, new module, terraform test, scaffold, stackgen regis
 
 ## Scaffold
 
-1. Create `modules/<proposed_name>/` with `main.tf`, `variables.tf`, `outputs.tf`, `README.md` (minimal contract).
+1. Create `modules/<proposed_name>/` with `main.tf`, `variables.tf`, `outputs.tf`, `README.md` (minimal contract) under a **writable** workdir (prefer **`/tmp/...`** when Guild’s workspace mount is read-only); **`note`** the real path you used.
 2. Prefer **import blocks** pulling orphan addresses into clean resource names.
 3. Add `tests/` with `command = plan` hermetic tests (see `terraform-install-validate-test-sop` pattern from terraform-bot module).
 
 ## Validate
 
-1. `tofu fmt`, `init`, `validate`, `plan`, optional `tfsec`/`checkov` soft-fail.
+1. `tofu fmt`, `init`, `validate`, `plan` — **one command group per step** with conservative **`timeout_seconds`** (avoid chaining all shards through a single ~300s-at-risk shell line). Optional `tfsec`/`checkov` soft-fail.
 
 ## Memory
 

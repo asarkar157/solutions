@@ -2,6 +2,12 @@ Skill: **Reverse-engineer IaC** from allocated state slices and **best-fit map**
 
 Keywords: import block, terraform import, moved block, module registry, stackgen mcp, get_module_versions, github.com/appcd-dev/solutions, aios-foundation, brownfield, codegen, aws, azure, gcp.
 
+## Execution (Ubuntu + large states)
+
+- All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`/tmp/db-state-split-.../`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
+- **Chunk** work by `group_id` (or by cloud): one bounded **`ubuntu-cli_execute_series`** / command batch per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation).  
+- Prefer **`ubuntu-cli_create_files`** for generated HCL/scripts, then short **`execute_series`** steps.
+
 ## Reverse IaC
 
 1. For each `group_id` in `logical_group_manifest`, materialize a **root module** directory `groups/<group_id>/` (or `shards/<group_id>/`) with:

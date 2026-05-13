@@ -12,6 +12,12 @@ When the agent has the **StackGen MCP** integration attached, **AppStack** opera
 
 Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen MCP is **not** attached, skip AppStack materialization (note `stackgen_appstack_map` as `skipped: no_mcp`) but still complete TF-only grouping and plans.
 
+## Tooling hygiene (fewer DAG nodes, fewer failures)
+
+- **At run start:** assume runbooks in **`runbook_refs`** are already available — **skip `search_skill` / `load_skill`** for those documents. Mis-ranked skills waste budget and derail behavior.
+- **Ubuntu timeouts:** keep each **`ubuntu-cli_execute_command`** / series step **well under** typical integration ceilings (~**300s**). For large `jq` / `terraform show -json`, write a script file and **chunk** work (count → sample → full extract) or use a **remote runner** when configured — avoid one shell call that streams megabytes back to the agent in a single response.
+- **StackGen list calls:** **`get_appstacks`** / **`get_appstack_resources`** are expensive in trace size and rate limits. **Cache** summarized results in **`stackgen_appstack_list_cache`** after each successful list; reuse until mutations or explicit errors.
+
 ## Canonical note keys (exact strings)
 
 | Key | Purpose |
@@ -30,6 +36,7 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 | `reverse_iac_summary` | Paths + strategy per group (import vs generate) |
 | `registry_mapping_report` | Markdown: patterns → module source / StackGen types |
 | `stackgen_appstack_map` | JSON: `group_id -> { appstack_id, cloud_provider, project_name }` |
+| `stackgen_appstack_list_cache` | Optional JSON: last `get_appstacks` / resource listing snapshot + `updated_at` — reuse to avoid redundant MCP list traffic |
 | `stackgen_mcp_errors` | Tool failures + fixes |
 | `orphans_bundle` | JSON list of addresses + reasons not mapped |
 | `convergence_iteration` | String int; increment when re-looping |
@@ -41,6 +48,8 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 ## Ephemeral workspace (`/tmp`) and read-only filesystems
 
 Guild/Ubuntu MCP sandboxes often expose a **read-only** project root, cwd, or workflow-supplied path. Errors such as *read-only filesystem*, *permission denied*, or failed **`git clone` / `git pull` / `git fetch`** when targeting a fixed repo path mean this step **cannot** complete there.
+
+**Preflight (before clone or curl):** on Ubuntu, run **`mktemp -d`** under `/tmp` (or `mkdir -p` on that path) and **`touch .write_test`** in that directory. If that fails, do not proceed with ingest — record the error in `stage_summary:ingest-monolith` and pick another path only after understanding the sandbox layout.
 
 **Required recovery — use `/tmp` for ephemeral disk:**
 

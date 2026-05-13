@@ -42,3 +42,9 @@ Keywords: terraform show -json, state list, jq, dependency closure, tags, defaul
 ## Tooling
 
 All parsing / `jq` / heavy JSON via **Ubuntu CLI**. StackGen MCP is used **after** this manifest exists (see `stackgen-appstack-mcp-playbook-sop`).
+
+### Large states (speed + reliability)
+
+- **Do not** paste full state JSON into chat or into **`create_agent`** goals — use **`ubuntu-cli_create_files`** to write `*.jq` / shell scripts under **`/tmp/...`**, then **`ubuntu-cli_execute_series`** with short commands.  
+- **Progressive passes:** instance count → provider/module histogram → manifest build, instead of one giant `jq` that materializes everything at once (avoids OOM, timeouts, and truncated tool args).  
+- Keep each **`ubuntu-cli_*`** step under typical integration time limits; split by module prefix or by cloud if the monolith is huge.

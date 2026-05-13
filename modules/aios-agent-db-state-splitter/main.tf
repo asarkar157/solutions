@@ -173,8 +173,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
   stages = [
     {
       stage_id    = "ingest-monolith"
-      description = "Clone IaC repo, fetch monolith state to workspace, record monolith_resource_count"
-      note        = "Ubuntu CLI: git clone, backend pull or aws s3 cp state, tofu/terraform state list | wc -l style count; persist monolith_state_local_path. On read-only filesystem errors, re-home clone + state under /tmp (see db-state-split-orchestration-sop) and note the actual paths."
+      description = "Clone IaC repo, fetch monolith state to a writable directory (prefer /tmp/...), record monolith_resource_count"
+      note        = "Ubuntu CLI: preflight writable dir (mktemp under /tmp); git clone, backend pull or aws s3 cp state, tofu/terraform state list | wc -l style count; persist monolith_state_local_path. On read-only filesystem errors, re-home clone + state under /tmp (see db-state-split-orchestration-sop) and note the actual paths. Do not use /workspace as default."
       required    = true
     },
     {
@@ -238,6 +238,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Budget: ≤ 2 Ubuntu-CLI subagents, ≤ $2, ≤ 6m.
+        0) First Ubuntu action: `mktemp -d` (or `mkdir -p`) under `/tmp`, verify write with `touch`, then `note` `repo_clone_path` / `monolith_state_local_path` under that tree. Avoid `/workspace` unless proven writable.
         1) read_notes; clone IAC to `repo_clone_path` if missing — if clone/update fails (read-only filesystem, permission denied), use a fresh directory under `/tmp` (e.g. `/tmp/db-state-split-<id>/repo`), then `note` the real `repo_clone_path`. If workflow inputs include `grouping_policy_json`, `note` it under key `grouping_policy_json`.
         2) Download state from `monolith_state_uri` → `monolith_state_local_path` (same `/tmp` tree if needed); compute `monolith_resource_count`.
         3) note `stage_summary:ingest-monolith`.
@@ -254,6 +255,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         One Ubuntu-CLI subagent: apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory`.
+        Use `read_notes` for `monolith_state_local_path` / `repo_clone_path` from ingest; prefer **`ubuntu-cli_create_files`** + **`ubuntu-cli_execute_series`** for heavy `jq` (see terraform-state-shard-extraction-sop) instead of embedding long programs in **`create_agent`** goals.
         note `stage_summary:discover-db-anchors`.
       EOT
     },
@@ -302,6 +304,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
+        Use writable `/tmp/...` and chunked `terraform show` / shell steps per terraform-registry-reverse-iac-sop **Execution** section.
         note `stage_summary:reverse-engineer-and-registry-map`.
       EOT
     },
@@ -319,6 +322,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         If StackGen MCP is attached: for each `logical_group_manifest` entry, run Flow A from playbook (create_appstack → add_resource_to_appstack → connect_resources → create_env_profile when needed → create_appstack_action_run Plan). Persist `stackgen_appstack_map`.
+        MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` only for stacks you are mutating or just created — avoid listing before every add. Refresh cache only after creates/deletes or stale errors (see stackgen-appstack-mcp-playbook-sop).
         If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp`.
         Optional input `cloud_discovery_id`: when set, prefer Flow B (`create_appstack_from_discovered_resources`) for that discovery id intersected with group resource IDs if your bridge script produced mapping.
         note `stage_summary:materialize-stackgen-appstacks`.
@@ -355,6 +359,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Run TF plan matrix per `logical_group_manifest`; if `stackgen_appstack_map` has entries, run **`create_appstack_action_run`** (Plan) per AppStack and optionally **`download-iac`** + local `tofu plan` for parity. If any drift, Loop B then re-plan until pass or iteration cap.
+        One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.
         Set `multi_plan_zero_diff_ok`. note `stage_summary:multi-shard-plan-convergence`.
       EOT
     },
@@ -449,7 +454,7 @@ resource "sg_workflow" "orphan_iac_module_authoring" {
         ["orphan-iac-module-bootstrap-sop"],
         try(var.secondary_workflow_skill_refs["orphan-iac-module-authoring::scaffold-validate-module"], [])
       )
-      note = "Ubuntu CLI subagent: scaffold, tofu validate/plan, tests; persist paths."
+      note = "Ubuntu CLI subagent: scaffold under a writable `/tmp/...` tree if needed; run fmt/init/validate/plan in bounded steps (see orphan-iac-module-bootstrap-sop); persist paths via notes."
     },
     {
       stage_id         = "memory-and-handoff"
