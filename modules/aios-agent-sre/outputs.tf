@@ -14,3 +14,13 @@ output "workflow_names" {
     incident_quick_triage = sg_workflow.incident_quick_triage.name
   }
 }
+
+output "evidence_checklist_names" {
+  description = "Stable Guild evidence checklist names for cross-module workflow wiring (e.g. SDLC release_pipeline)."
+  value = {
+    post_incident_review  = sg_evidence_checklist.post_incident_review.name
+    change_validation     = sg_evidence_checklist.change_validation.name
+    security_incident     = sg_evidence_checklist.security_incident.name
+    incident_quick_triage = sg_evidence_checklist.incident_quick_triage.name
+  }
+}

@@ -37,7 +37,7 @@ module "sre_agents" {
 | `sg_agent_policy_attachment` | 15+ | Guardrail policy bindings |
 | `sg_runbook_sop` | 9 | Operational runbooks |
 | `sg_remediation_pattern` | 8 | Remediation playbooks |
-| `sg_evidence_checklist` | 3 | Post-incident evidence templates |
+| `sg_evidence_checklist` | 4 | Post-incident, change, security, and quick-triage evidence templates |
 | `sg_workflow` | 2 | Full + quick triage incident response |
 
 ## Outputs
@@ -46,3 +46,4 @@ module "sre_agents" {
 |------|-------------|
 | `agent_names` | Map of all SRE agent names |
 | `workflow_names` | Map of workflow names |
+| `evidence_checklist_names` | Map of evidence checklist names (for SDLC / other modules) |

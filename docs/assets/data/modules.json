@@ -443,7 +443,7 @@
     {
       "id": "aios-agent-sre",
       "name": "SRE Agents",
-      "desc": "Production-ready SRE team: triage, change correlation, auto-remediation, risk assessment, and incident command. 5 agents, 9 runbooks, 2 workflows.",
+      "desc": "Production-ready SRE team: triage, change correlation, auto-remediation, risk assessment, and incident command. 5 agents, 9 runbooks, 8 remediation patterns, 4 evidence checklists, 2 workflows.",
       "layer": 2,
       "tags": [
         "sre",
@@ -481,7 +481,8 @@
       ],
       "outputs": [
         "agent_names",
-        "workflow_names"
+        "workflow_names",
+        "evidence_checklist_names"
       ],
       "usage": "module \"sre_agents\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-sre?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = module.policies.policy_ids\n  policy_create_flags = {\n    sre_remediation          = module.policies.policy_create_flags.sre_remediation\n    prod_write_gate          = module.policies.policy_create_flags.prod_write_gate\n    tier0_service_protection = module.policies.policy_create_flags.tier0_service_protection\n    blast_radius_limit       = module.policies.policy_create_flags.blast_radius_limit\n    freeze_window            = module.policies.policy_create_flags.freeze_window\n    data_risk_pii            = module.policies.policy_create_flags.data_risk_pii\n    post_action_verification = module.policies.policy_create_flags.post_action_verification\n  }\n\n  integration_names = {\n    grafana = module.grafana_integration.integration_name\n    slack   = module.slack_integration.integration_name\n  }\n}"
     },
@@ -558,7 +559,7 @@
     {
       "id": "aios-agent-azure-devops",
       "name": "Azure DevOps SRE",
-      "desc": "Azure data pipeline SRE with ClickHouse diagnostics, storage queue inspection, and function health checks.",
+      "desc": "Azure data pipeline SRE with ClickHouse diagnostics, storage queue inspection, and function health checks. Guild `sg_evidence_checklist` + auto-approved remediation patterns on the triage workflow.",
       "layer": 2,
       "tags": [
         "azure",
@@ -673,7 +674,7 @@
     {
       "id": "aios-agent-repo-to-iac",
       "name": "Repo to IaC",
-      "desc": "GitHub→IaC workflow plus repo-scan→appStack→export-to-GitHub. Includes stackgen-mcp-consumer-tool-catalog-sop (StackGen user MCP: AppStacks, TF blocks, env profiles, action runs, snapshots, violations).",
+      "desc": "GitHub→IaC workflow plus repo-scan→appStack→export-to-GitHub. Includes stackgen-mcp-consumer-tool-catalog-sop (StackGen user MCP: AppStacks, TF blocks, env profiles, action runs, snapshots, violations). Guild `sg_evidence_checklist` proof-of-work on each workflow.",
       "layer": 2,
       "tags": [
         "iac",
@@ -717,7 +718,7 @@
     {
       "id": "aios-agent-software-engineering",
       "name": "Software Engineering",
-      "desc": "Linear + Cursor + GitHub development pipeline: analyze tickets, author code, submit PRs. 2 agents.",
+      "desc": "Linear + Cursor + GitHub development pipeline: analyze tickets, author code, submit PRs. 2 agents. Guild `sg_evidence_checklist` proof-of-work on the feature-development workflow.",
       "layer": 2,
       "tags": [
         "devops",
@@ -752,7 +753,7 @@
     {
       "id": "aios-agent-sdlc",
       "name": "SDLC",
-      "desc": "Nine agents, release pipeline, developer request intake; stackgen-mcp-iac aligned with StackGen user MCP (AppStacks, plans, snapshots). Optionally attach stackgen-mcp-consumer-tool-catalog-sop from repo-to-iac.",
+      "desc": "Nine agents, release pipeline, developer request intake; stackgen-mcp-iac aligned with StackGen user MCP (AppStacks, plans, snapshots). Optionally attach stackgen-mcp-consumer-tool-catalog-sop from repo-to-iac. Guild `sg_evidence_checklist` on developer intake; optional SRE checklist name for the release pipeline.",
       "layer": 2,
       "tags": [
         "sdlc",
@@ -800,7 +801,7 @@
     {
       "id": "aios-agent-supply-chain-security",
       "name": "Supply Chain Security",
-      "desc": "npm supply chain attack detection: SLSA provenance, behavioral sandbox, phantom dependency detection.",
+      "desc": "npm supply chain attack detection: SLSA provenance, behavioral sandbox, phantom dependency detection. Guild `sg_evidence_checklist` + auto-approved remediation patterns on the analyst workflow.",
       "layer": 2,
       "tags": [
         "security",
@@ -839,7 +840,7 @@
     {
       "id": "aios-agent-compliance-auditor",
       "name": "Compliance Auditor",
-      "desc": "Automated compliance auditing for SOC2, GDPR, HIPAA, ISO 27001 with evidence collection. 4 runbooks, 1 workflow.",
+      "desc": "Automated compliance auditing for SOC2, GDPR, HIPAA, ISO 27001 with evidence collection. 4 runbooks, 1 Guild `sg_evidence_checklist`, 1 workflow.",
       "layer": 2,
       "tags": [
         "compliance",
@@ -874,7 +875,7 @@
     {
       "id": "aios-agent-cost-optimizer",
       "name": "Cost Optimizer",
-      "desc": "FinOps agent for multi-cloud cost optimization: idle resources, rightsizing, commitment optimization, anomaly detection. 4 runbooks, 1 workflow.",
+      "desc": "FinOps agent for multi-cloud cost optimization: idle resources, rightsizing, commitment optimization, anomaly detection. 4 runbooks, 1 Guild `sg_evidence_checklist`, 1 workflow.",
       "layer": 2,
       "tags": [
         "finops",
@@ -1362,7 +1363,7 @@
     {
       "id": "aios-agent-db-state-splitter",
       "name": "DB / monorepo state split",
-      "desc": "Multi-cloud Terraform/OpenTofu monolith state → logical groups (tags, modules, grouping_policy_json); optional per-group TF roots; StackGen AppStacks via optional stackgen_mcp_integration_name; count + plan convergence; secondary orphan-iac-module-authoring workflow. Persona/runbooks: /tmp preflight, runbook-first + redacted notes, bounded shell/MCP caching, remote-runner caveats; CI smoke-renders orchestration tftpl.",
+      "desc": "Multi-cloud Terraform/OpenTofu monolith state → logical groups (tags, modules, grouping_policy_json); optional per-group TF roots; StackGen AppStacks via optional stackgen_mcp_integration_name; count + plan convergence; secondary orphan-iac-module-authoring workflow. Persona/runbooks: /tmp preflight, runbook-first + redacted notes, bounded shell/MCP caching, remote-runner caveats; CI smoke-renders orchestration tftpl. Guild `sg_evidence_checklist` proof-of-work on both workflows.",
       "layer": 2,
       "tags": [
         "terraform",

@@ -315,6 +315,7 @@ resource "sg_remediation_pattern" "restart_pod" {
   risk_level        = "low"
   blast_radius      = "single-pod"
   requires_approval = false
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "scale_up_hpa" {
@@ -324,6 +325,7 @@ resource "sg_remediation_pattern" "scale_up_hpa" {
   risk_level        = "low"
   blast_radius      = "single-deployment"
   requires_approval = false
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "scale_up_asg" {
@@ -333,6 +335,7 @@ resource "sg_remediation_pattern" "scale_up_asg" {
   risk_level        = "medium"
   blast_radius      = "single-az"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "cordon_drain_node" {
@@ -342,6 +345,7 @@ resource "sg_remediation_pattern" "cordon_drain_node" {
   risk_level        = "medium"
   blast_radius      = "single-node"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "rollback_deploy" {
@@ -351,6 +355,7 @@ resource "sg_remediation_pattern" "rollback_deploy" {
   risk_level        = "high"
   blast_radius      = "service-wide"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "failover_rds" {
@@ -360,6 +365,7 @@ resource "sg_remediation_pattern" "failover_rds" {
   risk_level        = "high"
   blast_radius      = "database-cluster"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "rotate_secrets" {
@@ -369,6 +375,7 @@ resource "sg_remediation_pattern" "rotate_secrets" {
   risk_level        = "high"
   blast_radius      = "multi-service"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "enable_circuit_breaker" {
@@ -378,6 +385,7 @@ resource "sg_remediation_pattern" "enable_circuit_breaker" {
   risk_level        = "low"
   blast_radius      = "single-upstream"
   requires_approval = false
+  approve           = true
 }
 
 # =============================================================================
@@ -387,16 +395,72 @@ resource "sg_remediation_pattern" "enable_circuit_breaker" {
 resource "sg_evidence_checklist" "post_incident_review" {
   name        = "post-incident-review"
   description = trimspace(templatefile("${path.module}/templates/evidence-post-incident-review.md", {}))
+  version     = 1
+  approve     = true
+  required_items = [
+    "incident_timeline_documented",
+    "customer_impact_assessed",
+    "active_monitoring_links_attached",
+  ]
+  optional_items = ["postmortem_draft_started", "pagerduty_incident_linked"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.72
+  }
+  metadata = { playbook = "incident-response" }
 }
 
 resource "sg_evidence_checklist" "change_validation" {
   name        = "change-validation"
   description = trimspace(templatefile("${path.module}/templates/evidence-change-validation.md", {}))
+  version     = 1
+  approve     = true
+  required_items = [
+    "change_ticket_linked",
+    "peer_review_or_approval_recorded",
+    "rollback_plan_acknowledged",
+  ]
+  optional_items = ["canary_metrics_snapshot", "feature_flag_state_captured"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "change-management" }
 }
 
 resource "sg_evidence_checklist" "security_incident" {
   name        = "security-incident-response"
   description = trimspace(templatefile("${path.module}/templates/evidence-security-incident-response.md", {}))
+  version     = 1
+  approve     = true
+  required_items = [
+    "ioc_or_attack_vector_documented",
+    "affected_systems_inventory",
+    "containment_actions_listed",
+  ]
+  optional_items = ["law_enforcement_ticket", "customer_notice_template"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.75
+  }
+  metadata = { playbook = "security-incident" }
+}
+
+resource "sg_evidence_checklist" "incident_quick_triage" {
+  name        = "incident-quick-triage"
+  description = "Lightweight proof-of-work for fast P3/P4 triage: confirm signals and next step before closing or escalating."
+  version     = 1
+  approve     = true
+  required_items = [
+    "primary_alert_or_ticket_linked",
+    "service_health_snapshot_captured",
+  ]
+  optional_items = ["recommended_owner_or_team"]
+  scoring {
+    min_required         = 1
+    confidence_threshold = 0.65
+  }
+  metadata = { playbook = "incident-triage" }
 }
 
 # =============================================================================
@@ -464,8 +528,9 @@ resource "sg_workflow" "incident_quick_triage" {
     { field = "incident_title_contains", values = ["warning", "degradation", "p3", "p4", "sev3", "sev4"], type = "passive" },
   ]
 
-  required_inputs = ["incident_id", "severity"]
-  optional_inputs = ["service_name", "alert_url"]
+  required_inputs        = ["incident_id", "severity"]
+  optional_inputs        = ["service_name", "alert_url"]
+  evidence_checklist_ref = sg_evidence_checklist.incident_quick_triage.name
 
   runbook_refs = [
     sg_runbook_sop.pod_crashloop_recovery.name,

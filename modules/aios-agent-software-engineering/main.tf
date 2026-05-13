@@ -85,14 +85,33 @@ resource "sg_runbook_sop" "github_pr_submission" {
   description = trimspace(templatefile("${path.module}/templates/github-pr-submission.md", {}))
 }
 
+resource "sg_evidence_checklist" "feature_development_evidence" {
+  name        = "feature-development-evidence"
+  description = "Proof-of-work for Linear-driven feature work: requirements digest, implementation notes, and PR link."
+  version     = 1
+  approve     = true
+  required_items = [
+    "linear_requirements_summary",
+    "implementation_or_test_notes",
+    "pull_request_url",
+  ]
+  optional_items = ["ci_status_or_reviewers_tagged"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.68
+  }
+  metadata = { playbook = "feature-development" }
+}
+
 resource "sg_workflow" "feature_development" {
   name        = "feature-development"
   domain      = "software-engineering"
   description = trimspace(templatefile("${path.module}/templates/workflow-feature-development.md", {}))
   approve     = true
 
-  required_inputs = ["linear_issue_id", "repository"]
-  optional_inputs = ["branch"]
+  required_inputs        = ["linear_issue_id", "repository"]
+  optional_inputs        = ["branch"]
+  evidence_checklist_ref = sg_evidence_checklist.feature_development_evidence.name
 
   example_queries = [
     "Start working on ENG-145 in the backend repository",

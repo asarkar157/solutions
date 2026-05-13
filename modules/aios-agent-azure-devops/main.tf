@@ -96,6 +96,7 @@ resource "sg_remediation_pattern" "restart_azure_function" {
   risk_level        = "medium"
   blast_radius      = "single-function"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "redeploy_log_processor" {
@@ -105,12 +106,26 @@ resource "sg_remediation_pattern" "redeploy_log_processor" {
   risk_level        = "high"
   blast_radius      = "data-pipeline"
   requires_approval = true
+  approve           = true
 }
 
 # Evidence checklist
 resource "sg_evidence_checklist" "azure_devops_incident" {
   name        = "azure-devops-incident"
   description = trimspace(templatefile("${path.module}/templates/evidence-azure-devops-incident.md", {}))
+  version     = 1
+  approve     = true
+  required_items = [
+    "clickhouse_diagnostics_summary",
+    "storage_queue_depth_snapshot",
+    "function_invocation_errors_captured",
+  ]
+  optional_items = ["previous_known_good_deploy_identified"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "azure-devops-triage" }
 }
 
 # Workflow — 5-stage DAG

@@ -289,7 +289,7 @@ resource "sg_workflow" "release_pipeline" {
     var.sre_runbook_names.ssl_cert_renewal,
   ])
 
-  evidence_checklist_ref = var.sre_evidence_checklist_names.change_validation
+  evidence_checklist_ref = trimspace(var.sre_evidence_checklist_names.change_validation) != "" ? trimspace(var.sre_evidence_checklist_names.change_validation) : null
 
   example_queries = [
     "Deploy payment-service v2.4.1 to production",
@@ -387,6 +387,28 @@ resource "sg_workflow" "release_pipeline" {
 }
 
 # ============================================================================
+# Developer intake — proof-of-work (local checklist; release pipeline may use SRE checklist by name)
+# ============================================================================
+
+resource "sg_evidence_checklist" "developer_request_intake_evidence" {
+  name        = "sdlc-developer-request-intake-evidence"
+  description = "Proof-of-work for developer platform requests: classification, tracking issue, policy evaluation, and execution evidence before closing."
+  version     = 1
+  approve     = true
+  required_items = [
+    "request_classification_recorded",
+    "jira_tracking_issue_linked",
+    "policy_evaluation_outcome_documented",
+  ]
+  optional_items = ["mcp_or_shell_action_log_summary"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "developer-request-intake" }
+}
+
+# ============================================================================
 # Developer Request Intake Workflow
 # ============================================================================
 
@@ -403,8 +425,9 @@ resource "sg_workflow" "developer_request_intake" {
     { field = "event_type", values = ["app_mention", "message"], type = "active", source = "slack" },
   ]
 
-  required_inputs = ["request_summary"]
-  optional_inputs = ["requester_email", "team", "priority", "jira_project_key", "environment"]
+  required_inputs        = ["request_summary"]
+  optional_inputs        = ["requester_email", "team", "priority", "jira_project_key", "environment"]
+  evidence_checklist_ref = sg_evidence_checklist.developer_request_intake_evidence.name
 
   runbook_refs = compact([
     sg_runbook_sop.stackgen_mcp_iac.name,

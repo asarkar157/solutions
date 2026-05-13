@@ -62,14 +62,51 @@ resource "sg_runbook_sop" "deliverable_handoff" {
   description = trimspace(templatefile("${path.module}/templates/repo-to-iac-deliverable-handoff.md", {}))
 }
 
+resource "sg_evidence_checklist" "repository_to_iac_evidence" {
+  name        = "repository-to-iac-evidence"
+  description = "Proof-of-work for repo→IaC: GitHub facts, stack classification, MCP actions or gap, and deliverable summary."
+  version     = 1
+  approve     = true
+  required_items = [
+    "github_manifest_inventory_summary",
+    "stack_classification_recorded",
+    "iac_synthesis_or_preview_evidence",
+  ]
+  optional_items = ["mcp_tool_invocation_list"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "repository-to-iac" }
+}
+
+resource "sg_evidence_checklist" "repo_scan_appstack_github_export_evidence" {
+  name        = "repo-scan-appstack-github-export-evidence"
+  description = "Proof-of-work for scan→AppStack→export: scan summary, appStack IDs, artifact/plan evidence, export PR link."
+  version     = 1
+  approve     = true
+  required_items = [
+    "source_repo_scan_summary",
+    "appstack_identifiers_and_env_profile",
+    "plan_or_action_run_evidence",
+  ]
+  optional_items = ["export_pr_or_branch_url"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "repo-scan-appstack-github-export" }
+}
+
 resource "sg_workflow" "repository_to_iac" {
   name        = "repository-to-iac"
   domain      = "platform-engineering"
   description = trimspace(templatefile("${path.module}/templates/workflow-repository-to-iac.md", {}))
   approve     = true
 
-  required_inputs = ["github_repo_url"]
-  optional_inputs = ["default_branch", "target_cloud", "iac_scope"]
+  required_inputs        = ["github_repo_url"]
+  optional_inputs        = ["default_branch", "target_cloud", "iac_scope"]
+  evidence_checklist_ref = sg_evidence_checklist.repository_to_iac_evidence.name
 
   example_queries = [
     "Generate StackGen IaC for https://github.com/org/sample-service",
@@ -192,8 +229,9 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
   description = trimspace(templatefile("${path.module}/templates/workflow-repo-scan-appstack-github-export.md", {}))
   approve     = true
 
-  required_inputs = ["github_repo_url", "export_github_repo"]
-  optional_inputs = ["default_branch", "aws_region", "stackgen_project_name", "export_branch"]
+  required_inputs        = ["github_repo_url", "export_github_repo"]
+  optional_inputs        = ["default_branch", "aws_region", "stackgen_project_name", "export_branch"]
+  evidence_checklist_ref = sg_evidence_checklist.repo_scan_appstack_github_export_evidence.name
 
   example_queries = [
     "Scan https://github.com/org/api-service and export StackGen IaC to github.com/org/api-infra — region us-east-1",

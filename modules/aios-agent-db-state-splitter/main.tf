@@ -128,6 +128,46 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
 }
 
 # =============================================================================
+# Evidence checklists — proof-of-work for primary vs orphan workflows
+# =============================================================================
+
+resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
+  name        = "db-monorepo-state-split-evidence"
+  description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, and handoff artifacts."
+  version     = 1
+  approve     = true
+  required_items = [
+    "monolith_resource_count_recorded",
+    "aggregate_shard_count_matches_monolith",
+    "multi_shard_plan_zero_diff_evidence",
+  ]
+  optional_items = ["appstack_materialization_summary", "orphan_secondary_handoff_link"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.72
+  }
+  metadata = { playbook = "db-monorepo-state-split-convergence" }
+}
+
+resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
+  name        = "orphan-iac-module-authoring-evidence"
+  description = "Proof-of-work for orphan module pipeline: bundle classified, module scaffold validated, memory and PR handoff."
+  version     = 1
+  approve     = true
+  required_items = [
+    "orphans_bundle_classification_summary",
+    "module_fmt_validate_plan_evidence",
+    "modularization_memory_or_pr_link",
+  ]
+  optional_items = ["test_results_or_ci_link"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "orphan-iac-module-authoring" }
+}
+
+# =============================================================================
 # Primary workflow — monorepo state → per-DB TF states + convergence loops
 # =============================================================================
 
@@ -156,6 +196,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     "stackgen_project_name",
     "cloud_discovery_id",
   ]
+  evidence_checklist_ref = sg_evidence_checklist.db_monorepo_state_split_evidence.name
 
   example_queries = [
     "Split monorepo tfstate s3://acme-tf/prod/terraform.tfstate: group by tag Application, one AppStack per tag value for AWS + Azure resources",
@@ -406,8 +447,9 @@ resource "sg_workflow" "orphan_iac_module_authoring" {
   EOT
   approve     = true
 
-  required_inputs = ["orphans_bundle", "parent_repository_url"]
-  optional_inputs = ["base_branch", "proposed_module_name_prefix"]
+  required_inputs        = ["orphans_bundle", "parent_repository_url"]
+  optional_inputs        = ["base_branch", "proposed_module_name_prefix"]
+  evidence_checklist_ref = sg_evidence_checklist.orphan_iac_module_authoring_evidence.name
 
   example_queries = [
     "Orphans from state split: [...addresses...] — scaffold a shared networking module",

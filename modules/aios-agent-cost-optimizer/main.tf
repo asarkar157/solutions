@@ -62,13 +62,33 @@ resource "sg_runbook_sop" "cost_anomaly_detection" {
   description = trimspace(templatefile("${path.module}/templates/cost-anomaly-detection.md", {}))
 }
 
+resource "sg_evidence_checklist" "finops_review_evidence" {
+  name        = "finops-review-evidence"
+  description = "Proof-of-work for FinOps review: idle scan, rightsizing, commitments, and anomaly explanations before executive summary."
+  version     = 1
+  approve     = true
+  required_items = [
+    "idle_resource_findings_documented",
+    "rightsizing_recommendations_with_utilization",
+    "commitment_coverage_or_gap_analysis",
+    "spend_anomaly_hypothesis_with_query_links",
+  ]
+  optional_items = ["executive_savings_total_estimated"]
+  scoring {
+    min_required         = 3
+    confidence_threshold = 0.68
+  }
+  metadata = { playbook = "finops-review" }
+}
+
 # --- Workflow ---
 
 resource "sg_workflow" "finops_review" {
-  name        = "finops-review"
-  domain      = "finops"
-  description = trimspace(templatefile("${path.module}/templates/workflow-finops-review.md", {}))
-  approve     = true
+  name                   = "finops-review"
+  domain                 = "finops"
+  description            = trimspace(templatefile("${path.module}/templates/workflow-finops-review.md", {}))
+  approve                = true
+  evidence_checklist_ref = sg_evidence_checklist.finops_review_evidence.name
 
   example_queries = [
     "How much are we wasting on idle AWS resources?",

@@ -55,7 +55,11 @@ variable "sre_runbook_names" {
 }
 
 variable "sre_evidence_checklist_names" {
-  description = "Evidence checklist names from the SRE module"
+  description = <<-EOT
+    Evidence checklist names managed outside this module (typically from `module.<sre>.workflow_names` or the `sg_evidence_checklist.name` values in `aios-agent-sre`).
+    When `change_validation` is non-empty, `sg_workflow.release_pipeline` sets `evidence_checklist_ref` to that name so release proof-of-work aligns with the SRE module.
+    Leave empty (default) to omit a workflow-level checklist on the release pipeline; `developer-request-intake` always uses the checklist defined in this module.
+  EOT
   type = object({
     change_validation = optional(string, "")
   })

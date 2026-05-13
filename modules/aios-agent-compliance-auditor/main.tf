@@ -80,6 +80,24 @@ resource "sg_runbook_sop" "audit_log_analysis" {
   description = trimspace(templatefile("${path.module}/templates/audit-log-analysis.md", {}))
 }
 
+resource "sg_evidence_checklist" "compliance_assessment_evidence" {
+  name        = "compliance-assessment-evidence"
+  description = "Proof-of-work for SOC2 / change-management / audit-log review stages before publishing a compliance report."
+  version     = 1
+  approve     = true
+  required_items = [
+    "access_control_sample_evidence",
+    "change_management_sample_evidence",
+    "audit_log_review_summary",
+  ]
+  optional_items = ["framework_control_mapping_table"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.72
+  }
+  metadata = { playbook = "compliance-assessment" }
+}
+
 # --- Workflows ---
 
 resource "sg_workflow" "compliance_assessment" {
@@ -88,8 +106,9 @@ resource "sg_workflow" "compliance_assessment" {
   description = trimspace(templatefile("${path.module}/templates/workflow-compliance-assessment.md", {}))
   approve     = true
 
-  required_inputs = ["framework"]
-  optional_inputs = ["scope", "specific_controls"]
+  required_inputs        = ["framework"]
+  optional_inputs        = ["scope", "specific_controls"]
+  evidence_checklist_ref = sg_evidence_checklist.compliance_assessment_evidence.name
 
   example_queries = [
     "Run a SOC2 access review on our AWS accounts",

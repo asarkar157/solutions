@@ -194,6 +194,10 @@ module "sdlc" {
     ssl_cert_renewal    = "tls-certificate-renewal"
   }
 
+  sre_evidence_checklist_names = {
+    change_validation = module.sre_agents.evidence_checklist_names.change_validation
+  }
+
   integration_names = merge(
     {
       aws_production = module.aws_integration.integration_name

@@ -99,6 +99,7 @@ resource "sg_remediation_pattern" "block_unverified_package" {
   risk_level        = "medium"
   blast_radius      = "single-repo"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_remediation_pattern" "quarantine_phantom" {
@@ -108,11 +109,25 @@ resource "sg_remediation_pattern" "quarantine_phantom" {
   risk_level        = "medium"
   blast_radius      = "single-repo"
   requires_approval = true
+  approve           = true
 }
 
 resource "sg_evidence_checklist" "supply_chain_incident" {
   name        = "supply-chain-incident-evidence"
   description = trimspace(templatefile("${path.module}/templates/evidence-supply-chain-incident-body.md", {}))
+  version     = 1
+  approve     = true
+  required_items = [
+    "npm_audit_or_provenance_report_linked",
+    "sandbox_run_log_or_summary",
+    "dependency_graph_delta_captured",
+  ]
+  optional_items = ["github_advisory_cross_reference"]
+  scoring {
+    min_required         = 2
+    confidence_threshold = 0.7
+  }
+  metadata = { playbook = "supply-chain-security" }
 }
 
 resource "sg_workflow" "supply_chain_scan" {
