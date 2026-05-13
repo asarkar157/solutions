@@ -33,5 +33,5 @@ resource "sg_guild_integration" "langfuse" {
     name = var.integration_image
   }
 
-  env = var.env
+  env = length(var.env) > 0 ? var.env : null
 }
