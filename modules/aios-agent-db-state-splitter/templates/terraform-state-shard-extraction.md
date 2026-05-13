@@ -1,6 +1,6 @@
 Skill: **Logical grouping** of resources from a monolithic Terraform/OpenTofu state for **AWS, Azure, GCP** (and mixed) — not limited to RDS.
 
-Keywords: terraform show -json, state list, jq, dependency closure, tags, default_tags, module path, for_each, workspace, aws_*, azurerm_*, google_*, azapi_*, logical_group, shard.
+Keywords: terraform show -json, state list, jq, dependency closure, connectivity, connected components, max_resources_per_appstack, tags, default_tags, module path, for_each, workspace, aws_*, azurerm_*, google_*, azapi_*, logical_group, shard.
 
 ## Inputs
 
@@ -10,8 +10,13 @@ Keywords: terraform show -json, state list, jq, dependency closure, tags, defaul
   - **Module address prefix** (e.g. `module.data_plane`).  
   - **Resource type regex** (e.g. `^(aws_db_|azurerm_mssql_)`).  
   - **Explicit include/exclude lists** of addresses.
+- Optional **`grouping_strategy`** (workflow input string):  
+  - Omitted or **`policy_first`** — follow **Steps 2–6** below (anchors + tags/modules + graph closure).  
+  - **`connectivity`** — follow **§7** (connectivity components first; then optional policy refinement).  
+  - **`connectivity_capped`** — **§7** then **§8** with **`max_resources_per_appstack`** (integer string, e.g. `80`; default **80** if strategy is `connectivity_capped` but the cap input is missing).
+- Optional **`max_resources_per_appstack`** — hard ceiling on **managed resource instance count** per `group_id` in **`logical_group_manifest`** after allocation. Use with **`connectivity_capped`** (§7–8); with **`policy_first`**, apply **§8** split pass if any bucket exceeds the cap.
 
-## Steps
+## Steps (policy-first — default)
 
 1. **Normalize state**  
    Count resource **instances** (including `count`/`for_each` keys). Persist `monolith_resource_count`.
@@ -38,6 +43,31 @@ Keywords: terraform show -json, state list, jq, dependency closure, tags, defaul
 
 6. **Counts**  
    `per_group_resource_counts`, `aggregate_group_resource_count`; `count_reconciliation_ok` iff sum equals `monolith_resource_count` and no duplicate addresses.
+
+## 7. Connectivity-first grouping (`grouping_strategy`: `connectivity` or `connectivity_capped`)
+
+Use when operators want **AppStacks aligned to dependency structure** instead of broad **resource-type** buckets (e.g. “all IAM in one stack”).
+
+1. **Build a resource graph** from `terraform show -json`: vertices = managed resource addresses (same `data.*` / deposed rules as policy mode). Add an **undirected** edge when either resource’s config references the other’s address (dependency edges, `depends_on` when visible in JSON, cross-resource attribute references).  
+2. **Provider partition** — compute **connected components** **per cloud** (`aws_*` vs `azurerm_*` vs `google_*` / `azapi_*` never mixed in one `group_id`). Optional: within a giant component, merge only along **strong** edges (e.g. duplicate `depends_on` both ways) if telemetry shows hairball graphs — document the rule in `logical_group_manifest.notes`.  
+3. **Shared hubs** — NAT gateways, org-wide KMS keys, default VPCs: assign to a dedicated `shared-*` `group_id` or keep in the largest attached component but **never double-count** addresses.  
+4. **Optional policy blend** — if `grouping_policy_json` is present, use tag/module rules only to **subdivide** large components or **seed** partition roots, not to merge unrelated components across missing edges.  
+5. **Manifest & counts** — emit **`logical_group_manifest`** / `shard_manifest` and `per_group_resource_counts` as in policy mode; use `group_id` names like `conn-aws-001` and `notes.grouping: connectivity`.
+
+## 8. AppStack size cap (`max_resources_per_appstack`)
+
+Apply when workflow input **`max_resources_per_appstack`** is set (typically with **`connectivity_capped`**) or when operators cap **`policy_first`** results.
+
+Let **N** = positive integer parsed from the workflow string (default **80** if `grouping_strategy` is `connectivity_capped` and the cap input is empty).
+
+After initial groups exist, **split** any `group_id` whose managed `resource_addresses` length **exceeds N**:
+
+1. Work on the **induced subgraph** of that group’s addresses.  
+2. **Partition** into new `group_id`s each with **≤ N** addresses, best-effort **minimizing cut edges** (fewer cross-AppStack references):  
+   - Preferred: **seeded expansion** — pick high-degree or policy-tagged seed, BFS/DFS add neighbors until N, start next shard from an unvisited high-degree node.  
+   - Acceptable fallback: **deterministic bin-packing** (lexicographic order into chunks of N) when time-bounded; note `notes.partition: greedy-chunk` so plans can be revisited.  
+3. If a **hub** resource would need to appear in multiple shards for correctness, keep it in **one** primary shard and record dependent addresses that reference it in `notes.cross_shard_refs` (expect `connect_resources` / env wiring in StackGen or follow-up IaC). Avoid duplicating the same address in two `group_id` lists.  
+4. Assign fresh **`group_id`**s (suffix `-shard-01`, incrementing counter, etc.), recompute counts, and assert **every** group has `≤ N` resources and global sum still equals `monolith_resource_count`.
 
 ## Tooling
 

@@ -136,8 +136,9 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
   domain      = "infrastructure-as-code"
   description = <<-EOT
     Splits a monolithic Terraform/OpenTofu state across **AWS, Azure, and GCP** into **logical resource groups**
-    (tags, module paths, grouping policy), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
+    (tags, module paths, grouping policy, or **connectivity-first** graphs), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
     reverse-engineered IaC, registry mapping, orphan secondary workflow, and loops until counts match and plans converge.
+    Optional **`grouping_strategy`** + **`max_resources_per_appstack`** cap large type buckets into smaller connected shards.
     **DAG:** after reverse IaC, **AppStack materialization** and **orphan secondary handoff** run **in parallel**; **multi-shard plan convergence** waits for both (fan-in).
   EOT
   approve     = true
@@ -150,6 +151,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     "max_convergence_iterations",
     "registry_catalog_url",
     "grouping_policy_json",
+    "grouping_strategy",
+    "max_resources_per_appstack",
     "stackgen_project_name",
     "cloud_discovery_id",
   ]
@@ -158,6 +161,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     "Split monorepo tfstate s3://acme-tf/prod/terraform.tfstate: group by tag Application, one AppStack per tag value for AWS + Azure resources",
     "Brownfield infra-live: logical groups by module.networking vs module.data — GCP and AWS — then create_appstack per group",
     "Use grouping_policy_json to merge all azurerm_* with tag env=prod into one StackGen appstack and empty-plan each",
+    "Connectivity-first: grouping_strategy=connectivity_capped, max_resources_per_appstack=80 — shard state into connected subgraphs with at most 80 resources per AppStack",
   ]
 
   triggers = [
@@ -183,13 +187,13 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id    = "discover-db-anchors"
       description = "Multi-cloud: parse state; apply grouping_policy_json; emit logical_group_seeds and db_anchor_inventory (stage id retained)"
-      note        = "terraform-state-shard-extraction-sop §2–3 — AWS/Azure/GCP anchors + tag/module clustering."
+      note        = "terraform-state-shard-extraction-sop §2–3 — anchors + tag/module clustering, **or** §7–8 when workflow inputs `grouping_strategy` / `max_resources_per_appstack` request connectivity-capped grouping. `read_notes` for those keys from workflow inputs."
       required    = true
     },
     {
       stage_id    = "allocate-related-resources"
       description = "Build dependency closures; write logical_group_manifest (mirror shard_manifest) and per-group counts"
-      note        = "Shard-extraction §4–6. Never place aws_* and azurerm_* in the same group."
+      note        = "Shard-extraction §4–6 (policy mode) **or** §7–8 (connectivity / cap). Never place aws_* and azurerm_* in the same group. If `max_resources_per_appstack` is set, **no** `group_id` may list more than that many managed resource addresses after allocation — split oversized components per SOP."
       required    = true
     },
     {
@@ -207,7 +211,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id    = "materialize-stackgen-appstacks"
       description = "Per logical group: create_appstack (or from discovery), add_resource_to_appstack, connect_resources, env profiles, stackgen_appstack_map"
-      note        = "stackgen-appstack-mcp-playbook-sop Flow A/B. Skip with note if StackGen MCP not attached."
+      note        = "stackgen-appstack-mcp-playbook-sop — **one AppStack per `group_id`** in `logical_group_manifest`. If operators used `max_resources_per_appstack`, each group should already be ≤ that size; do not merge groups in MCP. Skip with note if StackGen MCP not attached."
       required    = true
     },
     {

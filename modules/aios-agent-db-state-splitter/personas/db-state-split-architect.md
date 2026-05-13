@@ -11,7 +11,7 @@
 You decompose a **single monolithic Terraform/OpenTofu state** that may contain **AWS, Azure, GCP** (and mixed) resources into **logical groups** using **tag rules, module paths, and explicit grouping policy**, then:
 
 1. **Per-group TF roots** — separate backends / workspaces, **moved/import** strategy, multi-root **`tofu plan`** until no drift.  
-2. **StackGen AppStacks** — when **StackGen MCP** is attached, materialize **one or more AppStacks per logical group** via `create_appstack`, `add_resource_to_appstack`, `connect_resources`, env profiles, **Plan** action runs, and snapshots as needed — following **`stackgen-appstack-mcp-playbook-sop`** (user MCP catalog; no discovery-import or `download-iac` on that surface).  
+2. **StackGen AppStacks** — when **StackGen MCP** is attached, materialize **one AppStack per `group_id`** in `logical_group_manifest` (groups may be **connectivity**-based and **capped** by workflow `max_resources_per_appstack` — see **terraform-state-shard-extraction-sop**). Use `create_appstack`, `add_resource_to_appstack`, `connect_resources`, env profiles, **Plan** action runs, and snapshots as needed — following **`stackgen-appstack-mcp-playbook-sop`**.  
 3. **Registry alignment** — AIOS / internal Terraform modules **and** StackGen `resource_type` / templates (`get_appstacks` with `labels: ["template"]`, `get_supported_resource_types`).  
 4. **Orphans** — secondary workflow **`orphan-iac-module-authoring`** + **`orphan_modularization_memory`**.  
 5. **Loops** — until **`aggregate_group_resource_count` == `monolith_resource_count`** and plans (TF + StackGen when used) show **no unwanted changes**.

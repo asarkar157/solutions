@@ -37,6 +37,8 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 | `monolith_state_local_path` | Downloaded `terraform.tfstate` or `json` snapshot path (writable; prefer under `/tmp` when the default workspace is read-only) |
 | `monolith_resource_count` | Integer: total resource **instances** in monolith (after filters) |
 | `grouping_policy_json` | Optional rules: tag keys, module prefixes, regexes |
+| `grouping_strategy` | Optional: `policy_first` (default), `connectivity`, or `connectivity_capped` — see **terraform-state-shard-extraction-sop** §7–8 |
+| `max_resources_per_appstack` | Optional integer string (e.g. `80`) — max managed resources per `group_id` / AppStack after allocation |
 | `logical_group_seeds` | JSON seeds from multi-vendor anchor detection |
 | `logical_group_manifest` | JSON map `group_id -> {cloud_hint, resource_addresses[]}` (**primary**) |
 | `shard_manifest` | **Legacy mirror** of `logical_group_manifest` for backward compatibility |
