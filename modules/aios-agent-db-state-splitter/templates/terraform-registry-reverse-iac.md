@@ -27,6 +27,41 @@ This stage runs **after** ingest / discover / allocate / count-reconcile. Always
 2. Prefer **import blocks** generated from state attributes (`terraform show -json` per-address slice).
 3. Capture `reverse_iac_summary`: files created, imports pending, known gaps.
 
+## HCL hydration (mandatory — no human "HCL author" handoff)
+
+`tofu plan` in a per-group root will report `N to add` (and never converge to "No changes") whenever a `resource "X" "Y" {}` body is **missing or empty**. Do **not** leave 402 (or any) stub `main.tf` files for a human to fill in. Hydrate them in two passes per group, both Ubuntu CLI:
+
+1. **Pass 1 — generate config from import blocks.** In `groups/<group_id>/` (writable, under `/tmp/...` if needed):
+
+   ```bash
+   tofu init -input=false -no-color
+   tofu plan \
+     -generate-config-out=generated.tf \
+     -input=false -lock=false -no-color \
+     -out=hydrate.tfplan
+   ```
+
+   This is the **first-class** OpenTofu / Terraform 1.5+ flow for adopting existing resources: every `import { to = aws_X.foo, id = "..." }` block whose `to` address has **no** matching resource body is materialized into `generated.tf` (resource attributes are read from the live cloud or from the state if the backend is wired). Treat the `generated.tf` output as authoritative HCL for that group and **commit it next to the stubs**.
+
+2. **Pass 2 — verify zero diff.** After `generated.tf` exists:
+
+   ```bash
+   tofu plan -input=false -lock=false -no-color -out=verify.tfplan
+   ```
+
+   Expected: `No changes. Your infrastructure matches the configuration.` (exit 0). If non-empty, classify the remaining diff:
+   - **Attribute drift** (resource declared but value differs) → patch the generated body with the correct value from `terraform show -json` or accept the cloud value if it is canonical.
+   - **`import` failures** (provider could not read the resource — IAM, region, deleted) → move the address to `orphans_bundle` with `reason: "import_failed_<provider_message>"`.
+   - **Missing provider config** → add the provider block (region, project, subscription) to `providers.tf` and re-run.
+
+3. **Persist hydration status:** for each `group_id`, write **`hcl_hydration_status:<group_id>`** as JSON `{ generated_tf_path, generated_resources, plan_no_changes: true|false, remaining_actions: { add, change, destroy }, attempt: 1|2|3 }`. The materialization gate and final gate read this — a group with `plan_no_changes=false` is **not** complete.
+
+4. **Loop, do not handoff.** If pass 2 still has `change/destroy` actions, **stay in this stage** for that group: re-run pass 1 (Terraform's generator is incremental — it re-uses existing bodies) and patch deltas, until either `plan_no_changes=true` or the remaining addresses are moved to `orphans_bundle`. Never `notify` the operator with "please author HCL"; the workflow is the HCL author.
+
+### Anti-pattern
+
+- Writing `resource "aws_X" "Y" {}` (empty body) and declaring the stage complete. That is exactly the failure mode that produced `iteration 2` blocking item "Author resource blocks in all 402 main.tf stubs". Use `-generate-config-out` instead.
+
 ## StackGen module / template cross-check
 
 The StackGen **user** MCP (`…/api/mcp/user`) does **not** expose Terraform module catalog tools (`get_module_versions`, `module_usage_in_appstacks`). For **StackGen** alignment use **`get_supported_resource_types`**, **`get_resource_type_configurations`**, and **`get_appstacks`** (e.g. `labels: ["template"]`) plus **`get_appstack_resources`** on candidate templates. For **Terraform** module sources (AIOS `github.com/appcd-dev/solutions`, pins, double-slash paths), use **Ubuntu CLI** + `git` / registry browser patterns in this runbook — not MCP module-metadata calls unless a **different** integration provides them.
