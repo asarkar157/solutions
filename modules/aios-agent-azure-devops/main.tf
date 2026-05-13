@@ -20,8 +20,8 @@ resource "sg_agent" "azure_devops_sre" {
   }
 
   integrations = compact([
-    lookup(var.integration_names, "azure", ""),
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
+    lookup(var.integration_names, "azure_production", lookup(var.integration_names, "azure", "")),
+    lookup(var.integration_names, "slack", ""),
   ])
 }
 

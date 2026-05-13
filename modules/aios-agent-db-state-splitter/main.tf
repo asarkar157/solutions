@@ -133,19 +133,31 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
 
 resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
   name        = "db-monorepo-state-split-evidence"
-  description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, and handoff artifacts."
+  description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, AppStack membership verified per group, and handoff artifacts."
   approve     = true
   required_items = [
     "monolith_resource_count_recorded",
     "aggregate_shard_count_matches_monolith",
+    "stackgen_appstack_membership_report_attached",
+    "appstack_membership_verified_per_group",
     "multi_shard_plan_zero_diff_evidence",
   ]
-  optional_items = ["appstack_materialization_summary", "orphan_secondary_handoff_link"]
+  optional_items = [
+    "appstack_materialization_summary",
+    "orphan_secondary_handoff_link",
+    "cross_group_bleed_resolution_log",
+  ]
   scoring = {
-    min_required         = 2
-    confidence_threshold = 0.72
+    min_required         = 4
+    confidence_threshold = 0.78
   }
-  metadata = { playbook = "db-monorepo-state-split-convergence" }
+  metadata = {
+    playbook                   = "db-monorepo-state-split-convergence"
+    membership_note_key_prefix = "stackgen_appstack_membership:"
+    membership_report_note_key = "stackgen_appstack_membership_report"
+    membership_runbook         = "stackgen-appstack-mcp-playbook-sop"
+    membership_runbook_section = "step 3.5 — Membership verification gate"
+  }
 }
 
 resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
@@ -177,6 +189,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     (tags, module paths, grouping policy, or **connectivity-first** graphs), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
     reverse-engineered IaC, registry mapping, orphan secondary workflow, and loops until counts match and plans converge.
     Optional **`grouping_strategy`** + **`max_resources_per_appstack`** cap large type buckets into smaller connected shards.
+    Env profile + StackGen Plan action runs are **optional**: pass **`stackgen_target_environment`** (an existing project env) only if you want them — leave it unset to skip those steps and rely on Ubuntu `tofu plan` parity. **`stackgen_environments_required="true"`** turns "env not in project settings" into a single operator notify; default is silent skip.
     **DAG:** after reverse IaC, **AppStack materialization** and **orphan secondary handoff** run **in parallel**; **multi-shard plan convergence** waits for both (fan-in).
   EOT
   approve     = true
@@ -192,6 +205,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     "grouping_strategy",
     "max_resources_per_appstack",
     "stackgen_project_name",
+    "stackgen_target_environment",
+    "stackgen_environments_required",
     "cloud_discovery_id",
   ]
   evidence_checklist_ref = sg_evidence_checklist.db_monorepo_state_split_evidence.name
@@ -201,6 +216,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     "Brownfield infra-live: logical groups by module.networking vs module.data — GCP and AWS — then create_appstack per group",
     "Use grouping_policy_json to merge all azurerm_* with tag env=prod into one StackGen appstack and empty-plan each",
     "Connectivity-first: grouping_strategy=connectivity_capped, max_resources_per_appstack=80 — shard state into connected subgraphs with at most 80 resources per AppStack",
+    "AppStacks only (no Plan): leave stackgen_target_environment empty so env profile + create_appstack_action_run are skipped — fall back to Ubuntu tofu plan parity",
   ]
 
   triggers = [
@@ -249,8 +265,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     },
     {
       stage_id    = "materialize-stackgen-appstacks"
-      description = "Per logical group: create_appstack (or from discovery), add_resource_to_appstack, connect_resources, env profiles, stackgen_appstack_map"
-      note        = "stackgen-appstack-mcp-playbook-sop — **one AppStack per `group_id`** in `logical_group_manifest`. If operators used `max_resources_per_appstack`, each group should already be ≤ that size; do not merge groups in MCP. Skip with note if StackGen MCP not attached."
+      description = "Per logical group: create_appstack, add_resource_to_appstack (closed set from logical_group_manifest), verify membership (get_appstack_resources), connect_resources; env profile + Plan action run are OPTIONAL (only when stackgen_target_environment is supplied); stackgen_appstack_map + stackgen_appstack_membership_report"
+      note        = "stackgen-appstack-mcp-playbook-sop — **one AppStack per `group_id`** in `logical_group_manifest`, with **mandatory** step 3.5 membership verification gate. Persist `stackgen_appstack_membership:<group_id>` per group and the roll-up `stackgen_appstack_membership_report` (required evidence). If operators used `max_resources_per_appstack`, each group should already be ≤ that size; do not merge or re-bucket groups in MCP. Env profile + Plan action runs are **optional** — skipped silently when `stackgen_target_environment` is unset or when the project env is missing (recorded in `stackgen_env_profile:<group_id>` / `stackgen_plan_run:<group_id>`); they do not block the membership gate. Skip the whole stage with note if StackGen MCP not attached."
       required    = true
     },
     {
@@ -300,8 +316,9 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::discover-db-anchors"], [])
       )
       note = <<-EOT
+        **Stage entry:** `read_notes` for `monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, optional `grouping_policy_json` / `grouping_strategy` / `max_resources_per_appstack`. Do not ask the operator — recover under `/tmp/db-state-split-<workflow_id>/` if a path is missing (see db-state-split-orchestration-sop **Stage entry protocol**).
         One Ubuntu-CLI subagent: apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory`.
-        Use `read_notes` for `monolith_state_local_path` / `repo_clone_path` from ingest; prefer **`ubuntu-cli_create_files`** + **`ubuntu-cli_execute_series`** for heavy `jq` (see terraform-state-shard-extraction-sop) instead of embedding long programs in **`create_agent`** goals.
+        Prefer **`ubuntu-cli_create_files`** + **`ubuntu-cli_execute_series`** for heavy `jq` (see terraform-state-shard-extraction-sop) instead of embedding long programs in **`create_agent`** goals.
         note `stage_summary:discover-db-anchors`.
       EOT
     },
@@ -315,6 +332,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::allocate-related-resources"], [])
       )
       note = <<-EOT
+        **Stage entry:** `read_notes` for `logical_group_seeds`, `db_anchor_inventory`, `monolith_state_local_path`, `repo_clone_path`. Do not ask the operator.
         Build `logical_group_manifest` and mirror `shard_manifest`. Emit `per_group_resource_counts`. If shared ambiguity, document under `logical_group_manifest.notes`.
         note `stage_summary:allocate-related-resources`.
       EOT
@@ -350,6 +368,10 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::reverse-engineer-and-registry-map"], [])
       )
       note = <<-EOT
+        **Stage entry (do not ask the operator):**
+          - `read_notes` for `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
+          - If a required key is missing, **recover** before asking: rebuild paths under `/tmp/db-state-split-<workflow_id>/` and re-run the upstream procedure (re-clone repo, re-download `monolith_state_uri` to the same `/tmp` path, re-run shard extraction from `terraform-state-shard-extraction-sop`). Only `notify` after recovery fails — see db-state-split-orchestration-sop **Stage entry protocol**.
+          - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage is **TF roots + import/moved + registry mapping only** — AppStack materialization happens in the next stage `materialize-stackgen-appstacks`. Do not ask the operator whether MCP is attached.
         Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
         Use writable `/tmp/...` and chunked `terraform show` / shell steps per terraform-registry-reverse-iac-sop **Execution** section.
         note `stage_summary:reverse-engineer-and-registry-map`.
@@ -368,12 +390,22 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-stackgen-appstacks"], [])
       )
       note = <<-EOT
-        If StackGen MCP is attached: for each `logical_group_manifest` entry, run the **state → AppStack** flow from **`stackgen-appstack-mcp-playbook-sop`** (`create_appstack` → `add_resource_to_appstack` → `connect_resources` → `create_env_profile` when needed → `create_appstack_action_run` Plan). Persist `stackgen_appstack_map`.
+        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`, optional `stackgen_project_name`, optional `stackgen_target_environment`, optional `stackgen_environments_required`. Detect StackGen MCP via `search_tools` for `*_create_appstack` / `*_get_appstacks`. Resolve project UUID by calling `me` when `stackgen_project_name` is absent. Do not ask the operator.
+        If StackGen MCP is attached: for **each** `group_id` in `logical_group_manifest`, run the **state → AppStack** flow from **`stackgen-appstack-mcp-playbook-sop`** in this exact order:
+          1) `create_appstack` (record `stackgen_appstack_map[group_id]` immediately).
+          2) Build `identifier_for_address:<group_id>` from `group.resource_addresses` (deterministic snake_case sanitizer; resources without a mapped `resource_type` go to `orphans_bundle` — never silently dropped).
+          3) `add_resource_to_appstack` for every address in the group (closed set — never anything outside it).
+          3.5) **MANDATORY membership verification gate.** Call `get_appstack_resources(appstack_id)` once and write `stackgen_appstack_membership:<group_id>` JSON with `expected_identifiers`, `actual_identifiers`, `missing`, `unexpected`, `cross_group_bleed`, `ok`. Reconcile (re-add missing, delete unexpected non-bleed entries) until `ok=true`. Cross-group bleed → log to `stackgen_mcp_errors` and escalate; do not auto-fix by deleting from another group's stack.
+          4) `connect_resources` (within the same `appstack_id` only).
+          5) **Env profile is OPTIONAL** (project envs cannot be created via MCP). If `stackgen_target_environment` is unset → skip and `note` `stackgen_env_profile:<group_id>={skipped:"no_target_env_input"}`. If set, `get_env_profiles` then `create_env_profile` / `update_env_profile`. On `environment '<env>' not found in project settings` (or any 4xx tied to env existence) → soft-fail: append `stackgen_mcp_errors{reason:"env_not_in_project_settings"}` and `note stackgen_env_profile:<group_id>={skipped:"env_missing_in_project_settings", env}`. Only escalate via a single `notify` when `stackgen_environments_required="true"`; never block other groups.
+          6) **StackGen Plan is OPTIONAL.** Skip when step 5 was skipped/soft-failed → `note stackgen_plan_run:<group_id>={skipped:"no_env_profile"}` and rely on Ubuntu `tofu plan` for parity. Otherwise `create_appstack_action_run` (Plan) and capture `get_action_run_logs`.
+        After all groups, write **`stackgen_appstack_membership_report`** roll-up JSON (groups_total / groups_ok / groups_failed + per_group). The stage is **not complete** while any group is `ok=false` — but a **soft-failed env / Plan does not** make a group `ok=false`; membership is the gate, env/Plan is bonus evidence.
         This stage may run **concurrently** with `orphans-secondary-pipeline` — use only reverse/registry notes; do not rely on orphan-stage outputs. Prefer disjoint `note` keys from the orphan branch (`secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline`).
-        MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` only for stacks you are mutating or just created — avoid listing before every add. Refresh cache only after creates/deletes or stale errors (see stackgen-appstack-mcp-playbook-sop).
-        If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp`.
+        MCP efficiency (from production DAGs): one `get_appstacks` pass per wave → `note` `stackgen_appstack_list_cache`; call `get_appstack_resources` once per `appstack_id` per reconcile pass — not before every `add_resource_to_appstack`.
+        Do **not** re-bucket by Terraform type at MCP time (e.g. "all aws_iam_*" into one stack) — `logical_group_manifest` is authoritative.
+        If MCP not attached: `note` stackgen_appstack_map=`skipped: no_mcp` and stackgen_appstack_membership_report=`skipped: no_mcp`.
         Optional workflow input `cloud_discovery_id` is a **correlation id** only — the default StackGen **user** MCP does not expose discovery-import tools; do not plan on `create_appstack_from_discovered_resources` unless a **different** MCP integration documents it.
-        note `stage_summary:materialize-stackgen-appstacks`.
+        note `stage_summary:materialize-stackgen-appstacks` (include groups_ok / groups_failed and counts of env/Plan skips).
       EOT
     },
     {
@@ -389,6 +421,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::orphans-secondary-pipeline"], [])
       )
       note = <<-EOT
+        **Stage entry:** `read_notes` for `orphans_bundle`, `logical_group_manifest`, `iac_repository_url`. Do not ask the operator.
         Same DAG layer as `materialize-stackgen-appstacks` — do not assume AppStacks already exist; read only reverse/registry notes (`orphans_bundle`, `logical_group_manifest`).
         If `orphans_bundle` empty → note skip. Else build `secondary_workflow_payload` and start workflow **orphan-iac-module-authoring** (same org) or notify operators with JSON.
         note `stage_summary:orphans-secondary-pipeline`.
@@ -407,9 +440,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::multi-shard-plan-convergence"], [])
       )
       note = <<-EOT
-        Run TF plan matrix per `logical_group_manifest`; if `stackgen_appstack_map` has entries, run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**; compare with Ubuntu `tofu plan` on the per-group TF roots under **`repo_clone_path`** (no `download-iac` on user MCP). If any drift, Loop B then re-plan until pass or iteration cap.
+        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group). Do not ask the operator.
+        **Membership pre-check first.** For every `group_id` in `logical_group_manifest`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group; do not run StackGen Plan against an AppStack with wrong membership.
+        Run TF plan matrix per `logical_group_manifest`. **StackGen Plan is OPTIONAL:** for groups whose `stackgen_env_profile:<group_id>` is `{skipped:...}` or `stackgen_plan_run:<group_id>` is already `{skipped:...}`, skip `create_appstack_action_run` and rely on Ubuntu `tofu plan` parity. For the rest (membership ok and env profile present), run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**. If any drift, Loop B then re-plan until pass or iteration cap. Treat any new `env_not_in_project_settings` here as a soft skip (same semantics as the materialization stage).
         One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.
-        Set `multi_plan_zero_diff_ok`. note `stage_summary:multi-shard-plan-convergence`.
+        Set `multi_plan_zero_diff_ok` based on **all per-group TF roots** plus **only the StackGen Plans that actually ran** (skipped Plans do not block the gate). note `stage_summary:multi-shard-plan-convergence` with skip counts.
       EOT
     },
     {
@@ -425,7 +460,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::final-gate-and-memory"], [])
       )
       note = <<-EOT
-        Verify `count_reconciliation_ok` and `multi_plan_zero_diff_ok`. Consolidate `orphan_modularization_memory`. Final `notify` / PR comment with tables + PR links.
+        **Stage entry:** `read_notes` for `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report`, `orphan_modularization_memory`, all `stage_summary:*`. Do not ask the operator for any of these — the upstream stages already wrote them.
+        Verify `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, and **`stackgen_appstack_membership_report.summary.groups_failed == 0`** (when StackGen MCP was used). Consolidate `orphan_modularization_memory`. Final `notify` / PR comment with tables (per-group expected vs actual counts, missing/unexpected highlights) + PR links.
         note `stage_summary:final-gate-and-memory`.
       EOT
     },

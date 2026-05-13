@@ -2,11 +2,13 @@ Skill: **Materialize StackGen AppStacks** from Terraform/OpenTofu state grouping
 
 Keywords: create_appstack, add_resource_to_appstack, connect_resources, get_supported_resource_types, get_appstacks, create_env_profile, create_appstack_action_run, get_action_run_logs, snapshots, get_current_violations.
 
-## Preconditions
+## Preconditions (discoverable — do not ask the operator)
 
-- Guild agent has the **StackGen MCP** integration attached (same pattern as `aios-agent-repo-to-iac`). For the **canonical tool matrix** shared with repo-to-iac flows, load **`stackgen-mcp-consumer-tool-catalog-sop`** from that module — it is aligned with the **user** MCP catalog (not every hypothetical StackGen extension).
-- Workflow notes must include `logical_group_manifest` (or legacy `shard_manifest`), **project UUID** for StackGen calls (workflow input `stackgen_project_name` is usually that UUID — confirm with **`me`**), and per-group inferred `cloud_provider` ∈ {`aws`,`azure`,`gcp`}.
-- **`search_tools`** on the live integration is authoritative if your org mounts a **different** MCP server with extra tools.
+- **MCP attached?** Detect via **`search_tools`** for `*_create_appstack` / `*_get_appstacks` (Guild prefixes the integration name). If absent, this stage is a no-op: `note` `stackgen_appstack_map=skipped: no_mcp` and `stackgen_appstack_membership_report=skipped: no_mcp`. Do **not** `notify` the operator to confirm — the integration list is in your tool surface.
+- **Project UUID:** prefer workflow input **`stackgen_project_name`** if present in `read_notes`; otherwise call **`me`** to resolve the org / project context. Do not ask the operator.
+- **Inputs from `read_notes`:** `logical_group_manifest` (or legacy `shard_manifest`), `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`. If any required note is missing, recover via the Stage entry protocol in **db-state-split-orchestration-sop** before escalating.
+- **Per-group `cloud_provider`** ∈ {`aws`,`azure`,`gcp`} is inferred from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*`); mixed-provider groups must be split upstream.
+- For the **canonical tool matrix** shared with repo-to-iac flows, load **`stackgen-mcp-consumer-tool-catalog-sop`** from `aios-agent-repo-to-iac` — it is aligned with the **user** MCP catalog (not every hypothetical StackGen extension).
 
 ## List traffic and note cache (reliability + smaller traces)
 
@@ -60,13 +62,63 @@ These names match the **integrations / AppStack** MCP server (`streamable_http` 
 
 ## Recommended flow — from Terraform state groups (primary)
 
-1. For each **logical group** in `logical_group_manifest`: infer **one** `cloud_provider` from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*` → map to aws/azure/gcp heuristics). Mixed-provider groups → split the group first.
-2. `create_appstack` with a stable sanitized **name** (`<repo>-<group_key>`), **labels** echoing source tags (e.g. `split-from:monolith`, `group:<key>`); optional **`appstack_ref_id`** from a template id discovered via `get_appstacks` + `labels: ["template"]`.
-3. For each resource address in the group, map Terraform type → StackGen **`resource_type`** via `get_supported_resource_types`; then `add_resource_to_appstack` with a unique **`identifier`** (lowercase snake per server rules).
-4. `get_possible_resource_connections` → `connect_resources` for obvious edges (VPC→subnet→instance, server→database, etc.).
-5. `create_env_profile` / `update_env_profile` with **per-AppStack state backend** HCL when splitting remote state.
-6. `create_appstack_action_run` with **`action_type`** = **Plan** per AppStack; use **`get_action_run`** / **`get_action_run_logs`** for evidence. For parity with Ubuntu `tofu plan`, diff **Terraform roots** you already materialized under **`repo_clone_path`** — there is **no** `download-iac` on this server.
+For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in order**. **Do not** start step 4 (`connect_resources`) or step 6 (`create_appstack_action_run`) for a group until step 3.5 (**Membership verification**) returns `ok=true` for that group.
+
+1. **Pin the group** — read `logical_group_manifest[group_id]`. Treat `resource_addresses[]` as the **closed set** of Terraform addresses for this AppStack. Infer **one** `cloud_provider` from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*` → map to aws/azure/gcp heuristics). Mixed-provider groups → split the group first; do **not** flatten.
+2. `create_appstack` with a stable sanitized **name** (`<repo>-<group_key>`), **labels** echoing source tags (e.g. `split-from:monolith`, `group:<key>`); optional **`appstack_ref_id`** from a template id discovered via `get_appstacks` + `labels: ["template"]`. **Persist** `stackgen_appstack_map[group_id] = { appstack_id, appstack_name, cloud_provider, project_name }` immediately so a retry can resume against the same stack.
+3. **Build the expected identifier table** for this group (deterministic Terraform-address → identifier mapping):
+   - For each `addr` in `group.resource_addresses`, derive `identifier = sanitize_identifier(addr)` (lowercase snake; replace `.`, `[`, `]`, `"`, `/`, `-`, spaces with `_`; collapse repeats; strip leading digits/underscores per server rules). Keep a JSON map `identifier_for_address: { addr -> identifier }`.
+   - For each `addr`, map Terraform `resource_type` → StackGen **`resource_type`** via `get_supported_resource_types`. Resources with **no** mapping go to **`orphans_bundle`** with `reason: "no_supported_resource_type"` — they **must not** be silently dropped.
+   - Call **`add_resource_to_appstack`** with `appstack_name = stackgen_appstack_map[group_id].appstack_id` and the derived `identifier` + `resource_type` (and `resource_template_id` when needed). Process the addresses **in deterministic order** so retries are idempotent. On **5xx / `409`**, retry the same call once before logging to `stackgen_mcp_errors`.
+3.5. **Membership verification gate** — **MANDATORY** before any `connect_resources` or Plan call for this group:
+   - Call **`get_appstack_resources(appstack_id)`** **once** for this group; collect `actual_identifiers[]`.
+   - Compare with `expected_identifiers[]` (values of `identifier_for_address`). Compute:
+     - `missing = expected − actual`
+     - `unexpected = actual − expected`
+     - `cross_group_bleed`: subset of `unexpected` whose identifiers also appear in any **other** group’s `identifier_for_address` (a hard error — these came from another group’s addresses).
+   - **`note`** **`stackgen_appstack_membership:<group_id>`** as JSON `{ appstack_id, expected_count, actual_count, expected_identifiers, actual_identifiers, missing, unexpected, cross_group_bleed, ok }` where `ok = (missing==[]) && (unexpected==[])`.
+   - **Reconcile until `ok=true`:**
+     - For each `id` in `missing`: re-call **`add_resource_to_appstack`** with the recorded mapping; if the server returns "identifier already exists" treat as already-present.
+     - For each `id` in `unexpected` **not** in `cross_group_bleed`: **`delete_resource(appstack_id, identifier=id)`** (after confirming with `get_appstack_resources` that the identifier truly does not appear in `expected_identifiers`).
+     - For each `id` in `cross_group_bleed`: **stop** and write **`stackgen_mcp_errors`** with `reason: "cross_group_bleed"`, `bleed_source_group: <other group_id>`, `addresses_affected`. Do **not** auto-delete from another group’s AppStack — escalate via `notify` and re-enter Loop B.
+   - After reconciliation, re-call `get_appstack_resources` and rewrite the same `stackgen_appstack_membership:<group_id>` note. Only proceed to step 4 when `ok=true`.
+4. `get_possible_resource_connections` → `connect_resources` for obvious edges (VPC→subnet→instance, server→database, etc.). **Never** connect across `appstack_id`s — connections are scoped within a stack.
+
+5. **Env profile (OPTIONAL).** Project environments (e.g. `dev`, `prod`) must already exist in **Project Settings** — this MCP cannot create them. Behavior:
+   - `read_notes` for **`stackgen_target_environment`** (workflow input; default unset) and **`stackgen_environments_required`** (default `"false"`).
+   - If `stackgen_target_environment` is **unset** → skip env profile creation entirely; `note` `stackgen_env_profile:<group_id>` = `{ skipped: "no_target_env_input" }`.
+   - If set, call **`get_env_profiles(appstack_id)`** first. If a profile already exists for that environment, optionally `update_env_profile`; otherwise call `create_env_profile` with **`profile_name`** referencing the target env (and **`topology_id`** if `appstack_name` is absent in the schema; `state_backend_raw_hcl` for per-AppStack remote state).
+   - If the server returns an error like `"environment '<env>' not found in project settings"` (or any 4xx tied to the env not existing), treat it as a **soft failure**:
+     - Append to `stackgen_mcp_errors` with `reason: "env_not_in_project_settings"`, `env: "<env>"`, `appstack_id`.
+     - `note` `stackgen_env_profile:<group_id>` = `{ skipped: "env_missing_in_project_settings", env: "<env>" }`.
+     - Do **not** retry; do **not** stop the stage; do **not** `notify` the operator unless `stackgen_environments_required="true"`.
+   - When `stackgen_environments_required="true"` **and** the env is missing, write a single `notify` summarising the missing env across all AppStacks (one message, not per-group), then continue with the rest of the stage so other AppStacks still get materialized.
+
+6. **StackGen Plan action run (OPTIONAL).** Behavior:
+   - Skip when step 5 was skipped or soft-failed for this group: `note` `stackgen_plan_run:<group_id>` = `{ skipped: "no_env_profile" }` and rely on **Ubuntu `tofu plan`** in the convergence stage for parity.
+   - Otherwise call **`create_appstack_action_run`** with **`action_type`** = **Plan** per AppStack; capture **`get_action_run`** / **`get_action_run_logs`**. For parity with Ubuntu `tofu plan`, diff **Terraform roots** you already materialized under **`repo_clone_path`** — there is **no** `download-iac` on this server.
+   - On the same `env_not_in_project_settings` error class, soft-fail (same `stackgen_mcp_errors` log + skip note) and continue with the next group.
+
 7. Before risky deletes, use **`create_snapshot`**; use **`get_current_violations`** when debugging policy blocks.
+
+After **all** groups complete, write a single **`stackgen_appstack_membership_report`** note (JSON):
+
+```
+{
+  "summary": { "groups_total": N, "groups_ok": N_ok, "groups_failed": N_fail },
+  "per_group": { "<group_id>": { "appstack_id": "...", "expected": K, "actual": K, "ok": true, ... }, ... }
+}
+```
+
+The materialization stage **must not** declare success while `groups_failed > 0` or while any per-group `ok=false`.
+
+## Hard rules — resource membership
+
+- **Closed-set rule.** Never call `add_resource_to_appstack` for any Terraform address that is **not** in this group’s `resource_addresses`. The grouping pass owns the set; the MCP pass copies it verbatim.
+- **No type buckets.** Do not group resources by Terraform type (e.g. "all `aws_iam_*`") at MCP time — that pattern is what produced the previous run’s 11-stack collapse. Use `logical_group_manifest` exactly.
+- **One identifier per address.** The derived identifier must be unique per AppStack; if two addresses sanitize to the same identifier, append a short content hash and update both `identifier_for_address` and the `add_resource_to_appstack` call.
+- **No cross-group bleed.** If `get_appstack_resources` shows an identifier that belongs to a different group’s expected set, that is a **hard error**, not a casual cleanup.
+- **Idempotence.** Re-running the materialization step for an existing `appstack_id` in `stackgen_appstack_map` must converge on the same membership; retries should not drop or duplicate resources.
 
 ### Optional workflow input `cloud_discovery_id`
 
@@ -75,8 +127,13 @@ If the workflow passes **`cloud_discovery_id`**, treat it as an **operator corre
 ## Persistence (notes)
 
 - `stackgen_appstack_map` — JSON: `group_id -> { appstack_id, appstack_name, cloud_provider, project_name, plan_run_id? }`.
+- `stackgen_appstack_membership:<group_id>` — JSON for the verification gate (see step 3.5): `{ appstack_id, expected_count, actual_count, expected_identifiers, actual_identifiers, missing, unexpected, cross_group_bleed, ok }`.
+- `stackgen_appstack_membership_report` — single JSON roll-up across groups (see end of flow). Required evidence item.
+- `stackgen_env_profile:<group_id>` — JSON: `{ profile_name?, env_id?, skipped?: "no_target_env_input" | "env_missing_in_project_settings", env? }`.
+- `stackgen_plan_run:<group_id>` — JSON: `{ run_id?, status?, skipped?: "no_env_profile" | "env_missing_in_project_settings" }`.
+- `identifier_for_address:<group_id>` — optional JSON map `terraform_address -> identifier` so retries are deterministic.
 - `stackgen_appstack_list_cache` — optional: last **`get_appstacks`** / resource listing snapshot + `updated_at` (see **List traffic and note cache** above).
-- `stackgen_mcp_errors` — append-only log of tool failures + remediation.
+- `stackgen_mcp_errors` — append-only log of tool failures + remediation (include `cross_group_bleed` and `env_not_in_project_settings` events here).
 
 ## Anti-patterns
 
@@ -84,3 +141,5 @@ If the workflow passes **`cloud_discovery_id`**, treat it as an **operator corre
 - Calling `add_resource_to_appstack` with invalid **`identifier`** (must match server rules — typically lowercase snake).
 - Running `terraform`/`tofu` **inside** MCP instead of Ubuntu CLI — keep CLI in Ubuntu MCP; keep StackGen API in StackGen MCP.
 - Assuming **discovery import**, **`download-iac`**, or **git push** MCP tools exist on the default user MCP URL.
+- Skipping the **membership verification gate** (step 3.5) — moving on to `connect_resources` / Plan with `ok=false` is the **specific failure mode** that produced previous runs where AppStacks were created but only a fraction of the group’s addresses were actually present, or where resources from one group leaked into another’s stack.
+- Re-grouping at MCP time (e.g. one stack per `aws_iam_*` prefix) instead of using `logical_group_manifest` exactly.

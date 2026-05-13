@@ -3,10 +3,15 @@ variable "model_names" {
 }
 variable "policy_ids" {
   type = object({
-    dangerous_ops        = string
-    prod_write_gate      = optional(string, "")
-    sre_remediation      = optional(string, "")
-    container_shell_hitl = optional(string, "")
+    dangerous_ops            = string
+    prod_write_gate          = optional(string, "")
+    sre_remediation          = optional(string, "")
+    container_shell_hitl     = optional(string, "")
+    blast_radius_limit       = optional(string, "")
+    freeze_window            = optional(string, "")
+    data_risk_pii            = optional(string, "")
+    post_action_verification = optional(string, "")
+    azure_tool_governance    = optional(string, "")
   })
 }
 variable "integration_names" {

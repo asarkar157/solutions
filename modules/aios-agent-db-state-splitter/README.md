@@ -58,6 +58,16 @@ module "db_state_splitter" {
 Primary workflow **required inputs**: `monolith_state_uri`, `iac_repository_url`.  
 Notable **optional inputs**: `grouping_policy_json`, `grouping_strategy` (`policy_first` \| `connectivity` \| `connectivity_capped`), `max_resources_per_appstack` (e.g. `80`), `stackgen_project_name`, `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
 
+## AppStack membership integrity
+
+Earlier production runs created the right number of AppStacks but populated each with the wrong set of resources (e.g. type-bucketed "all IAM" stack instead of the connectivity group). This is now enforced as a **hard gate**:
+
+- **`stackgen-appstack-mcp-playbook-sop` step 3.5 — Membership verification gate.** After `add_resource_to_appstack` for a `group_id`, the agent must call `get_appstack_resources(appstack_id)` and write **`stackgen_appstack_membership:<group_id>`** with `expected_identifiers`, `actual_identifiers`, `missing`, `unexpected`, `cross_group_bleed`, `ok`. The agent reconciles (re-add missing, delete non-bleed unexpected) until `ok=true` before any `connect_resources` or Plan call.
+- **Roll-up** — the materialization stage finishes only after writing **`stackgen_appstack_membership_report`** with `summary.groups_failed == 0`.
+- **Convergence Loop B-membership** — the plan convergence stage refuses to call `create_appstack_action_run` for any AppStack whose membership is not `ok=true`.
+- **Evidence** — `db-monorepo-state-split-evidence` (the workflow's `evidence_checklist_ref`) requires `stackgen_appstack_membership_report_attached` and `appstack_membership_verified_per_group`. Cross-group bleed events land in optional item `cross_group_bleed_resolution_log`.
+- **Closed-set rule.** The agent never adds resources to an AppStack that are not in that group's `resource_addresses`, and never re-buckets by Terraform resource type at MCP time.
+
 ## Reliability (what the prompts optimize for)
 
 Guild traces on long runs showed **skill-search noise**, **`/workspace` read-only** sandboxes, **~300s Ubuntu timeouts** on monolithic shell commands, and **many redundant `get_appstacks` / `get_appstack_resources`** calls. The persona and runbooks in this module now steer the agent toward: **`/tmp` preflight**, **trusting prepended `[Runbook Context]` / `### Runbook:` text** (Guild injects runbook summaries per stage — avoid redundant **`search_skill`**), **`[Skills]` vs `load_skill`** (skip redundant loads when the runbook block already inlined the same name), **short `create_agent` goals** (scripts via `ubuntu-cli_create_files` instead of huge embedded `jq`), **`stackgen_appstack_list_cache`**, **one shard per plan step** (or remote-runner fan-out), **MCP list caching** during AppStack materialization, and **redacted `note` discipline** for state secrets. Remaining iteration limits, DAG deduplication, and cascade fallbacks are **Guild platform** concerns.

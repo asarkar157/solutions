@@ -3,6 +3,7 @@ variable "model_names" {
   type = object({
     gpt4o         = string
     claude_sonnet = string
+    gemini_flash  = optional(string, "")
   })
 }
 

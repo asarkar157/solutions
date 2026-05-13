@@ -2,6 +2,17 @@ Skill: **Reverse-engineer IaC** from allocated state slices and **best-fit map**
 
 Keywords: import block, terraform import, moved block, module registry, stackgen mcp, get_supported_resource_types, github.com/appcd-dev/solutions, aios-foundation, brownfield, codegen, aws, azure, gcp.
 
+## Stage entry — `read_notes`, do not ask the operator
+
+This stage runs **after** ingest / discover / allocate / count-reconcile. Always start with **`read_notes`** for:
+
+- **`repo_clone_path`** — writable Ubuntu path, normally under `/tmp/db-state-split-<workflow_id>/repo`.
+- **`monolith_state_local_path`** — downloaded `terraform.tfstate` (or `terraform show -json` snapshot).
+- **`logical_group_manifest`** (or legacy `shard_manifest`) — `group_id -> { cloud_hint, resource_addresses[] }`.
+- **`count_reconciliation_ok`** — must be `"true"`; if not, do **not** start this stage.
+
+**Never `notify` the operator** for those values. If `read_notes` returns nothing, recover under `/tmp/db-state-split-<workflow_id>/` and re-run the upstream procedure (re-clone repo, re-download state, re-run shard extraction) before any escalation. AppStack materialization is the **next** stage — this stage produces TF roots, import/moved blocks, and `registry_mapping_report` only; do not ask whether StackGen MCP is attached.
+
 ## Execution (Ubuntu + large states)
 
 - All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`/tmp/db-state-split-.../`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
