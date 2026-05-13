@@ -31,6 +31,9 @@ variable "integration_names" {
     OpenTofu/Terraform, multi-root plans, `gh` with a real clone). Pair with optional
     `stackgen_mcp_integration_name` for AppStack MCP tools.
     Provision `modules/aios-integration-ubuntu` and pass its `integration_name` as `ubuntu_cli`.
+    **State backends:** ensure the Ubuntu integration (or remote runner) has credentials and network
+    access matching workflow input `monolith_state_uri` (S3/GCS/Azure/blob HTTP). This module does not
+    declare cloud provider integrations for state download — operators configure Guild/runner env.
   EOT
   type = object({
     github     = string
@@ -83,6 +86,9 @@ variable "workflow_skill_refs" {
     ingest-monolith, discover-db-anchors, allocate-related-resources, count-reconcile-loop,
     reverse-engineer-and-registry-map, materialize-stackgen-appstacks, orphans-secondary-pipeline,
     multi-shard-plan-convergence, final-gate-and-memory.
+    **Avoid duplicating runbooks:** each stage already has `runbook_refs` + `skill_refs` from this module.
+    Adding the same `*-sop` name here forces Guild to prepend `[Skills] load_skill` for content already
+    inlined under `[Runbook Context]` — only add **extra** skills that are not the runbook SOPs.
   EOT
   type        = map(list(string))
   default     = {}
@@ -92,6 +98,7 @@ variable "secondary_workflow_skill_refs" {
   description = <<-EOT
     Optional extra skill_refs per secondary orphan-module workflow stage. Keys:
     "orphan-iac-module-authoring::<stage_id>".
+    Prefer not duplicating runbook SOP names already attached via `runbook_refs` on that workflow.
   EOT
   type        = map(list(string))
   default     = {}

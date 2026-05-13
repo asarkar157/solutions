@@ -1362,7 +1362,7 @@
     {
       "id": "aios-agent-db-state-splitter",
       "name": "DB / monorepo state split",
-      "desc": "Multi-cloud Terraform/OpenTofu monolith state → logical groups (tags, modules, grouping_policy_json); optional per-group TF roots; StackGen AppStacks via optional stackgen_mcp_integration_name; count + plan convergence; secondary orphan-iac-module-authoring workflow. Persona/runbooks steer agents toward /tmp preflight, runbook-first context, bounded shell/MCP list caching, and remote-runner fan-out when configured.",
+      "desc": "Multi-cloud Terraform/OpenTofu monolith state → logical groups (tags, modules, grouping_policy_json); optional per-group TF roots; StackGen AppStacks via optional stackgen_mcp_integration_name; count + plan convergence; secondary orphan-iac-module-authoring workflow. Persona/runbooks: /tmp preflight, runbook-first + redacted notes, bounded shell/MCP caching, remote-runner caveats; CI smoke-renders orchestration tftpl.",
       "layer": 2,
       "tags": [
         "terraform",

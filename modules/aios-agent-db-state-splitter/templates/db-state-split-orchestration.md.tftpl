@@ -14,9 +14,19 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 
 ## Tooling hygiene (fewer DAG nodes, fewer failures)
 
-- **At run start:** assume runbooks in **`runbook_refs`** are already available — **skip `search_skill` / `load_skill`** for those documents. Mis-ranked skills waste budget and derail behavior.
+- **At run start:** runbook prose is often already in the user message — **skip `search_skill`** for anything covered there. For **`[Skills]`** lines: use **`load_skill`** only when that name is **not** already present as a **`### Runbook:`** section above (avoid duplicate loads).
 - **Ubuntu timeouts:** keep each **`ubuntu-cli_execute_command`** / series step **well under** typical integration ceilings (~**300s**). For large `jq` / `terraform show -json`, write a script file and **chunk** work (count → sample → full extract) or use a **remote runner** when configured — avoid one shell call that streams megabytes back to the agent in a single response.
 - **StackGen list calls:** **`get_appstacks`** / **`get_appstack_resources`** are expensive in trace size and rate limits. **Cache** summarized results in **`stackgen_appstack_list_cache`** after each successful list; reuse until mutations or explicit errors.
+
+## State fetch prerequisites (operator + runtime)
+
+- **`monolith_state_uri`** may be **`https://`**, **`s3://`**, **`gs://`**, **`azblob://`**, or a path. **GitHub `raw` URLs** are fine for demos; production monoliths usually need **cloud credentials** on whichever surface runs **`curl`/`aws`/`gcloud`/`az` copy`** (Ubuntu MCP integration env, remote runner secrets, or instance profile). If download fails with 403/network, fix **IAM / bucket policy / VPC egress** — not grouping logic.
+- **`iac_repository_url`** clones need **read access** to the repo (token on Ubuntu or GitHub integration for metadata only — clones are still Ubuntu-side per SOP).
+
+## Secrets, notes, and shared disks
+
+- State JSON includes **provider-sensitive fields**. **`note`** should hold **structured summaries** (counts, group membership, file paths), not full **`attributes`** maps or cleartext secrets.
+- On **multi-tenant** or **shared** runners, **`/tmp`** may be visible to other jobs. Prefer **unique subdirs**, **`chmod 700`** when supported, and **delete** large state copies after the run when policy allows.
 
 ## Canonical note keys (exact strings)
 
@@ -55,15 +65,16 @@ Guild/Ubuntu MCP sandboxes often expose a **read-only** project root, cwd, or wo
 
 1. **Create a unique writable root** under `/tmp`, e.g. `/tmp/db-state-split-<workflow-or-session-or-timestamp>/` (one directory per run; avoid collisions).
 2. **Re-run failed work under that tree:** fresh **`git clone`** of the IaC repository URL (or unpack/copy inputs), download **`monolith_state_uri`** into **`monolith_state_local_path`**, `terraform show -json` scratch files, per-shard TF workdirs, **`download-iac`** output directories, plan JSON / log artifacts.
-3. **`note` the canonical paths** used in practice: set **`repo_clone_path`** and **`monolith_state_local_path`** (and **`remote_runner_artifacts`** when applicable) to the **actual** `/tmp/...` locations so later stages (`discover-db-anchors`, plan matrix, MCP `download-iac` parity checks) read the same files.
+3. **`note` the canonical paths** used in practice: set **`repo_clone_path`** and **`monolith_state_local_path`** (and **`remote_runner_artifacts`** when applicable) to the **actual** `/tmp/...` locations so later stages (`discover-db-anchors`, plan matrix, MCP `download-iac` parity checks) read the same files. Prefer **`chmod 700`** on that directory when the integration allows it.
 4. Do **not** bulk-fetch state via GitHub HTTP; keep large state and clones on **Ubuntu CLI** under `/tmp` (or remote runner paths) only.
+5. After a successful run, **remove** large `terraform.tfstate` copies from shared **`/tmp`** when your org policy allows, so credentials in state are not left behind for unrelated jobs.
 
 If the first writable path attempt fails, escalate in `stage_summary:ingest-monolith` with the exact errno/message — but **always** try `/tmp` before declaring the run blocked.
 
 ## Loop contracts (max ${max_iterations} outer iterations)
 
 **Loop A — count gate**  
-If `aggregate_group_resource_count != monolith_resource_count`, fix **allocation** (graph closure, shared resources, grouping policy), increment `convergence_iteration`, and **re-run** discovery + allocation **before** reverse-IaC or AppStacks.
+If `aggregate_group_resource_count != monolith_resource_count`, fix **allocation** (graph closure, shared resources, grouping policy), increment `convergence_iteration`, and **re-run** discovery + allocation **before** reverse-IaC or AppStacks. Also re-check for **duplicate addresses** across groups, **unallocated** addresses, and **`data.`** resources that should not be double-counted as managed instances.
 
 **Loop B — plan gate (TF roots + optional StackGen)**  
 If any per-group `tofu plan` is non-empty **or** `create_appstack_action_run` Plan fails / drift, adjust imports, `moved`, MCP resource configs, or env profiles; increment `convergence_iteration`; re-run registry + AppStack stages. Stop after ${max_iterations} iterations and escalate.

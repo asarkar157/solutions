@@ -48,3 +48,9 @@ All parsing / `jq` / heavy JSON via **Ubuntu CLI**. StackGen MCP is used **after
 - **Do not** paste full state JSON into chat or into **`create_agent`** goals — use **`ubuntu-cli_create_files`** to write `*.jq` / shell scripts under **`/tmp/...`**, then **`ubuntu-cli_execute_series`** with short commands.  
 - **Progressive passes:** instance count → provider/module histogram → manifest build, instead of one giant `jq` that materializes everything at once (avoids OOM, timeouts, and truncated tool args).  
 - Keep each **`ubuntu-cli_*`** step under typical integration time limits; split by module prefix or by cloud if the monolith is huge.
+
+### Edge cases (addresses, deposed, data sources)
+
+- **Addresses** must match Terraform exactly, including **`count` / `for_each` keys** (e.g. `aws_instance.foo[0]`, `module.x.aws_s3_bucket.y["a"]`). Stripping indices breaks allocation and count reconciliation.
+- **`deposed`** / tainted rows and **orphan** objects: decide include vs exclude per org policy; document in `logical_group_manifest.notes` so `monolith_resource_count` stays comparable to shard sums.
+- **`data.*`** entries in JSON snapshots are usually **not** managed resources — exclude from managed-instance totals unless policy says otherwise.

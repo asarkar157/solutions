@@ -221,9 +221,13 @@ module "db_state_splitter" {
     ubuntu_cli = module.ubuntu_integration.integration_name
   }
 
+  # StackGen MCP: set to a real integration name when AppStack materialization is required.
   stackgen_mcp_integration_name = ""
 
   enable_github_webhook = false
+
+  # When you run the workflow in Guild, ensure monolith_state_uri is reachable from the
+  # Ubuntu integration / remote runner (S3/GCS/Azure creds, not just GitHub raw URLs in prod).
 
   # Optional: Guild remote runner — SOP text only unless attach is true (requires runner to exist at plan time).
   # remote_runner_name              = "my-org-tofu-runner"

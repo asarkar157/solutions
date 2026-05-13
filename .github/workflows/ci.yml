@@ -69,6 +69,11 @@ jobs:
         with:
           tofu_version_file: .opentofu-version
           tofu_wrapper: false
+      - name: DB state split — orchestration tftpl smoke render
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/verify-db-state-split-templates.sh
+          ./scripts/verify-db-state-split-templates.sh
       - name: Validate all module and example roots
         run: |
           set -euo pipefail

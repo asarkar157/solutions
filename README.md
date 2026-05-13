@@ -203,6 +203,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 | **OpenTofu fmt** | `tofu fmt -check -recursive` (version from [`.opentofu-version`](.opentofu-version)) |
 | **OPA** | Install OPA; fail if any `.rego` needs `opa fmt`; run [`scripts/opa-check-all.sh`](scripts/opa-check-all.sh) (`opa check --v1-compatible` per file — policies are not one combined bundle). |
 | **OpenTofu validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) runs **`tofu`** (or **`terraform`** if only that is installed) in every Terraform root under `modules/` and `examples/`. |
+| **DB state split tftpl** | [`scripts/verify-db-state-split-templates.sh`](scripts/verify-db-state-split-templates.sh) renders `modules/aios-agent-db-state-splitter/templates/db-state-split-orchestration.md.tftpl` with dummy inputs (catches template errors without StackGen credentials). |
 
 ## 🔧 Prerequisites
 

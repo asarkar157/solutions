@@ -38,7 +38,7 @@ DAGs from long runs often show dozens of **`get_appstacks`** / **`get_appstack_r
 - `create_env_profile` — **`profile_name` required**; **`topology_id` required if `appstack_name` not provided**; optional `state_backend_raw_hcl` for per-shard remote state.  
 - `create_appstack_action_run` — `action_type`: Plan | Apply | Destroy; use **Plan** for convergence checks.  
 - `detect-drift` — optional drift signal on a topology.  
-- `download-iac` — **`appstack_id`**, **`destination`** directory; compare with Ubuntu-sandbox `tofu plan` for parity.  
+- `download-iac` — **`appstack_id`**, **`destination`** directory; compare with Ubuntu-sandbox `tofu plan` for parity. Treat downloaded HCL as **sensitive** (may echo remote state); keep under **`chmod 700`** dirs and do not paste full files into **`note`**.  
 - `add-git-configuration` + `push-appstack-to-git` — export to Git when `list-git-configuration` / secrets exist (`list-available-secrets`).
 
 **Module registry (cross-check)**  

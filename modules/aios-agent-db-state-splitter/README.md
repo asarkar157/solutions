@@ -9,6 +9,19 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 - `modules/aios-integration-github` and `modules/aios-integration-ubuntu`.
 - **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable `create_appstack`, `add_resource_to_appstack`, `create_appstack_from_discovered_resources`, `download-iac`, etc. Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
 
+## Operator prerequisites (outside Terraform)
+
+- **`monolith_state_uri` / `iac_repository_url`** are workflow inputs when you start **`db-monorepo-state-split-convergence`** in Guild — not variables on this module. The **Ubuntu CLI** (or **remote runner**) environment must be able to **fetch** state and **clone** the repo (tokens, cloud SDK auth, VPC egress to S3/GCS, etc.).
+- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image.
+
+## Security & privacy
+
+- Terraform state can contain **secrets**. SOPs instruct agents to **`note`** summaries and paths, not raw attribute maps. **`/tmp`** on shared runners may be visible across jobs — use tight directory permissions and cleanup when policy allows (see **db-state-split-orchestration-sop**).
+
+## Continuous integration
+
+- Repo **CI** runs **`scripts/terraform-validate-all.sh`** (includes this module) and **`scripts/verify-db-state-split-templates.sh`**, which renders **`db-state-split-orchestration.md.tftpl`** with dummy locals to catch **template syntax** errors early.
+
 ## Usage
 
 ```hcl
@@ -47,7 +60,7 @@ Notable **optional inputs**: `grouping_policy_json`, `stackgen_project_name`, `c
 
 ## Reliability (what the prompts optimize for)
 
-Guild traces on long runs showed **skill-search noise**, **`/workspace` read-only** sandboxes, **~300s Ubuntu timeouts** on monolithic shell commands, and **many redundant `get_appstacks` / `get_appstack_resources`** calls. The persona and runbooks in this module now steer the agent toward: **`/tmp` preflight**, **trusting prepended `[Runbook Context]` / `### Runbook:` text** (Guild injects runbook summaries per stage — avoid redundant **`search_skill`**), **short `create_agent` goals** (scripts via `ubuntu-cli_create_files` instead of huge embedded `jq`), **`stackgen_appstack_list_cache`**, **one shard per plan step** (or remote-runner fan-out), and **MCP list caching** during AppStack materialization.
+Guild traces on long runs showed **skill-search noise**, **`/workspace` read-only** sandboxes, **~300s Ubuntu timeouts** on monolithic shell commands, and **many redundant `get_appstacks` / `get_appstack_resources`** calls. The persona and runbooks in this module now steer the agent toward: **`/tmp` preflight**, **trusting prepended `[Runbook Context]` / `### Runbook:` text** (Guild injects runbook summaries per stage — avoid redundant **`search_skill`**), **`[Skills]` vs `load_skill`** (skip redundant loads when the runbook block already inlined the same name), **short `create_agent` goals** (scripts via `ubuntu-cli_create_files` instead of huge embedded `jq`), **`stackgen_appstack_list_cache`**, **one shard per plan step** (or remote-runner fan-out), **MCP list caching** during AppStack materialization, and **redacted `note` discipline** for state secrets. Remaining iteration limits, DAG deduplication, and cascade fallbacks are **Guild platform** concerns.
 
 ## Outputs
 

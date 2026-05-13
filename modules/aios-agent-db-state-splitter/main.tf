@@ -21,10 +21,12 @@ locals {
   remote_runner_block = trimspace(var.remote_runner_name) != "" ? trimspace(<<-RUNNER
     Operator supplied **remote_runner_name** = "${var.remote_runner_name}".
     When the Guild agent exposes a **remote runner** or delegated execution tool bound to that name, use it for **fan-out** `tofu plan` / heavy `terraform show -json` over many shards so the Ubuntu MCP sandbox does not time out. Persist artifact paths (plan JSON, state snapshots) via `note` keys `remote_runner_artifacts`.
+    **Runner prerequisites (operator-owned):** the runner image and env must include **`tofu`/`terraform`**, **`jq`**, **`git`**, and **cloud/SDK credentials** matching `monolith_state_uri` (e.g. S3/GCS/Azure access) if state is not only local HTTP. This Terraform module only **documents** the name and optionally **attaches** it on `sg_agent` — it does not provision the runner or its secrets.
     If no such tool is available, fall back to Ubuntu CLI and **serialize** plans if needed.
     RUNNER
     ) : trimspace(<<-RUNNER
     No `remote_runner_name` was set on the module. Run **all** shell, `tofu`/`terraform`, `jq`, `git`, and state pulls via **Ubuntu CLI** (`ubuntu-cli_execute_command|series|parallel`) subagents only.
+    The **Ubuntu CLI integration** must still have whatever credentials the backend needs for `monolith_state_uri` (IAM keys, workload identity, `gcloud`/`az` login, etc.); this module does not inject cloud provider integrations beyond what Guild binds to that integration.
     RUNNER
   )
 }
@@ -287,6 +289,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       )
       note = <<-EOT
         Enforce count equality. If false, loop back (re-invoke allocation subagent) until `max_convergence_iterations` from module — read orchestration SOP Loop A.
+        Verify **no duplicate addresses** across groups, no **unallocated** managed instances, and that **`data.*`** / **deposed** handling matches how `monolith_resource_count` was computed (terraform-state-shard-extraction-sop).
         note `count_reconciliation_ok` and `stage_summary:count-reconcile-loop`.
       EOT
     },

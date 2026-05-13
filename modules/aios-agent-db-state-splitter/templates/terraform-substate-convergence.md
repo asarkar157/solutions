@@ -5,7 +5,7 @@ Keywords: tofu plan -json, plan file, aggregate counts, drift, loop, workspace, 
 ## Count check
 
 1. Recompute from **live** shard manifests (not cached notes if `convergence_iteration` changed):
-   - `aggregate_shard_resource_count` vs `monolith_resource_count`.
+   - `aggregate_shard_resource_count` vs `monolith_resource_count` using the **same rules** as ingest (managed instances only unless you explicitly counted `data.*`; **`deposed`** / excluded rows must match both sides).
 2. If not equal → **fail this gate**, set `count_reconciliation_ok=false`, document missing/duplicate addresses, and stop before claiming success.
 
 ## Plan matrix
