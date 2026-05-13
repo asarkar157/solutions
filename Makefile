@@ -1,7 +1,7 @@
 # Local verification and CI entrypoints. Full context: README.md
 # ("Local verification", "Continuous integration").
 
-.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates check clean
+.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates verify-persona-length check clean
 
 SHELL := /bin/bash
 
@@ -21,7 +21,8 @@ help:
 	@echo "  make opa-fmt-check  Fail if Rego formatting differs (CI)"
 	@echo "  make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
 	@echo "  make validate       $(TF) init -backend=false && validate per module/example + db-state-split tftpl smoke"
-	@echo "  make check          fmt-check, opa-fmt-check, opa-check, validate"
+	@echo "  make verify-persona-length  Fail if any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap)"
+	@echo "  make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, validate"
 	@echo "  make clean          remove .terraform caches under modules/ and examples/"
 	@echo ""
 	@echo "validate needs network; see README if dev_overrides force a minimal CLI config (then set TF_TOKEN_releases_stackgen_com)."
@@ -55,7 +56,15 @@ validate-db-state-split-templates:
 	@chmod +x "$(CURDIR)/scripts/verify-db-state-split-templates.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/verify-db-state-split-templates.sh"
 
-check: fmt-check opa-fmt-check opa-check validate
+# verify-persona-length enforces Guild's 15000-byte agent persona cap across every
+# modules/aios-agent-*/personas/**/*.md file. See scripts/verify-persona-length.sh
+# for rationale (the cap is checked server-side; catching it pre-merge avoids
+# tainted resources and cascading apply failures).
+verify-persona-length:
+	@chmod +x "$(CURDIR)/scripts/verify-persona-length.sh" 2>/dev/null || true
+	@"$(CURDIR)/scripts/verify-persona-length.sh"
+
+check: fmt-check opa-fmt-check opa-check verify-persona-length validate
 
 clean:
 	@find modules examples -type d -name .terraform -prune 2>/dev/null | while read -r d; do \

@@ -60,6 +60,21 @@ jobs:
           chmod +x ./scripts/opa-check-all.sh
           ./scripts/opa-check-all.sh
 
+  persona-length:
+    name: Persona length cap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Hard rule: every modules/aios-agent-*/personas/**/*.md must be within
+      # Guild's 15000-byte cap (internal/guild/agentrouter/config.go). The
+      # script exits non-zero on the first violation so PRs that ship an
+      # oversized persona never reach apply.
+      - name: Verify persona files are within the Guild byte cap
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/verify-persona-length.sh
+          ./scripts/verify-persona-length.sh
+
   opentofu-validate:
     name: OpenTofu validate
     runs-on: ubuntu-latest
