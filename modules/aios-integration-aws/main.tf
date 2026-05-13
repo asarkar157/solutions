@@ -20,8 +20,9 @@ resource "sg_secret" "aws_vault" {
   category    = "CloudProvider"
   subcategory = "aws"
   metadata = {
-    aws_role_arn = var.aws_role_arn
-    aws_region   = var.aws_region
+    aws_role_arn       = var.aws_role_arn
+    aws_region         = var.aws_region
+    AWS_DEFAULT_REGION = var.aws_region
   }
 }
 

@@ -16,7 +16,8 @@ data "sg_remote_runner" "db_state_split_architect" {
 
 locals {
   # Guild tool names are <integration_name>_<mcp_tool>; pattern suffix * bypasses HITL for all MCP tools on that integration.
-  stackgen_mcp_hitl_patterns = trimspace(var.stackgen_mcp_integration_name) != "" ? ["${trimspace(var.stackgen_mcp_integration_name)}_*"] : []
+  # `stackgen_mcp_integration_name` is required (variables.tf validates non-empty) so this list is always populated.
+  stackgen_mcp_hitl_patterns = ["${trimspace(var.stackgen_mcp_integration_name)}_*"]
 
   remote_runner_block = trimspace(var.remote_runner_name) != "" ? trimspace(<<-RUNNER
     Operator supplied **remote_runner_name** = "${var.remote_runner_name}".
@@ -59,11 +60,12 @@ resource "sg_agent" "db_state_split_architect" {
 
   remote_runners = length(data.sg_remote_runner.db_state_split_architect) > 0 ? toset([data.sg_remote_runner.db_state_split_architect[0].name]) : null
 
-  integrations = compact([
+  integrations = [
     var.integration_names.github,
     var.integration_names.ubuntu_cli,
-    trimspace(var.stackgen_mcp_integration_name) != "" ? trimspace(var.stackgen_mcp_integration_name) : null,
-  ])
+    var.integration_names.aws,
+    trimspace(var.stackgen_mcp_integration_name),
+  ]
 }
 
 resource "sg_agent_budget" "db_state_split_architect" {

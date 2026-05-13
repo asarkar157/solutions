@@ -1,13 +1,19 @@
 variable "stackgen_mcp_integration_name" {
   description = <<-EOT
-    Optional Guild integration name for the **StackGen MCP** server (same pattern as `aios-agent-repo-to-iac`).
-    When non-empty, the agent can call AppStack / integrations tools (`create_appstack`, `add_resource_to_appstack`,
+    **Required.** Guild integration name for the **StackGen MCP** server (same pattern as `aios-agent-repo-to-iac`).
+    The agent calls AppStack / integrations tools (`create_appstack`, `add_resource_to_appstack`,
     `connect_resources`, `create_appstack_action_run`, `get_appstacks`, env profiles, snapshots, etc. — see
-    **`stackgen-mcp-consumer-tool-catalog-sop`** for the user-MCP matrix). When empty, SOPs instruct skipping
-    StackGen materialization while still performing TF-only grouping and plans.
+    **`stackgen-mcp-consumer-tool-catalog-sop`** for the user-MCP matrix). This module no longer supports the
+    "TF-only, no AppStack materialization" mode: the `materialize-stackgen-appstacks` stage is mandatory and the
+    `db-monorepo-state-split-evidence` checklist requires AppStack membership artifacts. Provision the StackGen
+    Consumer MCP integration (see `examples/agentic-infrastructure`) and pass its name here.
   EOT
   type        = string
-  default     = ""
+
+  validation {
+    condition     = trimspace(var.stackgen_mcp_integration_name) != ""
+    error_message = "stackgen_mcp_integration_name is required. Pass the name of a Guild integration backed by the StackGen Consumer MCP (e.g. \"stackgen-mcp\")."
+  }
 }
 
 variable "model_names" {
@@ -28,22 +34,36 @@ variable "policy_ids" {
 
 variable "integration_names" {
   description = <<-EOT
-    Guild integrations: **GitHub** (metadata / filtered `gh api`); **Ubuntu CLI** (state pull, jq,
-    OpenTofu/Terraform, multi-root plans, `gh` with a real clone). Pair with optional
-    `stackgen_mcp_integration_name` for AppStack MCP tools.
-    Provision `modules/aios-integration-ubuntu` and pass its `integration_name` as `ubuntu_cli`.
-    **State backends:** ensure the Ubuntu integration (or remote runner) has credentials and network
-    access matching workflow input `monolith_state_uri` (S3/GCS/Azure/blob HTTP). This module does not
-    declare cloud provider integrations for state download — operators configure Guild/runner env.
+    Guild integrations. **All three keys are required:**
+    - **`github`** — metadata / filtered `gh api`. Provision via `modules/aios-integration-github`.
+    - **`ubuntu_cli`** — shell surface for state pull, `jq`, OpenTofu/Terraform, multi-root plans, `gh`
+      with a real clone. Provision via `modules/aios-integration-ubuntu`.
+    - **`aws`** — AWS Guild integration (`type = "aws"`) so the agent can call `aws_cli_*` MCP tools
+      for state inspection. Provision via `modules/aios-integration-aws` (or any equivalent
+      `sg_guild_integration` of `type = "aws"`).
+
+    Pair this with the required `stackgen_mcp_integration_name` for AppStack MCP tools.
+
+    **State backends + `tofu plan` connectivity (operator-owned wiring):** the AWS Guild integration
+    above exposes `aws_cli_*` tools, but `tofu plan -generate-config-out` and `tofu plan` need AWS
+    credentials inside the **Ubuntu** container (env-var auth chain). Attach a read-only AWS secret to
+    the Ubuntu integration via `sg_guild_integration.secret_ref_ids` (e.g. `AWS_ACCESS_KEY_ID` /
+    `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` metadata, or an STS-rotated equivalent). This module does
+    not perform that wiring — see the module README "Operator prerequisites" section.
   EOT
   type = object({
     github     = string
     ubuntu_cli = string
+    aws        = string
   })
 
   validation {
-    condition     = trimspace(var.integration_names.github) != "" && trimspace(var.integration_names.ubuntu_cli) != ""
-    error_message = "integration_names.github and integration_names.ubuntu_cli must both be non-empty."
+    condition = (
+      trimspace(var.integration_names.github) != ""
+      && trimspace(var.integration_names.ubuntu_cli) != ""
+      && trimspace(var.integration_names.aws) != ""
+    )
+    error_message = "integration_names.github, integration_names.ubuntu_cli, and integration_names.aws must all be non-empty."
   }
 }
 

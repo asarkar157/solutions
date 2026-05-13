@@ -8,12 +8,22 @@ terraform {
 # Ubuntu CLI Integration Module (Generic MCP Shell)
 # =============================================================================
 
+locals {
+  # Build the INSTALL_TOOLS env var from the list (comma-separated).
+  install_tools_env = length(var.install_tools) > 0 ? {
+    INSTALL_TOOLS = join(",", var.install_tools)
+  } : {}
+}
+
 resource "sg_guild_integration" "ubuntu_cli" {
-  name        = var.integration_name
-  description = "Generic Ubuntu CLI MCP shell for OS-level diagnostics: curl, ping, dig, journalctl, top, df, etc."
-  type        = "mcp"
-  scope       = "PROJECT"
-  enabled     = true
+  name           = var.integration_name
+  description    = "Generic Ubuntu CLI MCP shell for OS-level diagnostics: curl, ping, dig, journalctl, top, df, etc."
+  type           = "mcp"
+  scope          = "PROJECT"
+  secret_ref_ids = var.secret_ref_ids
+  enabled        = true
 
   image = { name = var.integration_image }
+
+  env = merge(local.install_tools_env, var.env_vars)
 }

@@ -76,6 +76,42 @@ module "ubuntu_integration" {
   source = "../../modules/aios-integration-ubuntu"
 }
 
+# -----------------------------------------------------------------------------
+# StackGen Consumer MCP (required by aios-agent-db-state-splitter)
+# -----------------------------------------------------------------------------
+# Hosted MCP URL per StackGen docs: /api/mcp/user (Consumer).
+# Vault Other/mcp: transport, url, headers — MCPSecretResolver.
+
+locals {
+  stackgen_mcp_url = format("%s/api/mcp/user", trimsuffix(var.stackgen_url, "/"))
+  stackgen_mcp_auth_header = jsonencode({
+    authorization = "Bearer ${var.stackgen_token}"
+  })
+}
+
+resource "sg_secret" "stackgen_mcp" {
+  name        = "stackgen-mcp-credentials"
+  description = "StackGen Consumer MCP — transport streamable_http; PAT in Authorization header; url /api/mcp/user."
+  category    = "Other"
+  subcategory = "mcp"
+
+  metadata = {
+    transport = "streamable_http"
+    url       = local.stackgen_mcp_url
+    headers   = local.stackgen_mcp_auth_header
+  }
+}
+
+resource "sg_guild_integration" "stackgen_mcp" {
+  name        = "stackgen-mcp"
+  description = "StackGen hosted MCP — Consumer endpoint for platform tools."
+  type        = "mcp"
+  scope       = "PROJECT"
+  enabled     = true
+
+  secret_ref_ids = [sg_secret.stackgen_mcp.id]
+}
+
 # =============================================================================
 # Layer 2 — Agents
 # =============================================================================
@@ -219,15 +255,18 @@ module "db_state_splitter" {
   integration_names = {
     github     = module.github_integration.integration_name
     ubuntu_cli = module.ubuntu_integration.integration_name
+    aws        = module.aws_integration.integration_name
   }
 
-  # StackGen MCP: set to a real integration name when AppStack materialization is required.
-  stackgen_mcp_integration_name = ""
+  # Required: StackGen Consumer MCP attached above. AppStack materialization is mandatory.
+  stackgen_mcp_integration_name = sg_guild_integration.stackgen_mcp.name
 
   enable_github_webhook = false
 
   # When you run the workflow in Guild, ensure monolith_state_uri is reachable from the
-  # Ubuntu integration / remote runner (S3/GCS/Azure creds, not just GitHub raw URLs in prod).
+  # Ubuntu integration / remote runner (AWS creds in the Ubuntu shell — not just the AWS
+  # MCP tool surface — so `tofu plan -generate-config-out` and `tofu plan` can authenticate.
+  # See modules/aios-agent-db-state-splitter/README.md "Operator prerequisites".
 
   # Optional: Guild remote runner — SOP text only unless attach is true (requires runner to exist at plan time).
   # remote_runner_name              = "my-org-tofu-runner"

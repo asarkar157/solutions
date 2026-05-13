@@ -6,13 +6,32 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 
 - **StackGen provider** `>= 0.1.13` (repo-wide minimum; includes `sg_agent.remote_runners` and `data.sg_remote_runner`).
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops` (typical stack).
-- `modules/aios-integration-github` and `modules/aios-integration-ubuntu`.
-- **Optional:** StackGen MCP Guild integration (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name` to enable AppStack tools (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**). Without it, the workflow still runs TF grouping/plans but **skips AppStack materialization** (documented in SOPs). When this is non-empty, **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`).
+- **`modules/aios-integration-github`**, **`modules/aios-integration-ubuntu`**, and **`modules/aios-integration-aws`** (or any equivalent `sg_guild_integration` of `type = "aws"`) are all **required**. Pass their `integration_name` outputs as `integration_names.github`, `integration_names.ubuntu_cli`, and `integration_names.aws`.
+- **StackGen MCP Guild integration is required** (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name`. This enables AppStack tools (`create_appstack`, `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**). **`db-state-split-architect`** adds **`hitl.always_allowed`** pattern **`<integration_name>_*`** (for example **`stackgen-mcp_*`** for prefix **`stackgen-mcp_`**) and attaches intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`). The `materialize-stackgen-appstacks` stage and the `db-monorepo-state-split-evidence` checklist both assume StackGen MCP is attached — there is no longer a TF-only mode.
 
 ## Operator prerequisites (outside Terraform)
 
 - **`monolith_state_uri` / `iac_repository_url`** are workflow inputs when you start **`db-monorepo-state-split-convergence`** in Guild — not variables on this module. The **Ubuntu CLI** (or **remote runner**) environment must be able to **fetch** state and **clone** the repo (tokens, cloud SDK auth, VPC egress to S3/GCS, etc.).
-- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image.
+- **AWS connectivity for `tofu plan`.** Passing `integration_names.aws` attaches the AWS Guild integration (`aws_cli_*` MCP tools), but `tofu plan -generate-config-out=` and `tofu plan` use the **`hashicorp/aws`** provider inside the **Ubuntu** container — they need AWS credentials in that container's environment, not as MCP tools. Wire a read-only AWS secret onto the Ubuntu integration's `secret_ref_ids`:
+
+  ```hcl
+  resource "sg_secret" "ubuntu_aws_readonly" {
+    name        = "ubuntu-cli-aws-readonly"
+    description = "Read-only AWS credentials for tofu plan / state download inside the Ubuntu MCP."
+    category    = "CloudProvider"
+    subcategory = "aws"
+
+    metadata = {
+      AWS_ACCESS_KEY_ID     = var.aws_readonly_access_key_id
+      AWS_SECRET_ACCESS_KEY = var.aws_readonly_secret_access_key
+      AWS_REGION            = var.aws_region
+      AWS_DEFAULT_REGION    = var.aws_region
+    }
+  }
+  ```
+
+  Then either (a) define the Ubuntu `sg_guild_integration` directly in your root with `secret_ref_ids = [sg_secret.ubuntu_aws_readonly.id]`, or (b) extend `modules/aios-integration-ubuntu` with an `extra_secret_ref_ids` variable. The AWS managed policy `ReadOnlyAccess` is sufficient for everything the workflow does; narrower policies must include `s3:GetObject` on the state bucket plus read on every resource type present in the monolith state.
+- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image. When a remote runner is configured for plan fan-out, the same AWS read-only credentials must be available there too.
 
 ## Security & privacy
 
@@ -34,10 +53,11 @@ module "db_state_splitter" {
   integration_names = {
     github     = module.github_integration.integration_name
     ubuntu_cli = module.ubuntu_integration.integration_name
+    aws        = module.aws_integration.integration_name
   }
 
-  # Optional: StackGen MCP integration name for AppStack (user MCP) tools.
-  # stackgen_mcp_integration_name = module.your_stackgen_mcp.integration_name
+  # Required: Guild integration name for the StackGen Consumer MCP (e.g. "stackgen-mcp").
+  stackgen_mcp_integration_name = sg_guild_integration.stackgen_mcp.name
 
   # Optional: Guild remote runner — documents in SOPs; set attach to bind on the agent (runner must exist at plan).
   # remote_runner_name             = "org-tofu-runner"
