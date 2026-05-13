@@ -133,11 +133,12 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
 
 resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
   name        = "db-monorepo-state-split-evidence"
-  description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, AppStack membership verified per group, and handoff artifacts."
+  description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, HCL hydration converged per group, AppStack membership verified per group, and handoff artifacts."
   approve     = true
   required_items = [
     "monolith_resource_count_recorded",
     "aggregate_shard_count_matches_monolith",
+    "hcl_hydration_no_changes_per_group",
     "stackgen_appstack_membership_report_attached",
     "appstack_membership_verified_per_group",
     "multi_shard_plan_zero_diff_evidence",
@@ -146,10 +147,11 @@ resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
     "appstack_materialization_summary",
     "orphan_secondary_handoff_link",
     "cross_group_bleed_resolution_log",
+    "stackgen_plan_action_run_logs",
   ]
   scoring = {
-    min_required         = 4
-    confidence_threshold = 0.78
+    min_required         = 5
+    confidence_threshold = 0.8
   }
   metadata = {
     playbook                   = "db-monorepo-state-split-convergence"
@@ -157,6 +159,9 @@ resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
     membership_report_note_key = "stackgen_appstack_membership_report"
     membership_runbook         = "stackgen-appstack-mcp-playbook-sop"
     membership_runbook_section = "step 3.5 — Membership verification gate"
+    hcl_hydration_note_prefix  = "hcl_hydration_status:"
+    hcl_hydration_runbook      = "terraform-registry-reverse-iac-sop"
+    hcl_hydration_section      = "HCL hydration (mandatory — no human \"HCL author\" handoff)"
   }
 }
 
@@ -189,6 +194,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     (tags, module paths, grouping policy, or **connectivity-first** graphs), optional **per-group TF states**, **StackGen AppStacks** (via MCP when configured),
     reverse-engineered IaC, registry mapping, orphan secondary workflow, and loops until counts match and plans converge.
     Optional **`grouping_strategy`** + **`max_resources_per_appstack`** cap large type buckets into smaller connected shards.
+    **HCL is fully agent-authored:** the reverse-IaC stage runs `tofu plan -generate-config-out=generated.tf` to materialize resource bodies from import blocks; empty-body `main.tf` stubs are never handed off to a human. Addresses the generator cannot read (provider auth / deleted) move to `orphans_bundle` automatically.
     Env profile + StackGen Plan action runs are **optional**: pass **`stackgen_target_environment`** (an existing project env) only if you want them — leave it unset to skip those steps and rely on Ubuntu `tofu plan` parity. **`stackgen_environments_required="true"`** turns "env not in project settings" into a single operator notify; default is silent skip.
     **DAG:** after reverse IaC, **AppStack materialization** and **orphan secondary handoff** run **in parallel**; **multi-shard plan convergence** waits for both (fan-in).
   EOT
@@ -371,10 +377,11 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Stage entry (do not ask the operator):**
           - `read_notes` for `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
           - If a required key is missing, **recover** before asking: rebuild paths under `/tmp/db-state-split-<workflow_id>/` and re-run the upstream procedure (re-clone repo, re-download `monolith_state_uri` to the same `/tmp` path, re-run shard extraction from `terraform-state-shard-extraction-sop`). Only `notify` after recovery fails — see db-state-split-orchestration-sop **Stage entry protocol**.
-          - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage is **TF roots + import/moved + registry mapping only** — AppStack materialization happens in the next stage `materialize-stackgen-appstacks`. Do not ask the operator whether MCP is attached.
+          - StackGen MCP availability is **discoverable** via `search_tools` (`*_create_appstack` / `*_get_appstacks`); this stage is **TF roots + import/moved + registry mapping + HCL hydration** — AppStack materialization happens in the next stage `materialize-stackgen-appstacks`. Do not ask the operator whether MCP is attached.
         Materialize `groups/<group_id>/` TF roots + import strategy; emit `registry_mapping_report` and `orphans_bundle`.
+        **HCL hydration is part of THIS stage** (not a downstream human task). For each group, after writing `import {}` blocks, run `tofu init -input=false` then `tofu plan -generate-config-out=generated.tf -input=false -lock=false` (Pass 1) and `tofu plan -out=verify.tfplan -input=false -lock=false` (Pass 2). Persist `hcl_hydration_status:<group_id>={generated_tf_path,generated_resources,plan_no_changes,remaining_actions,attempt}`. Loop in-stage until `plan_no_changes=true` or surface failed addresses to `orphans_bundle{reason:"import_failed_*"}`. **Never** leave empty-body `resource "aws_X" "Y" {}` stubs and **never** emit owner "HCL AUTHOR" — see terraform-registry-reverse-iac-sop § *HCL hydration*.
         Use writable `/tmp/...` and chunked `terraform show` / shell steps per terraform-registry-reverse-iac-sop **Execution** section.
-        note `stage_summary:reverse-engineer-and-registry-map`.
+        note `stage_summary:reverse-engineer-and-registry-map` (include per-group `plan_no_changes` counts and orphan additions).
       EOT
     },
     {
@@ -440,11 +447,12 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::multi-shard-plan-convergence"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group). Do not ask the operator.
-        **Membership pre-check first.** For every `group_id` in `logical_group_manifest`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group; do not run StackGen Plan against an AppStack with wrong membership.
+        **Stage entry:** `read_notes` for `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group). Do not ask the operator.
+        **HCL hydration pre-check first** (Loop B-hcl). For every `group_id`, `hcl_hydration_status:<group_id>.plan_no_changes` must be `true`. If any group is `false` or missing, **return execution to `reverse-engineer-and-registry-map`** for that group's hydration sub-loop; **do not** raise an operator-facing 🔴 "HCL AUTHOR" item — the workflow owns HCL via `tofu plan -generate-config-out=` (terraform-registry-reverse-iac-sop § *HCL hydration*).
+        **Membership pre-check second** (Loop B-membership). For every `group_id`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group.
         Run TF plan matrix per `logical_group_manifest`. **StackGen Plan is OPTIONAL:** for groups whose `stackgen_env_profile:<group_id>` is `{skipped:...}` or `stackgen_plan_run:<group_id>` is already `{skipped:...}`, skip `create_appstack_action_run` and rely on Ubuntu `tofu plan` parity. For the rest (membership ok and env profile present), run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**. If any drift, Loop B then re-plan until pass or iteration cap. Treat any new `env_not_in_project_settings` here as a soft skip (same semantics as the materialization stage).
         One shard (or small batch) per Ubuntu command with bounded `timeout_seconds`; avoid one shell invocation that plans all shards sequentially past integration ceilings (~300s). Prefer remote runner fan-out when configured.
-        Set `multi_plan_zero_diff_ok` based on **all per-group TF roots** plus **only the StackGen Plans that actually ran** (skipped Plans do not block the gate). note `stage_summary:multi-shard-plan-convergence` with skip counts.
+        Set `multi_plan_zero_diff_ok` based on **all per-group TF roots** plus **only the StackGen Plans that actually ran** (skipped Plans do not block the gate). note `stage_summary:multi-shard-plan-convergence` with skip counts and a *per-iteration blocking-items report* using db-state-split-orchestration-sop § *Iteration report — blocker classification* (env-missing → 🟢 INFO; empty-body stubs → 🟡 self-fixable, never 🔴).
       EOT
     },
     {
@@ -460,8 +468,9 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::final-gate-and-memory"], [])
       )
       note = <<-EOT
-        **Stage entry:** `read_notes` for `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report`, `orphan_modularization_memory`, all `stage_summary:*`. Do not ask the operator for any of these — the upstream stages already wrote them.
-        Verify `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, and **`stackgen_appstack_membership_report.summary.groups_failed == 0`** (when StackGen MCP was used). Consolidate `orphan_modularization_memory`. Final `notify` / PR comment with tables (per-group expected vs actual counts, missing/unexpected highlights) + PR links.
+        **Stage entry:** `read_notes` for `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_membership_report`, `stackgen_env_profile:<group_id>` / `stackgen_plan_run:<group_id>` (per group), `orphan_modularization_memory`, all `stage_summary:*`. Do not ask the operator for any of these — the upstream stages already wrote them.
+        Verify `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, **all `hcl_hydration_status:<group_id>.plan_no_changes==true`**, and **`stackgen_appstack_membership_report.summary.groups_failed == 0`** (when StackGen MCP was used). Env-profile / StackGen-Plan skips are **not** failures.
+        Final `notify` / PR comment with tables (per-group expected vs actual counts, hydration outcome, missing/unexpected highlights) + PR links. Apply db-state-split-orchestration-sop § *Iteration report — blocker classification* to any remaining items: env-missing → 🟢 INFO ("optional — operator may register the env in StackGen Project Settings to also see StackGen-side Plan logs"); never emit 🔴 ADMIN for the env unless `stackgen_environments_required="true"` AND `stackgen_target_environment` was supplied. Never emit owner "HCL AUTHOR".
         note `stage_summary:final-gate-and-memory`.
       EOT
     },

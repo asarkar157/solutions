@@ -68,6 +68,7 @@ Shell, `tofu`/`terraform`, `jq`, and `git` stay on **Ubuntu CLI**. If StackGen M
 | `aggregate_shard_resource_count` / `aggregate_group_resource_count` | Sum over groups |
 | `count_reconciliation_ok` | `"true"` / `"false"` |
 | `reverse_iac_summary` | Paths + strategy per group (import vs generate) |
+| `hcl_hydration_status:<group_id>` | **Required per group** — JSON `{ generated_tf_path, generated_resources, plan_no_changes: true\|false, remaining_actions: { add, change, destroy }, attempt }` (see **terraform-registry-reverse-iac-sop** § *HCL hydration*); the plan matrix must not run for a group whose `plan_no_changes` is not `true` |
 | `registry_mapping_report` | Markdown: patterns → module source / StackGen types |
 | `stackgen_appstack_map` | JSON: `group_id -> { appstack_id, cloud_provider, project_name }` |
 | `identifier_for_address:<group_id>` | Optional JSON: deterministic `terraform_address -> identifier` map used by `add_resource_to_appstack` retries |
@@ -112,8 +113,26 @@ If any per-group `tofu plan` is non-empty, adjust imports / `moved` / generated 
 
 StackGen `create_appstack_action_run` Plan only contributes to this gate **for groups where it actually ran** — i.e. `stackgen_env_profile:<group_id>` is **not** marked `skipped`. Groups with `stackgen_plan_run:<group_id>={skipped:"no_env_profile"|"env_missing_in_project_settings"}` are **excluded** from the StackGen side of the AND; they are validated by Ubuntu `tofu plan` parity only. Treat any new `env_not_in_project_settings` error here the same way as the materialization stage (soft-skip + `stackgen_mcp_errors` log).
 
+**Loop B-hcl — HCL hydration sub-loop** (runs **before** the per-group plan matrix when any group's `tofu plan` has `N to add` because resource bodies are stubs):  
+Per **terraform-registry-reverse-iac-sop** § *HCL hydration*, every per-group root must reach **`hcl_hydration_status:<group_id>.plan_no_changes=true`** by running `tofu plan -generate-config-out=generated.tf` (Pass 1) → `tofu plan -out=verify.tfplan` (Pass 2), patching deltas, and looping. Empty-body resource stubs are a **workflow defect**, not an operator task: the agent owns HCL authorship via `-generate-config-out`. **Do not** emit a blocking item like "HCL AUTHOR — author resource blocks in N main.tf stubs"; that is a runbook violation. If `-generate-config-out` itself fails (provider auth, deleted resource, unsupported resource type), move the affected addresses to `orphans_bundle` with `reason: "import_failed_<message>"` and continue with the remaining groups.
+
 **Loop B-membership — AppStack membership gate** (runs **before** any Plan call):  
 For every `group_id` in `logical_group_manifest`, `stackgen_appstack_membership:<group_id>.ok` must be `true`. If any group is `false` or missing, re-enter the **stackgen-appstack-mcp-playbook-sop** step 3.5 reconcile loop for that `group_id`; do not run `create_appstack_action_run` for that AppStack until membership is reconciled. Cross-group bleed events (`stackgen_mcp_errors[].reason == "cross_group_bleed"`) require operator review — do not auto-resolve by deleting from another group's AppStack.
+
+## Iteration report — blocker classification (anti-false-blocker rules)
+
+When emitting "Blocking Items for Iteration N" in `stage_summary:*` or final `notify`, classify per **terraform-substate-convergence-sop** § *Blocker classification*:
+
+| Owner / Color | Use when | Use NOT when |
+|---------------|----------|--------------|
+| 🔴 (hard block, needs operator) | `cross_group_bleed`, monolith `count_reconciliation_ok=false` after iteration cap, repository write access denied, cloud creds genuinely absent | Empty-body `main.tf` stubs (use 🟡 Loop B-hcl), missing `dev` env in Project Settings (use 🟢 INFO unless `stackgen_environments_required="true"`) |
+| 🟡 (workflow self-fixable next iteration) | HCL hydration not yet attempted; per-group `tofu plan` non-empty after Pass 1 only; orphan addresses awaiting `orphan-iac-module-authoring`; optional admin task to register Project Settings env when `stackgen_environments_required="true"` | Anything the workflow has not yet **tried** to fix automatically |
+| 🟢 INFO (non-blocking) | `stackgen_env_profile:<group_id>` skipped (`no_target_env_input` / `env_missing_in_project_settings`); StackGen Plan skipped because env was skipped; orphans bundle empty | Anything that prevents `multi_plan_zero_diff_ok=true` |
+
+**Hard injunctions:**
+
+- Never assign owner "HCL AUTHOR" — the agent is the HCL author via `-generate-config-out`.
+- Never assign owner "ADMIN" for the `dev` environment unless `stackgen_environments_required="true"` AND the operator explicitly opted in via `stackgen_target_environment="dev"`.
 
 ## Secondary Guild pipeline
 
