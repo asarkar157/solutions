@@ -19,12 +19,13 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      # Use >= 0.1.17 for current AIOS modules: integration `env` map (used by aios-integration-ubuntu and exposed
-      # as an optional input on the other containerized integrations) plus adopt-on-conflict for sg_policy_bundle,
-      # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow (re-applies after a Guild DB
-      # re-seed stop failing 409/500). Pre-0.1.17 floors (evidence checklists, remediation approve, remote runner
-      # attach from 0.1.13) are still required and implied by 0.1.17.
-      version = ">= 0.1.17, < 0.2.0"
+      # Use >= 0.1.18 for current AIOS modules. The functional floor remains 0.1.17:
+      # integration `env` map (used by aios-integration-ubuntu and exposed as an optional input on the other
+      # containerized integrations) plus adopt-on-conflict for sg_policy_bundle, sg_guild_model_provider,
+      # sg_guild_model, and already-approved sg_workflow (re-applies after a Guild DB re-seed stop failing
+      # 409/500). Pre-0.1.17 floors (evidence checklists, remediation approve, remote runner attach from
+      # 0.1.13) are still required and implied. 0.1.18 is a spec-sync patch release on top of 0.1.17.
+      version = ">= 0.1.18, < 0.2.0"
     }
   }
 }
@@ -152,7 +153,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-resource-janitor` | Multi-cloud unused-resource detection (≥ 30 days inactive — Lambda invocations, S3 last-modified, idle compute / disks / IPs) plus HITL-gated tag-and-quarantine cleanup workflow |
 | `modules/aios-agent-pipeline-insights` | Read-only GitHub pipeline & deployment intelligence — workflow runs, PR-merge metadata (who / when / mode / scope), deployment statuses with failure log excerpts |
 | `modules/aios-agent-release-tracker` | Read-only microservice release tracker — latest GitHub tags / Releases, GHCR image versions, "what's deployed where" via deployments + optional manifest cross-check, release diffs |
-| `modules/aios-agent-scenario-author` | Closes the SE feedback loop — triages `scenario-request` GitHub issues, matches existing scenarios, scaffolds new `examples/scenarios/<slug>/` PRs (5 files + `scripts/demo.sh` entry), validates with tofu fmt + validate, opens PR, comments back on the issue. Uses GitHub + Ubuntu CLI integrations (`gh` CLI installed on first use); strict repo + label gate |
+| `modules/aios-agent-scenario-author` | Closes the SE feedback loop — triages `scenario-request` GitHub issues, matches existing scenarios, and delegates new `examples/scenarios/<slug>/` scaffolding (5 files + `scripts/demo.sh` entry + `docs/se-playbook.md` row + tofu validate + auto-PR via Cursor's GitHub App) to a Cursor Cloud Agent via `cursor_agents_run_task`, then comments back on the issue. Uses GitHub + Cursor integrations (no Ubuntu CLI shell scripting); strict repo + label gate |
 | `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent or workflow |
 
 ## IDE tips (no agent file required)

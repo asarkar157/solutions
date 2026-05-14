@@ -6,7 +6,7 @@ terraform {
       # 0.1.17 — adopt-on-conflict for sg_policy_bundle, already-approved
       # sg_workflow, sg_guild_model_provider / sg_guild_model; integration env
       # map; floor that includes evidence-checklist + remediation patterns.
-      version = ">= 0.1.17, < 0.2.0"
+      version = ">= 0.1.18, < 0.2.0"
     }
   }
 }
