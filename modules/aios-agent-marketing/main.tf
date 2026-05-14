@@ -4,6 +4,26 @@ terraform {
   }
 }
 
+locals {
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_content_name      = "content-strategist${local.suffix}"
+  agent_pr_name           = "pr-communications-lead${local.suffix}"
+  agent_analytics_name    = "marketing-analyst${local.suffix}"
+  agent_sales_enable_name = "sales-enablement-lead${local.suffix}"
+
+  workflow_product_launch_name = "product-launch${local.suffix}"
+
+  sop_messaging_name = "product-messaging-framework${local.suffix}"
+  sop_press_name     = "press-release-distribution${local.suffix}"
+  sop_social_name    = "social-media-launch-campaign${local.suffix}"
+  sop_email_name     = "email-nurture-sequence${local.suffix}"
+  sop_landing_name   = "landing-page-optimization${local.suffix}"
+  sop_sales_kit_name = "sales-enablement-kit${local.suffix}"
+  sop_analyst_name   = "analyst-briefing-prep${local.suffix}"
+  sop_metrics_name   = "launch-metrics-dashboard${local.suffix}"
+}
+
 # ============================================================================
 # Marketing Domain Module
 # ============================================================================

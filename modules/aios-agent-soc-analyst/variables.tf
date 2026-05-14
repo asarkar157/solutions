@@ -1,7 +1,58 @@
-variable "integration_names" {
-  description = "Map of integration names to use for this module (e.g., aws, github, slack, datadog, splunk)"
-  type        = map(string)
-  default     = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration so the analyst can pull GuardDuty / CloudTrail / IAM context."
+  type        = string
+  default     = ""
+}
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for a GitHub PAT. When set, the module provisions an internal GitHub Guild integration for repo + audit-log correlation."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration for war-room comms."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_splunk_integration_name" {
+  description = "Optional Guild integration name for an externally-provisioned Splunk integration. No aios-integration-splunk wrapper exists yet, so this is the only way to wire Splunk in."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "model_names" {

@@ -7,5 +7,7 @@ output "integration_id" {
 }
 
 output "secret_id" {
-  value = sg_secret.slack_vault.id
+  description = "ID of the `sg_secret` bound to the Slack integration. Equals `var.existing_secret_id` when supplied, otherwise the newly-created secret's ID."
+  value       = local.secret_id
+  sensitive   = true
 }

@@ -10,38 +10,87 @@ terraform {
 # =============================================================================
 
 locals {
-  github_integration_attached = var.github_integration_name != "" ? var.github_integration_name : (var.github_token != "" ? "github-integration" : "")
+  module_prefix = "supply-chain-security"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name    = "supply-chain-security-analyst${local.suffix}"
+  workflow_name = "supply-chain-security-analyst${local.suffix}"
+
+  sop_npm_integrity_name      = "npm-integrity-check${local.suffix}"
+  sop_npm_sandbox_name        = "npm-behavioral-sandbox${local.suffix}"
+  sop_npm_manifest_name       = "npm-manifest-anomaly-scan${local.suffix}"
+  policy_npm_integrity_name   = "npm-integrity-check${local.suffix}"
+  policy_npm_sandbox_name     = "npm-sandbox-network${local.suffix}"
+  policy_phantom_name         = "phantom-dependency-detection${local.suffix}"
+  remediation_block_name      = "block-unverified-package${local.suffix}"
+  remediation_quarantine_name = "quarantine-phantom-dependency${local.suffix}"
+  evidence_name               = "supply-chain-incident-evidence${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+
+  # `provision_github` must be plan-time known because it drives `count` on
+  # the nested integration module. We don't inspect `var.github_secret_id`
+  # here — consumers often forward it from another module's output (e.g.
+  # `module.github_pat[0].secret_id`) which is only resolved at apply time.
+  # The inner aios-integration-github module's precondition surfaces a clear
+  # error when both inputs are missing.
+  provision_github = trimspace(var.existing_github_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+
+  github_tool_prefix = local.resolved_github_integration_name
+}
+
+resource "terraform_data" "github_integration_required" {
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.resolved_github_integration_name) != ""
+      error_message = "aios-agent-supply-chain-security needs a GitHub Guild integration: provide `github_secret_id` (module provisions one) or `existing_github_integration_name`."
+    }
+  }
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+  description        = "GitHub integration owned by the ${local.agent_name} agent (org / repo / package / advisory queries)."
 }
 
 resource "sg_policy" "npm_integrity_check" {
-  name        = "npm-integrity-check"
+  name        = local.policy_npm_integrity_name
   description = trimspace(templatefile("${path.module}/templates/policy-npm-integrity-check.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/npm-integrity-check.rego")
 }
 
 resource "sg_policy" "npm_sandbox_network" {
-  name        = "npm-sandbox-network"
+  name        = local.policy_npm_sandbox_name
   description = trimspace(templatefile("${path.module}/templates/policy-npm-sandbox-network.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/npm-sandbox-network.rego")
 }
 
 resource "sg_policy" "phantom_dependency" {
-  name        = "phantom-dependency-detection"
+  name        = local.policy_phantom_name
   description = trimspace(templatefile("${path.module}/templates/policy-phantom-dependency-detection.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/phantom-dependency-detection.rego")
 }
 
 resource "sg_agent" "supply_chain_analyst" {
-  name        = "supply-chain-security-analyst"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/supply-chain-security.md")
   model_names = compact(var.model_names)
 
-  hitl = { always_allowed = ["github-integration_test_connection"] }
+  hitl = { always_allowed = ["${local.github_tool_prefix}_test_connection"] }
 
-  integrations = local.github_integration_attached != "" ? [local.github_integration_attached] : []
+  integrations = [local.resolved_github_integration_name]
 }
 
 resource "sg_agent_budget" "supply_chain" {
@@ -75,25 +124,25 @@ resource "sg_agent_policy_attachment" "phantom_dep" {
 }
 
 resource "sg_runbook_sop" "npm_integrity_check" {
-  name        = "npm-integrity-check"
+  name        = local.sop_npm_integrity_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-integrity-check.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_behavioral_sandbox" {
-  name        = "npm-behavioral-sandbox"
+  name        = local.sop_npm_sandbox_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-behavioral-sandbox.md", {}))
 }
 
 resource "sg_runbook_sop" "npm_manifest_anomaly" {
-  name        = "npm-manifest-anomaly-scan"
+  name        = local.sop_npm_manifest_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-manifest-anomaly-scan.md", {}))
 }
 
 resource "sg_remediation_pattern" "block_unverified_package" {
-  name              = "block-unverified-package"
+  name              = local.remediation_block_name
   description       = trimspace(templatefile("${path.module}/templates/remediation-block-unverified-package.md", {}))
   risk_level        = "medium"
   blast_radius      = "single-repo"
@@ -102,7 +151,7 @@ resource "sg_remediation_pattern" "block_unverified_package" {
 }
 
 resource "sg_remediation_pattern" "quarantine_phantom" {
-  name              = "quarantine-phantom-dependency"
+  name              = local.remediation_quarantine_name
   description       = trimspace(templatefile("${path.module}/templates/remediation-quarantine-phantom-dependency.md", {}))
   risk_level        = "medium"
   blast_radius      = "single-repo"
@@ -111,7 +160,7 @@ resource "sg_remediation_pattern" "quarantine_phantom" {
 }
 
 resource "sg_evidence_checklist" "supply_chain_incident" {
-  name        = "supply-chain-incident-evidence"
+  name        = local.evidence_name
   description = trimspace(templatefile("${path.module}/templates/evidence-supply-chain-incident-body.md", {}))
   approve     = true
   required_items = [
@@ -128,7 +177,7 @@ resource "sg_evidence_checklist" "supply_chain_incident" {
 }
 
 resource "sg_workflow" "supply_chain_scan" {
-  name        = "supply-chain-security-analyst"
+  name        = local.workflow_name
   domain      = "security"
   description = trimspace(templatefile("${path.module}/templates/workflow-supply-chain-security-analyst.md", {}))
   approve     = true
@@ -156,10 +205,10 @@ resource "sg_workflow" "supply_chain_scan" {
   ]
 
   stage_bindings = [
-    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name], skill_refs = concat(["supply-chain-npm-integrity"], try(var.workflow_skill_refs["supply-chain-security-analyst::integrity-check"], [])) },
-    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat(["supply-chain-npm-sandbox"], try(var.workflow_skill_refs["supply-chain-security-analyst::behavioral-sandbox"], [])) },
-    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat(["supply-chain-manifest-anomaly"], try(var.workflow_skill_refs["supply-chain-security-analyst::manifest-anomaly"], [])) },
-    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat(["supply-chain-correlation"], try(var.workflow_skill_refs["supply-chain-security-analyst::correlate"], [])) },
-    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["correlate"], skill_refs = concat(["supply-chain-remediation-guidance"], try(var.workflow_skill_refs["supply-chain-security-analyst::recommend"], [])) },
+    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name], skill_refs = concat(["supply-chain-npm-integrity"], try(var.workflow_skill_refs["${local.workflow_name}::integrity-check"], [])) },
+    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat(["supply-chain-npm-sandbox"], try(var.workflow_skill_refs["${local.workflow_name}::behavioral-sandbox"], [])) },
+    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat(["supply-chain-manifest-anomaly"], try(var.workflow_skill_refs["${local.workflow_name}::manifest-anomaly"], [])) },
+    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat(["supply-chain-correlation"], try(var.workflow_skill_refs["${local.workflow_name}::correlate"], [])) },
+    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["correlate"], skill_refs = concat(["supply-chain-remediation-guidance"], try(var.workflow_skill_refs["${local.workflow_name}::recommend"], [])) },
   ]
 }

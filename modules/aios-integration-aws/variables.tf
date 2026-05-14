@@ -1,12 +1,35 @@
 variable "aws_role_arn" {
-  description = "AWS IAM Role ARN to assume via Vault"
+  description = <<-EOT
+    AWS IAM Role ARN the AWS Guild integration assumes via Vault. When set,
+    this module creates a fresh `sg_secret` of category `CloudProvider`,
+    subcategory `aws` with the role ARN + region in metadata. Mutually
+    exclusive with `existing_secret_id` — set exactly one.
+  EOT
   type        = string
+  default     = ""
 }
 
 variable "aws_region" {
-  description = "Default AWS region"
+  description = "Default AWS region. Embedded in the auto-created secret when `aws_role_arn` is supplied; ignored when `existing_secret_id` is set."
   type        = string
   default     = "us-east-1"
+}
+
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional ID of a pre-existing `sg_secret` holding AWS role-assume metadata.
+    When set, this module skips creating its own secret and binds the AWS
+    integration directly to the supplied secret. Use this when multiple agent
+    modules share the same tenant-level AWS read role. Mutually exclusive with
+    `aws_role_arn` — set exactly one.
+
+    The referenced secret SHOULD use category `CloudProvider`, subcategory
+    `aws`, with metadata `{ aws_role_arn = ..., aws_region = ..., AWS_DEFAULT_REGION = ... }`
+    so the Guild AWS integration container's secret reader picks up the right
+    credentials.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "integration_name" {

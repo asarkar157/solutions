@@ -28,17 +28,73 @@ variable "secret_names" {
   default = { gemini_vault = "" }
 }
 
-variable "integration_names" {
-  description = <<-EOT
-    Guild integration names keyed for attachment:
-    - aws_production — AWS MCP (e.g. aws-production)
-    - stackgen_mcp — Consumer MCP for stackgen-mcp_* tools (e.g. stackgen-mcp)
-    - gcp_production — GCP / Google gcloud MCP (e.g. google-integration)
-    - slack — Slack MCP (e.g. slack-integration)
-    - github_scm — GitHub SCM (e.g. github-integration); used when github_token is non-empty. Defaults to github-integration if omitted.
-  EOT
-  type        = map(string)
-  default     = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set, the module provisions an internal GitHub Guild integration for the SCM and PR-reminder agents."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration for the cloud-infra agent."
+  type        = string
+  default     = ""
+}
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration for the cloud-infra agent."
+  type        = string
+  default     = ""
+}
+
+variable "gcp_secret_id" {
+  description = "Optional `sg_secret` ID for GCP credentials. When set, the module provisions an internal GCP Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration. Takes precedence over `github_secret_id`."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_gcp_integration_name" {
+  description = "Optional Guild integration name to share an existing GCP integration."
+  type        = string
+  default     = ""
+}
+
+variable "stackgen_mcp_integration_name" {
+  description = "Guild integration name for the StackGen Consumer MCP (tenant-level singleton; not wrapped by an aios-integration-* module)."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "sre_agent_names" {
@@ -66,13 +122,6 @@ variable "sre_evidence_checklist_names" {
     change_validation = optional(string, "")
   })
   default = { change_validation = "" }
-}
-
-variable "github_token" {
-  description = "GitHub personal access token"
-  type        = string
-  sensitive   = true
-  default     = ""
 }
 
 variable "linear_mcp_integration_name" {

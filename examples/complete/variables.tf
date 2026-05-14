@@ -95,3 +95,19 @@ variable "langfuse_host" {
   type    = string
   default = "https://cloud.langfuse.com"
 }
+
+# Optional MCP integration names — when wiring the software-engineering agent,
+# you need pre-provisioned Guild integrations for Linear MCP and Cursor MCP
+# (no aios-integration-* wrappers exist for these). Leave empty to skip the
+# software_engineering module.
+variable "linear_mcp_integration_name" {
+  description = "Guild integration name for the Linear MCP (e.g. \"linear-mcp\"). Required by aios-agent-software-engineering."
+  type        = string
+  default     = "linear-mcp"
+}
+
+variable "cursor_mcp_integration_name" {
+  description = "Guild integration name for the Cursor MCP (e.g. \"cursor-mcp\")."
+  type        = string
+  default     = "cursor-mcp"
+}

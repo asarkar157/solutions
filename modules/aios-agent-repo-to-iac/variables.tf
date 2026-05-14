@@ -15,15 +15,39 @@ variable "policy_ids" {
   })
 }
 
-variable "github_integration_name" {
-  description = "Guild integration name for the GitHub MCP integration (from aios-integration-github)."
+# =============================================================================
+# Self-contained integration wiring (replaces the old `github_integration_name`
+# input). StackGen MCP stays consumer-provided — it is a tenant-level singleton
+# with no `aios-integration-stackgen-mcp` wrapper.
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set (and `existing_github_integration_name` is empty), this module provisions an internal GitHub Guild integration. One of `github_secret_id` / `existing_github_integration_name` must be provided."
   type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration instead of provisioning one. When set, the module skips its own integration container."
+  type        = string
+  default     = ""
 }
 
 variable "stackgen_mcp_integration_name" {
   description = "Optional: Guild integration name for StackGen hosted MCP (SSE). Empty skips attaching StackGen MCP."
   type        = string
   default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budget_usd_daily" {

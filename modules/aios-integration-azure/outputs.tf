@@ -7,19 +7,22 @@ output "integration_id" {
 }
 
 output "secret_id" {
-  value = sg_secret.azure_vault.id
+  description = "ID of the `sg_secret` (newly provisioned or pre-existing) bound to this integration."
+  value       = local.secret_id
+  sensitive   = true
 }
 
 output "reader_principal_id" {
-  description = "Object ID of the reader service principal for role assignments"
-  value       = azuread_service_principal.guild_azure_reader.object_id
+  description = "Object ID of the reader service principal for role assignments (empty when binding to an existing secret)."
+  value       = local.create_secret ? azuread_service_principal.guild_azure_reader[0].object_id : ""
 }
 
 output "azure_role_scope" {
-  description = "Scope used for role assignments"
+  description = "Scope used for role assignments (empty when binding to an existing secret)."
   value       = local.azure_role_scope
 }
 
 output "client_id" {
-  value = local.azure_reader_client_id
+  description = "Azure AD client ID (empty when binding to an existing secret)."
+  value       = local.azure_reader_client_id
 }

@@ -10,9 +10,67 @@ variable "model_names" {
 variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set, the module provisions an internal GitHub Guild integration so the predictive analyst can pull PR / deploy context."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_secret_id" {
+  description = "Optional `sg_secret` ID for Grafana. When set, the module provisions an internal Grafana Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_grafana_integration_name" {
+  description = "Optional Guild integration name to share an existing Grafana integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 variable "agent_names" {
   description = "External agent names for cross-domain workflow stage bindings"

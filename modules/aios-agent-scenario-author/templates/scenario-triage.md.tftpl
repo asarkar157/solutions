@@ -1,11 +1,11 @@
-Skill: Triage a `scenario-request` GitHub issue. Parse the structured body, decide whether an existing demo scenario already fits, AND build the per-module signature index (policy_ids keys + integration variable shape) the scaffold stage needs to emit valid HCL.
+Skill: Triage a `${scenario_request_label}` GitHub issue. Parse the structured body, decide whether an existing demo scenario already fits, AND build the per-module signature index (policy_ids keys + integration variable shape) the scaffold stage needs to emit valid HCL.
 
 Keywords for skill discovery: scenario, scenario-request, issue triage, parse issue, existing match, examples/scenarios, se-playbook, demo, classification, module signature, variables.tf inspection.
 
 Prerequisites:
-- `repo_clone_path` already populated by Template B in `scenario-author-orchestration-sop`.
+- `repo_clone_path` already populated by Template B in `${module_prefix}-orchestration-sop`.
 - `issue_details` already populated by Template A.
-- `available_modules` and `available_integrations` already populated by Template B steps 8-9 (the listing run after the clone).
+- `available_modules` and `available_integrations` already populated by Template B steps 7-8 (the listing run after the clone).
 
 Steps (run inside the `triage-clone` subagent — see orchestration SOP Template B):
 
@@ -42,10 +42,10 @@ Steps (run inside the `triage-clone` subagent — see orchestration SOP Template
      a) Strong match → note `existing_match={"name":"<d>","readme_path":"examples/scenarios/<d>/README.md","run_command":"make demo SCENARIO=<d>","rationale":"<one sentence quoting the overlap, e.g. 'Both mention idle EC2 cleanup and the prospect already has the AWS integration.'"}`. The planner will route to `notify-issue-comment` directly.
      b) No match → note `existing_match=null`. The planner will continue to the scaffold stage.
 
-6) Filter `requested_modules` against `available_modules` (populated in Template B step 8):
+6) Filter `requested_modules` against `available_modules` (populated in Template B step 7):
      a) `valid_modules = requested_modules ∩ available_modules` (preserve order from the issue body).
      b) `unknown_modules = requested_modules \ available_modules`.
-     c) Persist both notes. If `unknown_modules` is non-empty, the planner does NOT block — the scaffold stage drops the unknowns and the final issue comment surfaces them per orchestration §6(i).
+     c) Persist both notes. If `unknown_modules` is non-empty, the planner does NOT block — the scaffold stage drops the unknowns and the final issue comment surfaces them per orchestration §6(h).
 
 7) Build `module_signatures` for every entry in `valid_modules`. For each module `<m>` (parent path `<repo_clone_path>/modules/<m>`), run the inspection in §A below and accumulate into a single map:
 
@@ -53,9 +53,10 @@ Steps (run inside the `triage-clone` subagent — see orchestration SOP Template
         "<m>": {
           "policy_keys":      ["<key1>", "<key2>", ...]      # may be []
           "policy_type":      "object" | "map" | "none"
-          "integration_var":  "integration_name" | "integration_names" | "none"
-          "integration_keys": ["<intg1>", ...]               # only when integration_var == "integration_names"
-          "extra_required":   ["<varname>", ...]             # required (no default) variables OTHER than model_names/policy_ids/integration_names; scaffold should pass through-or-default
+          "integration_var":  "github_secret_id" | "integration_names" | "integration_name" | "none"
+          "secret_inputs":    ["<varname>", ...]              # the *_secret_id inputs declared by the module (post the self-contained-modules refactor)
+          "integration_keys": ["<intg1>", ...]                # only when integration_var == "integration_names"
+          "extra_required":   ["<varname>", ...]              # required (no default) variables OTHER than model_names/policy_ids/integration_names/*_secret_id; scaffold should pass through-or-default
         }, ...
      }`
 
@@ -75,7 +76,7 @@ Forbidden in this stage:
 §A — Module signature extractor (run from inside `<repo_clone_path>`)
 ========================================================================
 
-For each module name `<m>` in `available_modules`, the subagent must extract three pieces from `modules/<m>/variables.tf`:
+For each module name `<m>` in `available_modules`, the subagent must extract these pieces from `modules/<m>/variables.tf`:
 
 A1) `policy_keys` — the keys declared inside `variable "policy_ids" { type = object({ ... }) }`.
 
@@ -85,21 +86,28 @@ A1) `policy_keys` — the keys declared inside `variable "policy_ids" { type = o
      - If the block uses `type = map(string)` instead, the recipe returns no keys; set `policy_type="map"` and `policy_keys=[]` (the scaffold will pass `policy_ids = module.policies.policy_ids` whole).
      - If there is no `variable "policy_ids"`, set `policy_type="none"` and `policy_keys=[]` (the scaffold omits the `policy_ids = ...` line for this module).
 
-A2) `integration_var` + `integration_keys` — whether the module takes the singular string or the plural object.
+A2) `secret_inputs` — `*_secret_id` variables the module declares (the canonical input shape after the self-contained-modules refactor). Modules accept tenant-level `sg_secret` IDs rather than raw tokens or pre-existing integration names.
+
+     Recipe:
+       `rg --no-heading --no-filename '^variable\s+"[a-z_]+_secret_id"\s*\{' modules/<m>/variables.tf -r '$0' | rg -o '"[a-z_]+_secret_id"' | tr -d '"' | sort -u`
+
+     - Persist whatever it emits. The scaffold passes each `*_secret_id` from the corresponding tenant-level secret (`sg_secret.<type>_pat.id`) when the issue mentions that integration.
+
+A3) `integration_var` + `integration_keys` — for modules NOT yet on the self-contained pattern (`secret_inputs` is empty), determine whether they take the legacy singular string or plural object.
 
      Recipe:
        Singular check: `rg --no-heading --no-filename '^variable\s+"integration_name"\s*\{' modules/<m>/variables.tf`. Any match → `integration_var="integration_name"`, `integration_keys=[]`.
        Plural check: `rg --no-heading --no-filename '^variable\s+"integration_names"\s*\{' modules/<m>/variables.tf`. Any match → `integration_var="integration_names"`; extract keys with
          `awk '/variable "integration_names"/,/^\}$/' modules/<m>/variables.tf | awk '/object\({/,/\}\)/' | rg -o '^\s*([a-z_][a-z0-9_]*)\s*=' -r '$1' | sort -u`
-       Neither match → `integration_var="none"`, `integration_keys=[]` (scaffold passes no integration variable; a few modules e.g. `aios-agent-marketing` don't take any).
+       Neither match (and `secret_inputs` non-empty) → `integration_var="none"` (the module is fully self-contained; just pass secret_inputs).
 
      If the module takes `integration_names = map(string)` rather than `object({...})`, the recipe returns no keys; set `integration_keys=[]` and the scaffold passes a `map(string)` literal containing every integration the issue mentions and that exists in `available_integrations`.
 
-A3) `extra_required` — required variables (declared with no `default`) other than `model_names`, `policy_ids`, `integration_name`, `integration_names`.
+A4) `extra_required` — required variables (declared with no `default`) other than `model_names`, `policy_ids`, `integration_name`, `integration_names`, and any `*_secret_id`.
 
      Recipe (best-effort heuristic; one command per module):
-       `awk '/^variable / { name=$2; have_default=0; next } /^\s*default\s*=/ { have_default=1 } /^\}$/ { if(name != "" && !have_default) print name; name=""; have_default=0 }' modules/<m>/variables.tf | tr -d '"' | rg -v '^(model_names|policy_ids|integration_name|integration_names)$'`
+       `awk '/^variable / { name=$2; have_default=0; next } /^\s*default\s*=/ { have_default=1 } /^\}$/ { if(name != "" && !have_default) print name; name=""; have_default=0 }' modules/<m>/variables.tf | tr -d '"' | rg -v '^(model_names|policy_ids|integration_name|integration_names|[a-z_]+_secret_id)$'`
 
      - Persist whatever the awk emits. The scaffold treats these as "module wants something the bot does not know how to wire" — it emits them as TODO comments inside the `module "..."` block AND adds them to the PR body's "Reviewer checklist" so a human can fill them in. Do NOT invent values.
 
-Run all three recipes in a single `ubuntu-cli_execute_parallel` call across the valid modules, then assemble `module_signatures` and `note` it. Do NOT spawn a separate subagent per module — the parallel execute is one subagent call.
+Run all four recipes in a single `${ubuntu_tool_prefix}_execute_parallel` call across the valid modules, then assemble `module_signatures` and `note` it. Do NOT spawn a separate subagent per module — the parallel execute is one subagent call.

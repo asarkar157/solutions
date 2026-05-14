@@ -1,4 +1,4 @@
-Skill: Branch + commit + push + open a PR for the newly scaffolded scenario, then comment back on the originating issue. This skill assumes `scenario-scaffold-sop` already ran and left files staged in the working tree at `<repo_clone_path>`.
+Skill: Branch + commit + push + open a PR for the newly scaffolded scenario, then comment back on the originating issue. This skill assumes `${module_prefix}-scaffold-sop` already ran and left files staged in the working tree at `<repo_clone_path>`.
 
 Keywords for skill discovery: pull request, gh pr create, gh issue comment, git push, branch, scenario-bot, scaffold pr, scenario-request, issue comment.
 
@@ -7,19 +7,18 @@ Prerequisites (all from notes):
 - `scenario_slug` — used in branch name + PR title.
 - `validation_summary` — `ok: ...` or `failed: ...`.
 - `scaffold_summary` — file list + module list for the PR body.
-- `gh_token`, `repository_full_name`, `issue_or_pr_number`, `repository_default_branch` — for `gh pr create` and `gh issue comment`.
+- `repository_full_name`, `issue_or_pr_number`, `repository_default_branch` — for `gh pr create` and `gh issue comment`.
 - `issue_details.title` — quoted in the PR body.
 
-Tool boundary: every command here runs in the Ubuntu CLI sandbox via the `scaffold-pr` subagent (orchestration SOP Template D) followed by the `notify-issue-comment` subagent (Template E).
+Tool boundary: every command here runs in the Ubuntu CLI sandbox via the `scaffold-pr` subagent (orchestration SOP Template D) followed by the `notify-issue-comment` subagent (Template E). GitHub auth is pre-provisioned (orchestration SOP §0a) — `gh` and `git` authenticate via the container's pre-bound `GH_TOKEN`/`GIT_TOKEN` env vars. No token threading.
 
 ========================================================================
-0) Bootstrap — ensure `gh` and `git` are on PATH
+0) Sandbox sanity (defensive)
 ========================================================================
-
-Templates B and C should have already installed `gh`, `git`, and `tofu`/`terraform` in this sandbox. But subagent sandboxes are not guaranteed to share state, so re-assert:
 
 a) `export PATH="$HOME/.local/bin:$PATH"`.
-b) `which gh && which git` — both must succeed. If either is missing, re-run the matching install step from orchestration-sop Template B step 0 (the apt + tarball fallbacks). On failure, persist `bootstrap_blocker="gh_missing"` or `"git_missing"` and STOP (orchestration §6(f)). NEVER attempt a `git push` without a working `gh` (the push uses the gh-installed credential helper).
+b) `which gh && which git` — both must succeed (pre-installed via the Ubuntu integration's `install_tools`). If either is missing this is a sandbox-image regression; persist `bootstrap_blocker="gh_missing"` or `"git_missing"` and STOP (orchestration generic blocked path).
+c) `gh auth status` — must succeed (the integration's `secret_ref_ids` surfaces the PAT in env). If it fails, persist `stage_summary:<stage>="blocked: gh auth failed"` and route to orchestration §6(a).
 
 ========================================================================
 1) Create the working branch
@@ -27,7 +26,6 @@ b) `which gh && which git` — both must succeed. If either is missing, re-run t
 
 Inside `<repo_clone_path>` (run as a single `execute_series` so the env survives):
 
-  `export GH_TOKEN=<gh_token> && export GITHUB_TOKEN=$GH_TOKEN && gh auth setup-git || true`
   `git fetch origin <repository_default_branch>`
   `git switch <repository_default_branch>`
   `BRANCH="scenario-bot/<scenario_slug>-$(date +%Y%m%d%H%M%S)" && git switch -c "$BRANCH"`
@@ -115,7 +113,7 @@ gh pr create \
   --base <repository_default_branch> \
   --head "$BRANCH" \
   --title "<title from above>" \
-  --label scenario-request \
+  --label ${scenario_request_label} \
   --body-file - <<'EOF'
 <body from above>
 EOF
@@ -150,9 +148,9 @@ I think `<existing_match.name>` already covers this. Rationale:
 <existing_match.rationale>
 
 Run it now:
-```bash
+\`\`\`bash
 <existing_match.run_command>
-```
+\`\`\`
 
 README: <repo_url>/blob/<repository_default_branch>/<existing_match.readme_path>
 
@@ -207,7 +205,7 @@ The scenario-author bot could not finish this request. Blocker:
 Recovery: see `docs/se-feedback.md` and re-open this issue once the blocker
 is fixed. The bot will re-triage when the next `issue.created` /
 `issues.opened` / `issues.labeled` event fires (close + re-open with the
-`scenario-request` label is the simplest way).
+`${scenario_request_label}` label is the simplest way).
 ```
 
 e) Budget-exhausted path — any `stage_summary:*` value contains "budget" (case-insensitive) AND `pr_url` is empty. Body:
@@ -248,7 +246,8 @@ please ping the engineering lead in `#solutions-se`.
 Choose exactly ONE body and call `gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file - <<'EOF' ... EOF`. After the comment, note `stage_summary:notify` with the comment kind chosen and the issue URL.
 
 Forbidden:
-- Posting the token, the `gh_token` note value, or any other secret in any comment.
+- Posting any secret value in any comment.
 - Sending more than one comment per workflow run (Template E runs at most once).
 - Force-pushing the working branch or pushing to `<repository_default_branch>` directly.
 - Triggering yet another `gh pr create` after `pr_url` is already populated.
+- Capturing or persisting a `gh_token` (auth is pre-provisioned — see orchestration SOP §0a).

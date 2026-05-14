@@ -20,14 +20,41 @@ terraform {
 # slack, linear, github, etc. for digests, tickets, and deploy context.
 
 locals {
-  has_grafana = try(var.integration_names["grafana"], "") != ""
+  module_prefix = "langfuse-observer"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  grafana_integration_name = "${local.module_prefix}-grafana${local.suffix}"
+  slack_integration_name   = "${local.module_prefix}-slack${local.suffix}"
+  github_integration_name  = "${local.module_prefix}-github${local.suffix}"
+
+  provision_grafana = trimspace(var.grafana_secret_id) != "" && trimspace(var.existing_grafana_integration_name) == ""
+  provision_slack   = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_github  = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+
+  resolved_langfuse_integration_name = trimspace(var.existing_langfuse_integration_name)
+  resolved_grafana_integration_name = trimspace(var.existing_grafana_integration_name) != "" ? var.existing_grafana_integration_name : (
+    local.provision_grafana ? module.grafana_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+
+  has_grafana = local.resolved_grafana_integration_name != ""
   tpl_ctx     = { has_grafana = local.has_grafana }
 
-  integration_keys_ordered = sort([for k in keys(var.integration_names) : k if k != "langfuse"])
-  observer_integrations = distinct(concat(
-    compact([var.integration_names["langfuse"]]),
-    [for k in local.integration_keys_ordered : var.integration_names[k] if var.integration_names[k] != ""]
-  ))
+  observer_integrations = distinct(compact(concat(
+    [
+      local.resolved_langfuse_integration_name,
+      local.resolved_grafana_integration_name,
+      local.resolved_slack_integration_name,
+      local.resolved_github_integration_name,
+    ],
+    var.extra_integration_names,
+  )))
 
   default_example_queries = [
     "Run the weekly AI operations health scorecard.",
@@ -36,6 +63,30 @@ locals {
     "Which agents are producing lower quality outputs and why?",
     "Show me the cost efficiency trends across our AI agent fleet.",
   ]
+}
+
+module "grafana_integration" {
+  count  = local.provision_grafana ? 1 : 0
+  source = "../aios-integration-grafana"
+
+  integration_name   = local.grafana_integration_name
+  existing_secret_id = var.grafana_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
 }
 
 # =============================================================================

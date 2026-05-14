@@ -19,18 +19,53 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
+# =============================================================================
+# Self-contained integration wiring (replaces the old `integration_names` map).
+# =============================================================================
+
+variable "github_secret_id" {
   description = <<-EOT
-    Map of integrations to attach to the pipeline-insights agent.
-    Recognized keys (`github` is required; others optional):
-      - github : GitHub integration name (REST/GraphQL access for Actions, PRs, Deployments)
-      - slack  : Slack integration name (used by the Slack ingress webhook + replies)
+    Optional `sg_secret` ID holding the GitHub PAT (REST/GraphQL access for
+    Actions, PRs, Deployments). When set (and `existing_github_integration_name`
+    is empty), this module provisions an internal GitHub Guild integration. Set
+    `existing_github_integration_name` instead to attach to a pre-provisioned
+    tenant-level GitHub integration. One of the two must be provided.
   EOT
-  type        = map(string)
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = <<-EOT
+    Optional `sg_secret` ID for Slack workspace credentials. When set, this
+    module provisions an internal Slack Guild integration so the agent can
+    answer questions inside a Slack channel. Leave empty to skip Slack
+    altogether (the workflow remains usable from Guild chat).
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration instead of provisioning one. When set, the module skips its own integration container."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration. When set, the module skips its own integration container and `slack_secret_id` may be left empty."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / webhook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
 
   validation {
-    condition     = length(trimspace(lookup(var.integration_names, "github", ""))) > 0
-    error_message = "integration_names.github must be set to a non-empty GitHub integration name; the pipeline-insights agent has no usable surface without it."
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
   }
 }
 

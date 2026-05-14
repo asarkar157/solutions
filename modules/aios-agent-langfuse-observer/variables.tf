@@ -16,16 +16,77 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
-  description = <<-EOT
-    Guild integration names. Must include "langfuse". Any other keys attach extra integrations
-    on the same observer agent (e.g. grafana, slack, linear, github, aws, gcp, clickhouse) so
-    runbooks can correlate traces with infra, post digests, file tickets, or check deploys.
-  EOT
-  type        = map(string)
+# =============================================================================
+# Self-contained integration wiring.
+#
+# Langfuse: no `aios-integration-langfuse` wrapper exists yet, so the only
+# way to wire it in is via `existing_langfuse_integration_name` (required).
+#
+# Extras (grafana / slack / github): pass either a secret ID (this module
+# provisions an internal integration) OR an existing integration name (this
+# module attaches to it). Both forms are forwarded into the agent.
+# =============================================================================
+
+variable "existing_langfuse_integration_name" {
+  description = "Guild integration name for an externally-provisioned Langfuse integration. Required — no aios-integration-langfuse wrapper exists."
+  type        = string
+
   validation {
-    condition     = try(var.integration_names["langfuse"], "") != ""
-    error_message = "integration_names must contain a non-empty \"langfuse\" entry."
+    condition     = trimspace(var.existing_langfuse_integration_name) != ""
+    error_message = "existing_langfuse_integration_name is required."
+  }
+}
+
+variable "grafana_secret_id" {
+  description = "Optional `sg_secret` ID for Grafana. When set, the module provisions an internal Grafana Guild integration for infra correlation."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack. When set, the module provisions an internal Slack Guild integration for digest posting."
+  type        = string
+  default     = ""
+}
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for GitHub. When set, the module provisions an internal GitHub Guild integration for deploy context."
+  type        = string
+  default     = ""
+}
+
+variable "existing_grafana_integration_name" {
+  description = "Optional Guild integration name to share an existing Grafana integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "extra_integration_names" {
+  description = "Optional list of additional pre-existing Guild integration names (linear, aws, gcp, clickhouse, etc.) to attach to the observer agent."
+  type        = list(string)
+  default     = []
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to integration resource names provisioned by this module."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
   }
 }
 

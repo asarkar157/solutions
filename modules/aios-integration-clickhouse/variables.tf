@@ -1,6 +1,7 @@
 variable "clickhouse_host" {
-  description = "ClickHouse Cloud hostname"
+  description = "ClickHouse Cloud hostname (required unless `existing_secret_id` is set)."
   type        = string
+  default     = ""
 }
 
 variable "clickhouse_user" {
@@ -9,8 +10,21 @@ variable "clickhouse_user" {
 }
 
 variable "clickhouse_password" {
-  type      = string
-  sensitive = true
+  description = "ClickHouse password (required unless `existing_secret_id` is set)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional pre-existing `sg_secret` ID to bind to this integration. When set,
+    this module SKIPS provisioning the `sg_secret` and only creates the
+    `sg_guild_integration`. The supplied secret must already be `CloudProvider`/
+    `clickhouse` shape with the standard CLICKHOUSE_* metadata keys.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "clickhouse_port" {

@@ -28,3 +28,30 @@ output "webhook_token" {
   value       = var.enable_github_webhook ? sg_webhook.github_db_state_split[0].token : ""
   sensitive   = true
 }
+
+output "github_integration_name" {
+  description = <<-EOT
+    Name of the GitHub Guild integration the agent uses. Equals
+    `var.existing_github_integration_name` when supplied; otherwise the
+    module-provisioned `<module_prefix>-github[-<suffix>]` integration name.
+  EOT
+  value       = local.resolved_github_integration_name
+}
+
+output "ubuntu_integration_name" {
+  description = <<-EOT
+    Name of the Ubuntu Guild integration the agent uses. Equals
+    `var.existing_ubuntu_integration_name` when supplied; otherwise the
+    module-provisioned `<module_prefix>-ubuntu[-<suffix>]` integration name.
+  EOT
+  value       = local.resolved_ubuntu_integration_name
+}
+
+output "aws_integration_name" {
+  description = <<-EOT
+    Name of the AWS Guild integration the agent uses. Equals
+    `var.existing_aws_integration_name` when supplied; otherwise the
+    module-provisioned `<module_prefix>-aws[-<suffix>]` integration name.
+  EOT
+  value       = local.resolved_aws_integration_name
+}

@@ -1,16 +1,28 @@
 variable "gcp_credentials_json" {
-  description = "GCP service account key JSON"
+  description = "GCP service account key JSON. Used to write the auto-created secret. Empty when `existing_secret_id` is supplied."
   type        = string
   sensitive   = true
+  default     = ""
 }
 variable "gcp_project_id" {
-  description = "GCP project ID"
+  description = "GCP project ID. Used to write the auto-created secret. Empty when `existing_secret_id` is supplied."
   type        = string
+  default     = ""
 }
 variable "gcp_region" {
   description = "GCP region"
   type        = string
   default     = "us-central1"
+}
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional ID of a pre-existing `sg_secret` holding GCP service account
+    credentials. When set, this module skips creating its own secret and
+    binds the integration directly to the supplied secret. Mutually exclusive
+    with `gcp_credentials_json` — set exactly one.
+  EOT
+  type        = string
+  default     = ""
 }
 variable "integration_name" {
   type    = string

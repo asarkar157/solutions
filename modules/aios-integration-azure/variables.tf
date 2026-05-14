@@ -47,6 +47,18 @@ variable "integration_image" {
   default = "ghcr.io/appcd-dev/stackgen-guild-integration-azure:main"
 }
 
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional pre-existing `sg_secret` ID to bind to this integration. When set,
+    this module SKIPS provisioning the Azure AD service principal, role assignments,
+    and `sg_secret` — it only creates the `sg_guild_integration` and binds it to
+    the supplied secret. Useful when multiple modules share a single Azure
+    credential (the secret must already exist as `CloudProvider`/`azure` shape).
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "env" {
   description = <<-EOT
     Optional map of plain-text environment variables injected into the Azure

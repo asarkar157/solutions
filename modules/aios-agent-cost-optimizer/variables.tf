@@ -12,9 +12,67 @@ variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
 
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, provisions an internal AWS Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "azure_secret_id" {
+  description = "Optional `sg_secret` ID for Azure credentials. When set, provisions an internal Azure Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "gcp_secret_id" {
+  description = "Optional `sg_secret` ID for GCP credentials. When set, provisions an internal GCP Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, provisions an internal Slack Guild integration so FinOps reports can be posted."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_azure_integration_name" {
+  description = "Optional Guild integration name to share an existing Azure integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_gcp_integration_name" {
+  description = "Optional Guild integration name to share an existing GCP integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budget" {

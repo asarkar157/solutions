@@ -5,34 +5,89 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "software-engineering"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_planner_name    = "linear-planner-agent${local.suffix}"
+  agent_developer_name  = "cursor-developer-agent${local.suffix}"
+  workflow_feature_name = "feature-development${local.suffix}"
+  sop_linear_analysis   = "linear-ticket-analysis${local.suffix}"
+  sop_cursor_authoring  = "cursor-code-authoring${local.suffix}"
+  sop_github_pr         = "github-pr-submission${local.suffix}"
+  evidence_feature_name = "feature-development-evidence${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+
+  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+
+  resolved_linear_mcp_integration_name = trimspace(var.existing_linear_mcp_integration_name)
+  resolved_cursor_mcp_integration_name = trimspace(var.existing_cursor_mcp_integration_name)
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
 # =============================================================================
 # Software Engineering Agent Module
 # =============================================================================
 
 resource "sg_agent" "linear_planner" {
-  name         = "linear-planner-agent"
+  name         = local.agent_planner_name
   persona      = file("${path.module}/personas/linear-planner.md")
   model_names  = compact(var.model_names)
-  integrations = compact([lookup(var.integration_names, "linear_mcp", "")])
+  integrations = compact([local.resolved_linear_mcp_integration_name])
 
   hitl = {
-    always_allowed = concat(var.linear_readonly_tools, ["linear-integration_create_issue", "web_search", "note", "read_notes"])
+    always_allowed = concat(
+      var.linear_readonly_tools,
+      ["${local.resolved_linear_mcp_integration_name}_create_issue", "web_search", "note", "read_notes"],
+    )
   }
 }
 
 resource "sg_agent" "cursor_developer" {
-  name        = "cursor-developer-agent"
+  name        = local.agent_developer_name
   persona     = file("${path.module}/personas/cursor-developer.md")
   model_names = compact(var.model_names)
 
   integrations = compact([
-    lookup(var.integration_names, "cursor_mcp", ""),
-    lookup(var.integration_names, "github", "") != "" ? var.integration_names.github : null,
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
+    local.resolved_cursor_mcp_integration_name,
+    local.resolved_github_integration_name,
+    local.resolved_slack_integration_name,
   ])
 
   hitl = {
-    always_allowed = ["web_search", "cursor-tool_cursor_agents_get_status", "cursor-tool_cursor_agents_get_conversation", "note", "read_notes"]
+    always_allowed = [
+      "web_search",
+      "${local.resolved_cursor_mcp_integration_name}_cursor_agents_get_status",
+      "${local.resolved_cursor_mcp_integration_name}_cursor_agents_get_conversation",
+      "note",
+      "read_notes",
+    ]
   }
 }
 
@@ -68,25 +123,25 @@ resource "sg_agent_policy_attachment" "developer_shell_hitl" {
 }
 
 resource "sg_runbook_sop" "linear_ticket_analysis" {
-  name        = "linear-ticket-analysis"
+  name        = local.sop_linear_analysis
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/linear-ticket-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cursor_code_authoring" {
-  name        = "cursor-code-authoring"
+  name        = local.sop_cursor_authoring
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/cursor-code-authoring.md", {}))
 }
 
 resource "sg_runbook_sop" "github_pr_submission" {
-  name        = "github-pr-submission"
+  name        = local.sop_github_pr
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/github-pr-submission.md", {}))
 }
 
 resource "sg_evidence_checklist" "feature_development_evidence" {
-  name        = "feature-development-evidence"
+  name        = local.evidence_feature_name
   description = "Proof-of-work for Linear-driven feature work: requirements digest, implementation notes, and PR link."
   approve     = true
   required_items = [
@@ -103,7 +158,7 @@ resource "sg_evidence_checklist" "feature_development_evidence" {
 }
 
 resource "sg_workflow" "feature_development" {
-  name        = "feature-development"
+  name        = local.workflow_feature_name
   domain      = "software-engineering"
   description = trimspace(templatefile("${path.module}/templates/workflow-feature-development.md", {}))
   approve     = true

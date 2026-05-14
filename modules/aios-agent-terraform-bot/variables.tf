@@ -15,21 +15,48 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
+variable "github_secret_id" {
   description = <<-EOT
-    Guild integration names attached to the terraform-module-manager agent.
-    Both are required: GitHub for API access, Ubuntu CLI for git/tofu/terraform, tfsec/checkov, and gh against a real working tree.
-    Provision `modules/aios-integration-ubuntu` and pass `integration_name` as `ubuntu_cli`.
+    ID of a pre-existing `sg_secret` holding the GitHub PAT this bot uses to clone target
+    repositories, run `gh pr create`, comment on PRs, and call `gh api`. The same secret is
+    bound to BOTH integrations this module provisions internally:
+      - the `terraform-bot-github` Guild integration (for `gh api` calls from the API
+        sandbox), and
+      - the `terraform-bot-ubuntu` Guild integration (so `gh auth status` / `git clone` /
+        `tofu`/`terraform` Just Work inside the shell sandbox without the agent threading
+        a token through subagent goals).
+
+    Required. Recommended PAT scopes: `repo`, `read:org`. Pass `sg_secret.<name>.id`. Use the
+    same secret across multiple agent modules to keep ONE PAT in Vault per tenant.
   EOT
-  type = object({
-    github     = string
-    ubuntu_cli = string
-  })
+  type        = string
 
   validation {
-    condition     = trimspace(var.integration_names.github) != "" && trimspace(var.integration_names.ubuntu_cli) != ""
-    error_message = "integration_names.github and integration_names.ubuntu_cli must be non-empty. The agent needs both Guild integrations; omitting ubuntu_cli (or passing \"\") leaves only GitHub tools and breaks terraform-module-compliance / install-validate-test SOPs."
+    condition     = trimspace(var.github_secret_id) != ""
+    error_message = "github_secret_id is required; the terraform-bot cannot clone repos or open PRs without it."
   }
+}
+
+variable "existing_github_integration_name" {
+  description = <<-EOT
+    Optional. When set, this module SKIPS provisioning its own `terraform-bot-github`
+    Guild integration and attaches the agent to the supplied existing integration
+    name instead. Default `""` keeps the self-contained behaviour.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = <<-EOT
+    Optional. When set, this module SKIPS provisioning its own `terraform-bot-ubuntu`
+    Guild integration and attaches the agent to the supplied existing integration
+    name instead. Note: the existing Ubuntu container must already have the GitHub PAT
+    surfaced as `GH_TOKEN` (otherwise `gh` / `git clone` will fail inside the sandbox).
+    Default `""` keeps the self-contained behaviour.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "workflow_skill_refs" {
@@ -63,5 +90,21 @@ variable "remote_runner_attach_to_agent" {
   validation {
     condition     = !var.remote_runner_attach_to_agent || trimspace(var.remote_runner_name) != ""
     error_message = "remote_runner_attach_to_agent requires a non-empty remote_runner_name."
+  }
+}
+
+variable "name_suffix" {
+  description = <<-EOT
+    Optional suffix appended (with a leading `-`) to every named resource this module
+    creates: the agent, the runbook SOPs, the workflow, the webhook, and BOTH internal
+    integrations (`terraform-bot-github`, `terraform-bot-ubuntu`). Use when the same
+    Guild tenant must host more than one terraform-bot instance.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.name_suffix == "" || can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$", var.name_suffix))
+    error_message = "name_suffix must be empty or kebab-case (lowercase, digits, dashes; no leading/trailing dash)."
   }
 }

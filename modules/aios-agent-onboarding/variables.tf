@@ -10,15 +10,61 @@ variable "model_names" {
 variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
-variable "integration_names" {
-  description = "Guild integration names to attach (slack, github, linear, google). Empty string or omitted keys are skipped."
-  type = object({
-    slack  = optional(string, "")
-    github = optional(string, "")
-    linear = optional(string, "")
-    google = optional(string, "")
-  })
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration so the onboarding assistant can post to onboarding channels."
+  type        = string
+  default     = ""
+}
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for a GitHub PAT. When set, the module provisions an internal GitHub Guild integration so the assistant can grant repo access and walk through codebases."
+  type        = string
+  default     = ""
+}
+
+variable "linear_credential_provider_id" {
+  description = "Optional OAuth credential provider ID for Linear. When set, the module provisions an internal Linear Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_linear_integration_name" {
+  description = "Optional Guild integration name to share an existing Linear integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_google_integration_name" {
+  description = "Optional Guild integration name for Google Workspace (no aios-integration-google wrapper exists)."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 variable "agent_budget" {
   type    = number

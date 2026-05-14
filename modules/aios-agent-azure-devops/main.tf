@@ -6,22 +6,72 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "azure-devops-sre"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name             = "azure-devops-sre${local.suffix}"
+  workflow_name          = "azure-devops-full-triage${local.suffix}"
+  sop_function_name      = "azure-function-health-check${local.suffix}"
+  sop_clickhouse_name    = "clickhouse-cluster-diagnostics${local.suffix}"
+  sop_storage_queue_name = "storage-queue-inspection${local.suffix}"
+  sop_blob_name          = "blob-storage-monitoring${local.suffix}"
+  pattern_restart_name   = "restart-azure-function${local.suffix}"
+  pattern_redeploy_name  = "redeploy-log-processor${local.suffix}"
+  evidence_name          = "azure-devops-incident${local.suffix}"
+
+  azure_integration_name = "${local.module_prefix}-azure${local.suffix}"
+  slack_integration_name = "${local.module_prefix}-slack${local.suffix}"
+
+  provision_azure = trimspace(var.azure_secret_id) != "" && trimspace(var.existing_azure_integration_name) == ""
+  provision_slack = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+
+  resolved_azure_integration_name = trimspace(var.existing_azure_integration_name) != "" ? var.existing_azure_integration_name : (
+    local.provision_azure ? module.azure_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+
+  clickhouse_agent = var.clickhouse_inspector_agent_name != "" ? var.clickhouse_inspector_agent_name : sg_agent.azure_devops_sre.name
+}
+
+module "azure_integration" {
+  count  = local.provision_azure ? 1 : 0
+  source = "../aios-integration-azure"
+
+  integration_name   = local.azure_integration_name
+  existing_secret_id = var.azure_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
 # =============================================================================
 # Azure DevOps SRE Agent Module
 # =============================================================================
 
 resource "sg_agent" "azure_devops_sre" {
-  name        = "azure-devops-sre"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/azure-devops-sre.md")
   model_names = compact(var.model_names)
 
   hitl = {
-    always_allowed = concat(["azure-production_test_connection"], var.azure_readonly_tools)
+    always_allowed = concat(
+      local.resolved_azure_integration_name != "" ? ["${local.resolved_azure_integration_name}_test_connection"] : [],
+      var.azure_readonly_tools,
+    )
   }
 
   integrations = compact([
-    lookup(var.integration_names, "azure_production", lookup(var.integration_names, "azure", "")),
-    lookup(var.integration_names, "slack", ""),
+    local.resolved_azure_integration_name,
+    local.resolved_slack_integration_name,
   ])
 }
 
@@ -29,10 +79,6 @@ resource "sg_agent_budget" "azure_devops_sre" {
   agent_name  = sg_agent.azure_devops_sre.name
   limit_usd   = var.agent_budget
   period_type = "daily"
-}
-
-locals {
-  clickhouse_agent = var.clickhouse_inspector_agent_name != "" ? var.clickhouse_inspector_agent_name : sg_agent.azure_devops_sre.name
 }
 
 # Policy attachments
@@ -65,32 +111,32 @@ resource "sg_agent_policy_attachment" "container_shell_hitl" {
 
 # Runbooks
 resource "sg_runbook_sop" "azure_function_health" {
-  name        = "azure-function-health-check"
+  name        = local.sop_function_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/azure-function-health-check.md", {}))
 }
 
 resource "sg_runbook_sop" "clickhouse_diagnostics" {
-  name        = "clickhouse-cluster-diagnostics"
+  name        = local.sop_clickhouse_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/clickhouse-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "storage_queue_inspection" {
-  name        = "storage-queue-inspection"
+  name        = local.sop_storage_queue_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/storage-queue-inspection.md", {}))
 }
 
 resource "sg_runbook_sop" "blob_storage_monitoring" {
-  name        = "blob-storage-monitoring"
+  name        = local.sop_blob_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/blob-storage-monitoring.md", {}))
 }
 
 # Remediation patterns
 resource "sg_remediation_pattern" "restart_azure_function" {
-  name              = "restart-azure-function"
+  name              = local.pattern_restart_name
   description       = trimspace(templatefile("${path.module}/templates/remediation-restart-azure-function.md", {}))
   risk_level        = "medium"
   blast_radius      = "single-function"
@@ -99,7 +145,7 @@ resource "sg_remediation_pattern" "restart_azure_function" {
 }
 
 resource "sg_remediation_pattern" "redeploy_log_processor" {
-  name              = "redeploy-log-processor"
+  name              = local.pattern_redeploy_name
   description       = trimspace(templatefile("${path.module}/templates/remediation-redeploy-log-processor.md", {}))
   risk_level        = "high"
   blast_radius      = "data-pipeline"
@@ -109,7 +155,7 @@ resource "sg_remediation_pattern" "redeploy_log_processor" {
 
 # Evidence checklist
 resource "sg_evidence_checklist" "azure_devops_incident" {
-  name        = "azure-devops-incident"
+  name        = local.evidence_name
   description = trimspace(templatefile("${path.module}/templates/evidence-azure-devops-incident.md", {}))
   approve     = true
   required_items = [
@@ -127,7 +173,7 @@ resource "sg_evidence_checklist" "azure_devops_incident" {
 
 # Workflow — 5-stage DAG
 resource "sg_workflow" "azure_devops_full_triage" {
-  name        = "azure-devops-full-triage"
+  name        = local.workflow_name
   domain      = "incident-response"
   description = trimspace(templatefile("${path.module}/templates/workflow-azure-devops-full-triage.md", {}))
   approve     = true

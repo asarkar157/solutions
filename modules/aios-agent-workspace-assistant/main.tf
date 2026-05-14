@@ -5,29 +5,71 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "workspace-assistant"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name      = "workspace-assistant${local.suffix}"
+  workflow_name   = "developer-daily-triage${local.suffix}"
+  sop_triage_name = "developer-triage-sop${local.suffix}"
+
+  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+  linear_integration_name = "${local.module_prefix}-linear${local.suffix}"
+
+  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_linear = trimspace(var.linear_credential_provider_id) != "" && trimspace(var.existing_linear_integration_name) == ""
+
+  resolved_google_integration_name = trimspace(var.existing_google_integration_name)
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_linear_integration_name = trimspace(var.existing_linear_integration_name) != "" ? var.existing_linear_integration_name : (
+    local.provision_linear ? module.linear_integration[0].integration_name : ""
+  )
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
+module "linear_integration" {
+  count  = local.provision_linear ? 1 : 0
+  source = "../aios-integration-linear"
+
+  integration_name       = local.linear_integration_name
+  credential_provider_id = var.linear_credential_provider_id
+}
+
 # =============================================================================
 # Workspace Assistant Agent Module
 # =============================================================================
 # Google Workspace + Slack + Linear triage agent for daily developer workflows.
 
 resource "sg_agent" "workspace_assistant" {
-  name        = "workspace-assistant"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/workspace-assistant.md")
   model_names = compact(var.model_names)
 
   hitl = {
-    always_allowed = concat(var.google_readonly_tools, var.linear_readonly_tools, [
-      "mcp:slack-integration:channels_list",
-      "mcp:slack-integration:conversations_history",
-      "slack-integration_channels_list",
-      "slack-integration_conversations_history"
-    ])
+    always_allowed = concat(
+      var.google_readonly_tools,
+      var.linear_readonly_tools,
+      local.resolved_slack_integration_name != "" ? [
+        "${local.resolved_slack_integration_name}_channels_list",
+        "${local.resolved_slack_integration_name}_conversations_history",
+      ] : [],
+    )
   }
 
   integrations = compact([
-    lookup(var.integration_names, "google", "") != "" ? var.integration_names.google : null,
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
-    lookup(var.integration_names, "linear", "") != "" ? var.integration_names.linear : null,
+    local.resolved_google_integration_name,
+    local.resolved_slack_integration_name,
+    local.resolved_linear_integration_name,
   ])
 }
 
@@ -45,13 +87,13 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 }
 
 resource "sg_runbook_sop" "developer_triage_sop" {
-  name        = "developer-triage-sop"
+  name        = local.sop_triage_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/developer-triage-sop.md", {}))
 }
 
 resource "sg_workflow" "developer_daily_triage" {
-  name        = "developer-daily-triage"
+  name        = local.workflow_name
   domain      = "workspace-assistant"
   description = trimspace(templatefile("${path.module}/templates/workflow-developer-daily-triage.md", {}))
   approve     = true

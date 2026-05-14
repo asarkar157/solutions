@@ -2,27 +2,26 @@ Skill: Scaffold a brand-new demo scenario under `examples/scenarios/<scenario_sl
 
 Keywords for skill discovery: scaffold, examples/scenarios, demo scenario, main.tf, variables.tf, outputs.tf, terraform.tfvars.example, README.md, tofu fmt, tofu validate, scripts/demo.sh, scenario_pitch, se-playbook.
 
-Prerequisites (all populated by `scenario-triage-sop`):
-- `repo_clone_path`, `scenario_slug`, `pitch_quote`, `gap_rationale`, `requested_modules`, `valid_modules`, `unknown_modules`, `module_signatures`, `requested_integrations`, `talk_track`, `demo_length`, `issue_details`, `gh_token`, `available_integrations`.
+Prerequisites (all populated by `${module_prefix}-triage-sop`):
+- `repo_clone_path`, `scenario_slug`, `pitch_quote`, `gap_rationale`, `requested_modules`, `valid_modules`, `unknown_modules`, `module_signatures`, `requested_integrations`, `talk_track`, `demo_length`, `issue_details`, `available_integrations`.
 
-Tool boundary: this entire skill runs inside the `scaffold-write-and-validate` Ubuntu CLI subagent (orchestration SOP Template C). All commands use `ubuntu-cli_execute_command|series|parallel`.
+Tool boundary: this entire skill runs inside the `scaffold-write-and-validate` Ubuntu CLI subagent (orchestration SOP Template C). All commands use `${ubuntu_tool_prefix}_execute_command|series|parallel`. The Ubuntu sandbox already has `tofu`, `gh`, `git`, `curl` pre-installed AND `GH_TOKEN`/`GIT_TOKEN` pre-set (see orchestration SOP §0a). NO token threading.
 
 ========================================================================
-0) Bootstrap — ensure tofu / git are on PATH
+0) Working-directory sanity
 ========================================================================
 
-The triage stage's `triage-clone` subagent installs `gh`, `git`, and `tofu` (Template B step 0). When this scaffold subagent runs in the SAME sandbox they should already exist, but the sandbox is not guaranteed to persist across subagent boundaries.
-
-a) `export PATH="$HOME/.local/bin:$PATH"`.
-b) `which tofu || which terraform` — at least one must be present. If both are missing, re-run Template B step 0c inline (OpenTofu installer with the standalone fallback). Persist `iac_binary=tofu` or `iac_binary=terraform`.
-c) `which git` — must succeed. If missing, persist `bootstrap_blocker="git_missing"` and STOP (orchestration §6(f)).
-d) `cd <repo_clone_path>` (always — never run scaffold commands from outside the clone).
+a) `export PATH="$HOME/.local/bin:$PATH"` (defensive — in case `install_tools` did not write to the default PATH).
+b) `which tofu || which terraform` — at least one must be present. If both are missing this is a sandbox-image regression; note `bootstrap_blocker="iac_missing"` and STOP (orchestration §6 generic blocked path).
+c) `which git` — must succeed. If missing, persist `bootstrap_blocker="git_missing"` and STOP.
+d) Persist `iac_binary=tofu` (or `=terraform` if only that exists) for the PR subagent.
+e) `cd <repo_clone_path>` (always — never run scaffold commands from outside the clone).
 
 ========================================================================
 1) Bootstrap the working directory
 ========================================================================
 
-a) `cd <repo_clone_path>` (step 0d).
+a) `cd <repo_clone_path>` (step 0e).
 b) `mkdir -p examples/scenarios/<scenario_slug>` — if the directory already exists, STOP and note `scaffold_blocker="conflict"`. The planner converts this to §6(e).
 c) Resolve module relative paths from inside `examples/scenarios/<scenario_slug>/` → `../../../modules/<aios-*>`. Use this prefix everywhere in `main.tf`.
 d) If `valid_modules` is empty (every entry in `requested_modules` was unknown), persist `scaffold_blocker="all_modules_unknown"` and STOP. Without a real module to wire, scaffolding a demo is impossible — the final issue comment surfaces `unknown_modules` so the SE knows to fix the names.
@@ -81,36 +80,34 @@ module "policies" {
   }
 }
 
-# Integrations — one block per integration in requested_integrations.
-# Required integrations are unconditional. Optional ones are gated on a
-# non-empty token/role-ARN variable using `count`.
-<INTEGRATION_BLOCKS>
+# Tenant-level secrets — one per credential. Agents reference these by ID;
+# each agent module then provisions its own module-prefixed integration
+# containers internally (no shared github-integration / ubuntu-cli pattern).
+<TENANT_SECRET_BLOCKS>
 
 # Agents — one block per entry in requested_modules.
-# Wire `model_names = module.foundation.model_names` and the subset of
-# `policy_ids` each module documents in its variables.tf.
+# Wire `model_names = module.foundation.model_names`, the subset of
+# `policy_ids` each module documents in its variables.tf, and the
+# `*_secret_id` inputs derived from <TENANT_SECRET_BLOCKS>.
 <AGENT_BLOCKS>
 ```
 
-Rules for `<INTEGRATION_BLOCKS>` (use `available_integrations` AS the universe of valid integration names — skip anything in `requested_integrations` that is not in `available_integrations`):
+Rules for `<TENANT_SECRET_BLOCKS>` (drive emission from `requested_integrations` — emit ONE `sg_secret` per distinct integration type that any wired agent needs):
 
-- For each `name → required` entry in `requested_integrations` (where `name` is in `available_integrations`): emit a `module "<name>_integration"` block sourced from `../../../modules/aios-integration-<name>`. Determine the integration's required variables by grepping `modules/aios-integration-<name>/variables.tf` once for `^variable\s+"[^"]+"` and matching against the canonical credential names below:
-    | integration | likely required vars |
-    |-------------|-----------------------|
-    | aws         | `aws_role_arn`, `aws_region` |
-    | azure       | `azure_subscription_id`, `azure_tenant_id`, `azure_client_id`, `azure_client_secret` |
-    | gcp         | `gcp_service_account_key` (or `gcp_credentials_json`) |
-    | github      | `github_token` |
-    | slack       | `slack_bot_token`, optional `slack_signing_secret`, `slack_webhook_url` |
-    | grafana     | `grafana_server`, `grafana_token` |
-    | linear      | `linear_api_key` |
-    | clickhouse  | `clickhouse_url`, `clickhouse_user`, `clickhouse_password` |
-    | ubuntu      | (none) |
-    | cursor      | `cursor_api_key` |
-  When the actual `variables.tf` declares a variable not in the table above, pass it through as `<name> = var.<name>` and declare the matching root variable in step 3 with `default = ""`. Always prefer reading from the file over relying on the table — the table is a safety net for missing declarations.
-- For each `name → optional` entry: emit the same block but with `count = trimspace(var.<primary-credential>) != "" ? 1 : 0` so demos run even when the SE has not supplied that credential. `<primary-credential>` is the first required variable from the table (e.g. `aws_role_arn`, `slack_bot_token`, `github_token`).
-- For each `name → skipped` entry: emit NOTHING (a one-line `# <name> integration: skipped (prospect doesn't have it)` comment is OK).
-- The `examples/scenarios/aws-sre-demo/main.tf` file is the canonical example — match its style for `count` / `source` / argument names.
+- For each `name → required` entry in `requested_integrations` where the name is in `available_integrations`, emit a top-level `resource "sg_secret" "<name>_pat" { ... }` block using the canonical secret shape for that integration. Common shapes:
+    | integration | secret shape (category/subcategory + metadata keys) |
+    |-------------|------------------------------------------------------|
+    | aws         | `category="CloudProvider", subcategory="aws"`, metadata: `aws_role_arn`, `aws_region` |
+    | github      | `category="SCM", subcategory="github"`, metadata: `provider="github"`, `token=var.github_token` |
+    | slack       | `category="Communication", subcategory="slack"`, metadata: `slack_bot_token`, optional `slack_signing_secret` |
+    | grafana     | `category="Observability", subcategory="grafana"`, metadata: `grafana_server`, `grafana_token` |
+    | linear      | `category="ProjectManagement", subcategory="linear"`, metadata: `linear_api_key` |
+    | gcp         | `category="CloudProvider", subcategory="gcp"`, metadata: `gcp_service_account_key` |
+    | azure       | `category="CloudProvider", subcategory="azure"`, metadata: `azure_subscription_id`, `azure_tenant_id`, `azure_client_id`, `azure_client_secret` |
+    | clickhouse  | `category="Database", subcategory="clickhouse"`, metadata: `clickhouse_url`, `clickhouse_user`, `clickhouse_password` |
+- For each `name → optional` entry: emit the same block but with `count = trimspace(var.<primary-credential>) != "" ? 1 : 0`.
+- For each `name → skipped` entry: emit NOTHING (a one-line `# <name> secret: skipped (prospect doesn't have it)` comment is OK).
+- Pass-through the corresponding `var.<credential>` declarations in step 3's `variables.tf`.
 
 Rules for `<AGENT_BLOCKS>` (drive emission from `module_signatures[m]` — NEVER guess shapes):
 
@@ -123,11 +120,12 @@ d) `policy_ids` emission depends on `module_signatures[<m>].policy_type`:
     - `policy_type == "object"`: emit a literal `policy_ids = { <key> = module.policies.policy_ids.<key>, ... }` containing EXACTLY the keys in `module_signatures[<m>].policy_keys`. If a key is not in `module.policies.policy_ids` (i.e. it's not produced by `aios-policies`), emit it as a TODO comment AND `null` placeholder, and add it to the PR body's "Reviewer checklist".
     - `policy_type == "map"`: emit `policy_ids = module.policies.policy_ids` (pass the whole map).
     - `policy_type == "none"`: omit the line entirely.
-e) Integration variable emission depends on `module_signatures[<m>].integration_var`:
-    - `"integration_name"` (singular string): pick the FIRST integration `name → required` entry from `requested_integrations` whose `name` is in `available_integrations` AND in `module_signatures[<m>].integration_keys` (or — when `integration_keys` is empty — the FIRST required entry that intuitively matches the module's name, e.g. `aws-sre` → `aws`). Emit `integration_name = module.<name>_integration.integration_name`. If the integration was optional (count-gated), wrap the WHOLE agent module in `count = length(module.<name>_integration) > 0 ? 1 : 0`.
-    - `"integration_names"` (plural object): emit an object literal containing one entry per key in `module_signatures[<m>].integration_keys`. For each key, pick the matching integration from `requested_integrations`. If the integration is required and `count`-gated, use `module.<key>_integration.integration_name`; if `count`-gated AND optional, use `try(module.<key>_integration[0].integration_name, "")` so the module still type-checks. If a required key has no matching integration in `requested_integrations`, emit a TODO comment + `""` placeholder and add it to the PR body's "Reviewer checklist".
-    - `"none"`: omit the integration line entirely.
-f) For every name in `module_signatures[<m>].extra_required` (other required vars the bot does not know how to wire), emit `# TODO: required var "<name>" — fill in before applying` on a comment line and leave the value unset (causing `tofu validate` to flag the missing required input — that's intentional, the human reviewer needs to see it). Also add each such name to the PR body's "Reviewer checklist".
+e) Secret + integration wiring depends on whether the module is on the self-contained pattern:
+    - `secret_inputs` non-empty (the module owns its integrations internally): emit one line per entry in `module_signatures[<m>].secret_inputs`, e.g. `github_secret_id = sg_secret.github_pat.id` and `aws_secret_id = sg_secret.aws_pat.id`. When the matching `sg_secret.<type>_pat` block was emitted with `count`, use `sg_secret.<type>_pat[0].id`.
+    - Legacy `integration_var == "integration_name"` (singular string): pick the FIRST integration `name → required` entry from `requested_integrations` whose `name` is in `available_integrations` AND matches the module's intent. The scaffold then ALSO needs a wrapper `module "<name>_integration"` block sourced from `../../../modules/aios-integration-<name>` (emit it just above the agent block). Emit `integration_name = module.<name>_integration.integration_name`.
+    - Legacy `integration_var == "integration_names"` (plural object): emit an object literal with one entry per key in `integration_keys`, sourcing each from a wrapper `module "<key>_integration"` block. When `count`-gated AND optional, use `try(module.<key>_integration[0].integration_name, "")`.
+    - `integration_var == "none"` AND no `secret_inputs`: omit integration wiring entirely.
+f) For every name in `module_signatures[<m>].extra_required` (other required vars the bot does not know how to wire), emit `# TODO: required var "<name>" — fill in before applying` on a comment line and leave the value unset (causing `tofu validate` to flag the missing required input — that's intentional). Also add each such name to the PR body's "Reviewer checklist".
 g) Close the block with `}`.
 
 Unknown modules: anything in `unknown_modules` is skipped entirely from `<AGENT_BLOCKS>`. Do NOT emit a placeholder `module ""` block — `tofu validate` would fail on the empty name. Surface the names in the PR body's "Reviewer checklist" (Step 6, "Unknown modules") so a human can fix them.
@@ -136,7 +134,7 @@ Unknown modules: anything in `unknown_modules` is skipped entirely from `<AGENT_
 3) Write `examples/scenarios/<scenario_slug>/variables.tf`
 ========================================================================
 
-Declare every variable referenced from `main.tf`. Mirror the variable names + descriptions used in `examples/scenarios/aws-sre-demo/variables.tf` for the common ones (`stackgen_url`, `stackgen_token`, `stackgen_project_id`, `openai_api_key`, `anthropic_api_key`, `gemini_api_key`). Add per-integration variables (e.g. `aws_role_arn`, `aws_region`, `slack_bot_token`, `github_token`, `grafana_server`, `grafana_token`) only for integrations that appear in `requested_integrations`.
+Declare every variable referenced from `main.tf`. Mirror the variable names + descriptions used in `examples/scenarios/aws-sre-demo/variables.tf` for the common ones (`stackgen_url`, `stackgen_token`, `stackgen_project_id`, `openai_api_key`, `anthropic_api_key`, `gemini_api_key`). Add per-integration credential variables (e.g. `aws_role_arn`, `aws_region`, `slack_bot_token`, `github_token`, `grafana_server`, `grafana_token`) only for integrations that appear in `requested_integrations`.
 
 Required defaults:
 - `stackgen_url`, `stackgen_token`, `openai_api_key` → no default (caller must supply).
@@ -153,7 +151,7 @@ Output structure (mirror existing scenarios):
 output "next_steps" {
   description = "What to do after apply."
   value       = <<-EOT
-    1. Open Guild at ${var.stackgen_url}
+    1. Open Guild at $${var.stackgen_url}
     2. Find the agents created below in the agent registry.
     3. Run the demo per ./README.md "Talk track".
   EOT
@@ -200,13 +198,13 @@ by the scenario owner listed in `CONTRIBUTORS-SE.md`.
 
 ## Run
 
-```bash
+\`\`\`bash
 make demo SCENARIO=<scenario_slug>
 # or directly:
 cd examples/scenarios/<scenario_slug>
 cp terraform.tfvars.example terraform.tfvars   # edit with your creds
 tofu init && tofu apply
-```
+\`\`\`
 
 ## Talk track (~<demo_length>)
 
@@ -214,9 +212,9 @@ tofu init && tofu apply
 
 ## Reset between demos
 
-```bash
+\`\`\`bash
 make demo-reset SCENARIO=<scenario_slug>
-```
+\`\`\`
 
 ## Adjusting / extending
 
@@ -252,10 +250,7 @@ Open `<repo_clone_path>/docs/se-playbook.md`. Locate the "Prospect-question → 
 | "<first ~80 chars of pitch_quote, in quotes>" | **`<scenario_slug>`** | <one-liner: which modules wire + which integrations + ideal length>. |
 ```
 
-a) Use `awk` or `sed` to insert the line. Match the anchor by finding the LAST line of the existing table (the row before the blank line that follows the table). Example with `sed`:
-   `LAST_TABLE_LINE=$(awk '/^\|.*\|.*\|.*\|$/ {n=NR} END{print n}' docs/se-playbook.md)`
-   `sed -i.bak "${LAST_TABLE_LINE}a | \"<pitch>\" | \*\*\`<slug>\`\*\* | <why>. |" docs/se-playbook.md`
-   `rm docs/se-playbook.md.bak`.
+a) Use `awk` or `sed` to insert the line. Match the anchor by finding the LAST line of the existing table (the row before the blank line that follows the table).
 b) **Validate the splice did not break the markdown**: count rows before/after with `rg -c '^\|.*\|.*\|.*\|$' docs/se-playbook.md`. The "after" count must be exactly "before + 1".
     - If the count is wrong, revert with `mv docs/se-playbook.md.bak docs/se-playbook.md` (or `git checkout HEAD -- docs/se-playbook.md`) and retry ONCE. On second failure, note `scaffold_blocker="playbook_corrupted"` and continue WITHOUT staging `docs/se-playbook.md` — the PR body's reviewer checklist must mention this.
 
@@ -265,15 +260,14 @@ Why a row update is needed: the issue template's Acceptance checklist requires "
 8) Validate
 ========================================================================
 
-Use the IaC binary discovered in step 0b (`iac_binary` note: `tofu` or `terraform`). Alias for readability: `IAC=$(command -v tofu || command -v terraform)`.
+Use the IaC binary discovered in step 0d (`iac_binary` note: `tofu` or `terraform`). Alias for readability: `IAC=$(command -v tofu || command -v terraform)`.
 
 a) `cd <repo_clone_path>/examples/scenarios/<scenario_slug>`
 b) `"$IAC" fmt -recursive .` (always — silences formatting nits in the PR).
 c) `"$IAC" init -backend=false -input=false` — should succeed offline because every module source is local (`../../../modules/...`).
 d) `"$IAC" validate -no-color` — capture the full output.
     - On success: persist `validation_summary="ok: fmt + init + validate clean"` (also include the IaC binary name so the PR reviewer knows which one).
-    - On failure: ONE retry attempt is allowed. Re-read the error, apply the single most obvious fix (typo in a module variable, missing required var, mis-spelled output reference, integration block referenced from `<AGENT_BLOCKS>` but not emitted because it was `skipped`). Re-run `"$IAC" fmt` + `"$IAC" validate`. If the second run still fails, persist `validation_summary="failed: <first ~400 chars of error>"` and continue — do NOT loop.
-e) Repeat step 8 from `<repo_clone_path>` root (not from inside the scenario dir) using `"$IAC" fmt -recursive scripts` is NOT necessary — scripts are Bash, not HCL. Only fmt the new scenario directory.
+    - On failure: ONE retry attempt is allowed. Re-read the error, apply the single most obvious fix (typo in a module variable, missing required var, mis-spelled output reference, secret block referenced from `<AGENT_BLOCKS>` but not emitted because it was `skipped`). Re-run `"$IAC" fmt` + `"$IAC" validate`. If the second run still fails, persist `validation_summary="failed: <first ~400 chars of error>"` and continue — do NOT loop.
 
 Forbidden: `tofu plan` / `terraform plan` (this scenario points at a real Guild tenant and would mutate it), `tofu apply` / `terraform apply` (same), `tofu destroy` / `terraform destroy`, any IaC command that writes state.
 

@@ -7,5 +7,7 @@ output "integration_id" {
 }
 
 output "secret_id" {
-  value = sg_secret.clickhouse_vault.id
+  description = "ID of the `sg_secret` bound to this integration (newly provisioned or pre-existing)."
+  value       = local.secret_id
+  sensitive   = true
 }

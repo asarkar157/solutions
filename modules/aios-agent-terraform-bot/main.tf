@@ -2,10 +2,73 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # sg_agent.remote_runners + sg_remote_runner lookup
+      # sg_agent.remote_runners + sg_remote_runner lookup; 0.1.17 secret_ref reuse.
       version = ">= 0.1.17, < 0.2.0"
     }
   }
+}
+
+locals {
+  module_prefix = "terraform-bot"
+  suffix        = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name    = "terraform-module-manager${local.suffix}"
+  workflow_name = "terraform-module-update${local.suffix}"
+  webhook_name  = "${local.module_prefix}-github-receiver${local.suffix}"
+
+  sop_orchestration_name    = "${local.module_prefix}-orchestration-sop${local.suffix}"
+  sop_install_validate_test = "${local.module_prefix}-install-validate-test-sop${local.suffix}"
+  sop_github_content_change = "${local.module_prefix}-github-content-change-sop${local.suffix}"
+  sop_module_compliance     = "${local.module_prefix}-module-compliance-sop${local.suffix}"
+  sop_stackgen_registration = "${local.module_prefix}-stackgen-registration-sop${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+
+  resolved_github_integration_name = coalesce(
+    trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : null,
+    try(module.github_integration[0].integration_name, null),
+    local.github_integration_name,
+  )
+  resolved_ubuntu_integration_name = coalesce(
+    trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : null,
+    try(module.ubuntu_integration[0].integration_name, null),
+    local.ubuntu_integration_name,
+  )
+
+  github_tool_prefix = local.resolved_github_integration_name
+  ubuntu_tool_prefix = local.resolved_ubuntu_integration_name
+
+  persona = templatefile("${path.module}/personas/terraform-module-manager.md.tftpl", {
+    module_prefix           = local.module_prefix
+    github_integration_name = local.resolved_github_integration_name
+    ubuntu_integration_name = local.resolved_ubuntu_integration_name
+    github_tool_prefix      = local.github_tool_prefix
+    ubuntu_tool_prefix      = local.ubuntu_tool_prefix
+  })
+}
+
+# =============================================================================
+# Owned integrations — provisioned when the consumer hasn't supplied an
+# existing one to share. Both bound to `var.github_secret_id`.
+# =============================================================================
+
+module "github_integration" {
+  count  = trimspace(var.existing_github_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+  description        = "GitHub integration owned by the ${local.agent_name} agent. Bound to a shared tenant-level PAT secret."
+}
+
+module "ubuntu_integration" {
+  count  = trimspace(var.existing_ubuntu_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = [var.github_secret_id]
+  install_tools    = ["tofu", "terraform", "gh", "git", "curl"]
 }
 
 data "sg_remote_runner" "terraform_module_manager" {
@@ -18,17 +81,15 @@ data "sg_remote_runner" "terraform_module_manager" {
 # ============================================================================
 
 resource "sg_agent" "terraform_module_manager" {
-  name        = "terraform-module-manager"
-  persona     = file("${path.module}/personas/terraform-module-manager.md")
+  name        = local.agent_name
+  persona     = local.persona
   model_names = compact(var.model_names)
 
   remote_runners = length(data.sg_remote_runner.terraform_module_manager) > 0 ? toset([data.sg_remote_runner.terraform_module_manager[0].name]) : null
 
-  # Both integrations are required (see variable validation). Do not use compact() —
-  # an empty ubuntu_cli would silently drop CLI tools while the SOPs still reference ubuntu-cli_*.
   integrations = [
-    var.integration_names.github,
-    var.integration_names.ubuntu_cli,
+    local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
   ]
 }
 
@@ -53,7 +114,7 @@ resource "sg_agent_policy_attachment" "terraform_module_manager_dangerous_ops" {
 # ============================================================================
 
 resource "sg_runbook_sop" "terraform_module_compliance" {
-  name        = "terraform-module-compliance-sop"
+  name        = local.sop_module_compliance
   approve     = true
   description = <<-EOT
     Executes a strict compliance and blast radius test loop for Terraform module updates.
@@ -72,7 +133,7 @@ resource "sg_runbook_sop" "terraform_module_compliance" {
 # ============================================================================
 
 resource "sg_runbook_sop" "stackgen_module_registration" {
-  name        = "stackgen-module-registration-sop"
+  name        = local.sop_stackgen_registration
   approve     = true
   description = <<-EOT
     Provides instructions for installing the StackGen CLI and registering a Terraform module into the StackGen module catalog.
@@ -99,7 +160,7 @@ resource "sg_runbook_sop" "stackgen_module_registration" {
 # test` (or `tofu test`) HCL test framework.
 
 resource "sg_runbook_sop" "terraform_install_validate_test" {
-  name        = "terraform-install-validate-test-sop"
+  name        = local.sop_install_validate_test
   approve     = true
   description = <<-EOT
     Skill: Provision an Ubuntu CLI sandbox with Terraform or OpenTofu, validate the module under review, run static security analysis (tfsec / checkov / tflint), and author + run unit tests via the native HCL test framework (`terraform test` / `tofu test`).
@@ -109,7 +170,7 @@ resource "sg_runbook_sop" "terraform_install_validate_test" {
     Use this skill whenever the Terraform Module Manager needs to syntactically and semantically validate a module, run static security analysis (tfsec/checkov), exercise it against representative inputs, or prove that a change is non-breaking before bumping the module version.
 
     Tool boundary (critical — this is what most failed runs get wrong):
-    - All shell commands in this skill MUST be issued via the Ubuntu CLI integration tools (`ubuntu-cli_execute_command`, `ubuntu-cli_execute_series`, `ubuntu-cli_execute_parallel`).
+    - All shell commands in this skill MUST be issued via the Ubuntu CLI integration tools (`${local.ubuntu_tool_prefix}_execute_command`, `${local.ubuntu_tool_prefix}_execute_series`, `${local.ubuntu_tool_prefix}_execute_parallel`).
     - The GitHub integration tools (`github-integration_execute_*`) only run `gh` / `curl` HTTP calls — they cannot execute `terraform`, `tofu`, `tfsec`, `checkov`, `git`, `find`, `cat`, `sed`, or any other Linux command. Calling `terraform validate` through `github-integration_execute_*` always fails.
 
     Prerequisites:
@@ -173,7 +234,7 @@ resource "sg_runbook_sop" "terraform_install_validate_test" {
 # noticeably slower for multi-file changes.
 
 resource "sg_runbook_sop" "github_content_change" {
-  name        = "github-content-change-sop"
+  name        = local.sop_github_content_change
   approve     = true
   description = <<-EOT
     Skill: Use the GitHub `gh` CLI from the Ubuntu CLI sandbox to clone a repository, read / scan repo files locally, author file changes on a working branch, push, and open or update a Pull Request — without paying the per-call latency of the high-level GitHub Guild integration.
@@ -181,7 +242,7 @@ resource "sg_runbook_sop" "github_content_change" {
     Keywords for skill discovery: github, gh cli, clone repo, pull request, pr create, pr comment, pr checkout, branch, commit, push, fetch repo, list files, read files, scan repository, source code, multi-file edit, terraform, hcl, IaC, content change, auto-remediate.
 
     Anti-pattern (the most common time-sink in past runs):
-    - Do NOT read source files one at a time via `gh api /repos/<o>/<r>/contents/<path>` with `--jq '.content' | base64 -d`. That fans out N HTTP calls per file, hits auto-summarization on large responses, and forces re-fetches. Clone the repo ONCE with `git clone` via `ubuntu-cli_execute_command` and read locally with `cat` / `find` / `rg`.
+    - Do NOT read source files one at a time via `gh api /repos/<o>/<r>/contents/<path>` with `--jq '.content' | base64 -d`. That fans out N HTTP calls per file, hits auto-summarization on large responses, and forces re-fetches. Clone the repo ONCE with `git clone` via `${local.ubuntu_tool_prefix}_execute_command` and read locally with `cat` / `find` / `rg`.
     - Do NOT spawn a subagent just to fetch repo contents; clone, list, read.
 
     Use this skill whenever a workflow stage needs to:
@@ -218,8 +279,8 @@ resource "sg_runbook_sop" "github_content_change" {
 
     2b) Read repo contents from the clone (never via `gh api /contents/...` for bulk reads):
        a) `find /tmp/work/<repo> -name '*.tf' -not -path '*/.terraform/*'` to enumerate IaC files.
-       b) `cat`, `rg`, `sed`, `head` files directly from the local clone via `ubuntu-cli_execute_command`.
-       c) Use `ubuntu-cli_execute_parallel` to read multiple files in one round-trip when scanning module directories.
+       b) `cat`, `rg`, `sed`, `head` files directly from the local clone via `${local.ubuntu_tool_prefix}_execute_command`.
+       c) Use `${local.ubuntu_tool_prefix}_execute_parallel` to read multiple files in one round-trip when scanning module directories.
 
     3) Create / switch to a working branch (skip if already on the PR branch from step 2b):
        a) `git switch -c terraform-bot/<short-slug>-$(date +%Y%m%d%H%M%S)` for new work.
@@ -260,7 +321,7 @@ resource "sg_runbook_sop" "github_content_change" {
 # Ubuntu CLI toolset).
 
 resource "sg_runbook_sop" "terraform_bot_orchestration" {
-  name        = "terraform-bot-orchestration-sop"
+  name        = local.sop_orchestration_name
   approve     = true
   description = <<-EOT
     Skill: Operating manual for the Terraform Module Manager. Read this BEFORE doing anything else in any stage. It encodes the planner/executor split, integration boundaries, subagent budget rules, and context hygiene that every other skill depends on.
@@ -271,7 +332,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
     0) Reality check — you are a planner, not an executor
     ========================================================================
 
-    Your only direct tools are: `search_tools`, `create_agent`, `ask_clarifying_question`, `graph_query`, `notify`, `note`, `read_notes`, `delete_context`, `check_budget`, `knowledge_*`. You CANNOT call `github-integration_*` or `ubuntu-cli_*` directly. Every shell or API call happens inside a `create_agent` subagent.
+    Your only direct tools are: `search_tools`, `create_agent`, `ask_clarifying_question`, `graph_query`, `notify`, `note`, `read_notes`, `delete_context`, `check_budget`, `knowledge_*`. You CANNOT call `${local.github_tool_prefix}_*` or `${local.ubuntu_tool_prefix}_*` directly. Every shell or API call happens inside a `create_agent` subagent.
 
     When this SOP (or any other SOP) tells you to "run `git clone ...`" or "call `gh api ...`", that ALWAYS means: spawn ONE subagent whose `tool_names` include the right integration and whose `goal` inlines the command(s). The templates in §7 below show exactly how.
 
@@ -328,12 +389,12 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Two execution surfaces with separate filesystems and separate auth. Mismatching them is the #1 cause of failed runs (a prior trace tried to run `terraform validate` via the GitHub integration — that integration can only run `gh`/`curl`, so the validator never validated).
 
-    a) GitHub Guild integration — `github-integration_execute_command|series|parallel`:
+    a) GitHub Guild integration — `${local.github_tool_prefix}_execute_command|series|parallel`:
        - ONLY for `gh` API calls (`gh api`, `gh repo list`, `gh issue`, `gh release`) and `curl https://api.github.com/...`.
        - Does NOT have `terraform`, `tofu`, `tfsec`, `checkov`, `git clone`, `find`, `cat`, `sed`, `python`, or any general-purpose Linux toolchain.
        - Responses > ~50 KB are auto-summarized down to ~750 chars and the original is lost. Always pre-filter with `--jq` and `?per_page=`.
 
-    b) Ubuntu CLI integration — `ubuntu-cli_execute_command|series|parallel`:
+    b) Ubuntu CLI integration — `${local.ubuntu_tool_prefix}_execute_command|series|parallel`:
        - Full Linux shell sandbox. Use it for `terraform`, `tofu`, `tfsec`, `checkov`, `tflint`, `git clone`, `gh repo clone`, `gh pr create`, `gh pr comment`, `find`, `cat`, `rg`, `sed`, Python/Bash scripts, and any tool installation.
        - Also use it for read-only `curl`/`jq` against **public** HTTPS APIs that are not GitHub — e.g. `https://registry.terraform.io/v1/modules/search` (Terraform Registry module discovery). Never paste secrets into query strings.
        - The source clone, validate/test loop, and PR push all live here.
@@ -442,9 +503,9 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
        If you find yourself wanting a name not in this list, you're fanning out — STOP and consolidate into one of the approved names.
 
     c) `tool_names` rules:
-       - Validator / test / scan subagents: include `ubuntu-cli_execute_command`, `ubuntu-cli_execute_series`, `ubuntu-cli_execute_parallel`, `note`, `read_notes`, `search_skill`, `load_skill`.
-       - GH API fetcher subagents: include `github-integration_execute_command`, `github-integration_execute_parallel`, `note`, `read_notes`.
-       - PR-author subagents: include `ubuntu-cli_*` (for `gh pr create`, `gh pr comment`, `git push`), PLUS `note`, `read_notes`.
+       - Validator / test / scan subagents: include `${local.ubuntu_tool_prefix}_execute_command`, `${local.ubuntu_tool_prefix}_execute_series`, `${local.ubuntu_tool_prefix}_execute_parallel`, `note`, `read_notes`, `search_skill`, `load_skill`.
+       - GH API fetcher subagents: include `${local.github_tool_prefix}_execute_command`, `${local.github_tool_prefix}_execute_parallel`, `note`, `read_notes`.
+       - PR-author subagents: include `${local.ubuntu_tool_prefix}_*` (for `gh pr create`, `gh pr comment`, `git push`), PLUS `note`, `read_notes`.
        - Always include `note` and `read_notes` so the subagent can persist partial results before hitting its budget limit.
 
     d) Inline content into the subagent `goal` (subagents cannot see your skills):
@@ -470,7 +531,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template A — "clone the repo" (one-shot for any stage that needs source):
       agent_name: "<stage_id>-clone"
-      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","note","read_notes"]
       max_tool_iterations: 6, max_llm_calls: 5, timeout_seconds: 180
       goal: |
         Clone <repository_clone_url> (from notes) to /tmp/work/<repo_name> and persist the path.
@@ -497,7 +558,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template B — "fetch the triggering issue + capture token" (analyze-request stage):
       agent_name: "analyze-request-fetch-issue"
-      tool_names: ["github-integration_execute_command","github-integration_execute_series","note","read_notes"]
+      tool_names: ["${local.github_tool_prefix}_execute_command","${local.github_tool_prefix}_execute_series","note","read_notes"]
       max_tool_iterations: 4, max_llm_calls: 4, timeout_seconds: 90
       goal: |
         Fetch the triggering issue/PR, capture an auth token for downstream Ubuntu work, and persist trigger-payload notes.
@@ -517,7 +578,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template C — "install + validate + scan" (security-scan-and-plan stage):
       agent_name: "security-scan-and-plan-validate"
-      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","ubuntu-cli_execute_parallel","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","${local.ubuntu_tool_prefix}_execute_parallel","note","read_notes"]
       max_tool_iterations: 10, max_llm_calls: 6, timeout_seconds: 240
       goal: |
         Validate the module(s) at the clone path, run static security analysis, persist results.
@@ -528,7 +589,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template D — "open the PR" (merge-findings-and-test-loop stage):
       agent_name: "merge-findings-and-test-loop-pr"
-      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","note","read_notes"]
       max_tool_iterations: 8, max_llm_calls: 5, timeout_seconds: 180
       goal: |
         Create a working branch in the existing clone, commit the prepared changes, push, and open / update a PR.
@@ -539,7 +600,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template E — "comment on the PR/issue" (register-and-notify stage, also used for blocked-status notifications):
       agent_name: "register-and-notify-comment"
-      tool_names: ["ubuntu-cli_execute_command","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","note","read_notes"]
       max_tool_iterations: 3, max_llm_calls: 3, timeout_seconds: 60
       goal: |
         Inputs from notes: `gh_token`, `repository_full_name`, `issue_or_pr_number`, `pr_url` (optional), `registered_versions`, `validation_summary`, `test_summary`, `static_security_findings`, `deployment_impact`, `stage_summary:*` (any blocked stages).
@@ -555,7 +616,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template F — "capture GitHub token via the Guild integration" (only when §0a step 1 reports the Ubuntu sandbox has no token):
       agent_name: "analyze-request-fetch-gh-token"
-      tool_names: ["github-integration_execute_command","note","read_notes"]
+      tool_names: ["${local.github_tool_prefix}_execute_command","note","read_notes"]
       max_tool_iterations: 2, max_llm_calls: 2, timeout_seconds: 45
       goal: |
         Capture a usable GitHub token from the Guild integration so later Ubuntu-CLI subagents can `git clone` / `git push` private repos.
@@ -566,7 +627,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template G — "scaffold a new module from scratch" (fallback when Template H finds no suitable registry module):
       agent_name: "merge-findings-and-test-loop-scaffold"
-      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","note","read_notes"]
       max_tool_iterations: 12, max_llm_calls: 8, timeout_seconds: 300
       goal: |
         Create a NEW Terraform module under the existing clone, validate it, and stage it for PR.
@@ -589,7 +650,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 
     Template H — "registry-backed new module" (preferred greenfield path — search Terraform Registry, wrap a published module, test, then hand off to PR subagent):
       agent_name: "merge-findings-and-test-loop-registry-wrap"
-      tool_names: ["ubuntu-cli_execute_command","ubuntu-cli_execute_series","ubuntu-cli_execute_parallel","note","read_notes"]
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","${local.ubuntu_tool_prefix}_execute_parallel","note","read_notes"]
       max_tool_iterations: 14, max_llm_calls: 8, timeout_seconds: 360
       goal: |
         When the issue asks for a NEW module, prefer a vetted **Terraform Registry** module over inventing resources from scratch.
@@ -658,7 +719,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 # ============================================================================
 
 resource "sg_workflow" "terraform_module_update" {
-  name        = "terraform-module-update"
+  name        = local.workflow_name
   domain      = "infrastructure-as-code"
   description = "Analyzes Terraform module change requests from GitHub issues or PRs. For new modules, prefers Terraform Registry discovery (thin wrapper + tests + PR) before from-scratch scaffold. Runs security/plan compliance and deployment impact, merges findings, runs the test loop, registers into StackGen, and notifies on GitHub."
   approve     = true
@@ -724,7 +785,7 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      skill_refs = concat(["terraform-bot-orchestration-sop"], try(var.workflow_skill_refs["terraform-module-update::analyze-request"], []))
+      skill_refs = concat([local.sop_orchestration_name], try(var.workflow_skill_refs["terraform-module-update::analyze-request"], []))
       note       = <<-EOT
         Budget contract: ≤ 1 subagent, ≤ $0.75, ≤ 120s.
 
@@ -761,7 +822,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_install_validate_test.name,
       ]
       skill_refs = concat(
-        ["terraform-bot-orchestration-sop", "github-content-change-sop", "terraform-module-compliance-sop", "terraform-install-validate-test-sop"],
+        [local.sop_orchestration_name, local.sop_github_content_change, local.sop_module_compliance, local.sop_install_validate_test],
         try(var.workflow_skill_refs["terraform-module-update::security-scan-and-plan"], [])
       )
       note = <<-EOT
@@ -781,7 +842,7 @@ resource "sg_workflow" "terraform_module_update" {
         - NEVER read files via `gh api /repos/.../contents/<file>` — the validator subagent reads them from the local clone with `cat`/`find`/`rg`.
         - NEVER call `gh repo list <org>` to "find the repo" — `repository_full_name` from notes is the only valid source.
         - NEVER spawn more than the 2 named subagents above. If `validation_summary` is already populated when this stage starts (re-entry case), skip to step 4.
-        - Every subagent `tool_names` MUST include `ubuntu-cli_execute_command|series|parallel` if it needs to run anything beyond `gh api`.
+        - Every subagent `tool_names` MUST include `${local.ubuntu_tool_prefix}_execute_command|series|parallel` if it needs to run anything beyond `gh api`.
       EOT
     },
     {
@@ -791,14 +852,14 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      skill_refs = concat(["terraform-bot-orchestration-sop"], try(var.workflow_skill_refs["terraform-module-update::deployment-impact-scan"], []))
+      skill_refs = concat([local.sop_orchestration_name], try(var.workflow_skill_refs["terraform-module-update::deployment-impact-scan"], []))
       note       = <<-EOT
         Budget contract: ≤ 1 subagent, ≤ $1.00, ≤ 3 minutes.
 
         Plan:
         1. `read_notes` for `issue_details` to know what module(s) are in scope.
         2. Run `graph_query` directly (the lead has this tool — no subagent needed) for downstream dependents of each affected module.
-        3. If a CLI call is required (e.g. StackGen org-inventory CLI), spawn ONE subagent `deployment-impact-scan-graph-query` with `ubuntu-cli_execute_command` + `note` + `read_notes`. Otherwise skip.
+        3. If a CLI call is required (e.g. StackGen org-inventory CLI), spawn ONE subagent `deployment-impact-scan-graph-query` with `${local.ubuntu_tool_prefix}_execute_command` + `note` + `read_notes`. Otherwise skip.
         4. note key="deployment_impact" with the dependent list + breaking-change risk score.
         5. note key="stage_summary:deployment-impact-scan".
 
@@ -815,7 +876,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.github_content_change.name,
       ]
       skill_refs = concat(
-        ["terraform-bot-orchestration-sop", "terraform-install-validate-test-sop", "github-content-change-sop"],
+        [local.sop_orchestration_name, local.sop_install_validate_test, local.sop_github_content_change],
         try(var.workflow_skill_refs["terraform-module-update::merge-findings-and-test-loop"], [])
       )
       note = <<-EOT
@@ -863,7 +924,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.github_content_change.name,
       ]
       skill_refs = concat(
-        ["terraform-bot-orchestration-sop", "stackgen-module-registration-sop", "github-content-change-sop"],
+        [local.sop_orchestration_name, local.sop_stackgen_registration, local.sop_github_content_change],
         try(var.workflow_skill_refs["terraform-module-update::register-and-notify"], [])
       )
       note = <<-EOT
@@ -896,7 +957,7 @@ resource "sg_workflow" "terraform_module_update" {
 # ============================================================================
 
 resource "sg_webhook" "github_pr_issue" {
-  name        = "github-terraform-bot-receiver"
+  name        = local.webhook_name
   target_type = "workflow"
   target_name = sg_workflow.terraform_module_update.name
   action      = "A new GitHub issue or PR was created in the terraform module repository. Triage the payload, determine the requested change, and initiate the module update workflow."

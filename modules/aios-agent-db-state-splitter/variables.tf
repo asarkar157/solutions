@@ -1,12 +1,15 @@
 variable "stackgen_mcp_integration_name" {
   description = <<-EOT
-    **Required.** Guild integration name for the **StackGen MCP** server (same pattern as `aios-agent-repo-to-iac`).
-    The agent calls AppStack / integrations tools (`create_appstack`, `add_resource_to_appstack`,
-    `connect_resources`, `create_appstack_action_run`, `get_appstacks`, env profiles, snapshots, etc. — see
-    **`stackgen-mcp-consumer-tool-catalog-sop`** for the user-MCP matrix). This module no longer supports the
-    "TF-only, no AppStack materialization" mode: the `materialize-stackgen-appstacks` stage is mandatory and the
-    `db-monorepo-state-split-evidence` checklist requires AppStack membership artifacts. Provision the StackGen
-    Consumer MCP integration (see `examples/agentic-infrastructure`) and pass its name here.
+    **Required.** Guild integration name for the **StackGen MCP** server (same pattern as
+    `aios-agent-repo-to-iac`). The StackGen MCP integration is a **tenant-level singleton** —
+    this module does **not** provision it (no `aios-integration-stackgen-mcp` exists yet); pass
+    the name of a Guild integration backed by the StackGen Consumer MCP (typically
+    `stackgen-mcp`). The agent calls AppStack / integrations tools (`create_appstack`,
+    `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`,
+    `get_appstacks`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**
+    for the user-MCP matrix). This module no longer supports the "TF-only, no AppStack
+    materialization" mode: the `materialize-stackgen-appstacks` stage is mandatory and the
+    `db-monorepo-state-split-evidence` checklist requires AppStack membership artifacts.
   EOT
   type        = string
 
@@ -33,56 +36,107 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
+# =============================================================================
+# Self-contained integration wiring (replaces the old `integration_names` map).
+# Pass `github_secret_id` + `aws_secret_id` and this module provisions its own
+# GitHub, Ubuntu, and AWS Guild integrations under module-prefixed names. The
+# `existing_*_integration_name` overrides bind to integrations already created
+# elsewhere when tenants prefer to share containers across agent modules.
+# =============================================================================
+
+variable "github_secret_id" {
   description = <<-EOT
-    Guild integrations. **All three keys are required:**
-    - **`github`** — metadata / filtered `gh api`. Provision via `modules/aios-integration-github`.
-    - **`ubuntu_cli`** — shell surface for state pull, `jq`, OpenTofu/Terraform, multi-root plans, `gh`
-      with a real clone. Provision via `modules/aios-integration-ubuntu`.
-    - **`aws`** — AWS Guild integration (`type = "aws"`) so the agent can call `aws_cli_*` MCP tools
-      for state inspection. Provision via `modules/aios-integration-aws` (or any equivalent
-      `sg_guild_integration` of `type = "aws"`).
+    Optional `sg_secret` ID for the GitHub PAT used by `gh api` and
+    `git clone` / `git push` inside the Ubuntu sandbox. When set (and
+    `existing_github_integration_name` is empty), this module provisions
+    its own GitHub Guild integration internally. When you already manage
+    the GitHub integration elsewhere, leave this empty and pass
+    `existing_github_integration_name` instead.
 
-    Pair this with the required `stackgen_mcp_integration_name` for AppStack MCP tools.
+    Forward [`aios-integration-github-from-secret`](../aios-integration-github-from-secret).secret_id
+    here for the canonical Provider/github shape — the Ubuntu image's
+    `pre_launch.sh` surfaces it as `GIT_TOKEN` / `GIT_HOST` / `GIT_USERNAME`.
 
-    **State backends + `tofu plan` connectivity (operator-owned wiring):** the AWS Guild integration
-    above exposes `aws_cli_*` tools, but `tofu plan -generate-config-out` and `tofu plan` need AWS
-    credentials inside the **Ubuntu** container (env-var auth chain). Attach a read-only AWS secret to
-    the Ubuntu integration via `sg_guild_integration.secret_ref_ids` (e.g. `AWS_ACCESS_KEY_ID` /
-    `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` metadata, or an STS-rotated equivalent). This module does
-    not perform that wiring — see the module README "Operator prerequisites" section.
-
-    **Git connectivity for `git clone iac_repository_url` (same env-mounted-secret pattern):**
-    the `github` Guild integration above only exposes `gh api` MCP tools — `git clone` / `git fetch`
-    run inside the **Ubuntu** container and need git credentials in that container's **env**, not
-    as MCP tools. Attach a read-only git secret to the Ubuntu integration via
-    `sg_guild_integration.secret_ref_ids` exposing **one of**:
-      - **HTTPS token auth** — `GIT_TOKEN`, `GIT_HOST` (e.g. `github.com`), optional
-        `GIT_USERNAME` (default `x-access-token` for GitHub/GitLab token-as-password). The SOPs
-        instruct the agent to clone with
-        `git clone https://$${GIT_USERNAME}:$${GIT_TOKEN}@$${GIT_HOST}/<org>/<repo>.git`.
-      - **SSH key auth** — `GIT_SSH_PRIVATE_KEY` (PEM body) + `GIT_SSH_KNOWN_HOSTS`; the agent
-        materializes them under `~/.ssh/` with `chmod 600` and uses an `ssh://` clone.
-    For mixed-host setups (GitHub + GitLab + internal git), append per-host suffixes
-    (`GIT_TOKEN_GITHUB`, `GIT_HOST_GITHUB`, …); the agent selects the matching pair from the host
-    parsed out of `iac_repository_url`. Module does not perform this wiring — see README
-    "Operator prerequisites" → "Git connectivity" section.
+    One of `github_secret_id` / `existing_github_integration_name` must be
+    provided. The same secret can be reused across agent modules (one Vault
+    entry per tenant).
   EOT
-  type = object({
-    github     = string
-    ubuntu_cli = string
-    aws        = string
-  })
+  type        = string
+  default     = ""
+}
+
+variable "aws_secret_id" {
+  description = <<-EOT
+    Optional `sg_secret` (`CloudProvider`/`aws`) ID holding AWS role-assume
+    metadata for the read-only role the agent uses to inspect monolith state
+    on S3 / DynamoDB / etc. When set (and `existing_aws_integration_name` is
+    empty), this module provisions its own AWS Guild integration internally.
+
+    Forward [`aios-integration-aws`](../aios-integration-aws).secret_id here,
+    or any pre-existing AWS Guild secret. One of `aws_secret_id` /
+    `existing_aws_integration_name` must be provided.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = <<-EOT
+    Optional Guild integration name to use for `gh api` calls instead of the
+    module-provisioned GitHub integration. When set (non-empty), this module
+    does NOT create its own GitHub Guild integration container — it attaches
+    the named integration to the agent. Combine with a shared `github_secret_id`
+    when many agent modules use the same tenant-level PAT.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = <<-EOT
+    Optional Guild integration name to use for the Ubuntu CLI sandbox instead
+    of the module-provisioned one. When set (non-empty), this module does NOT
+    create its own Ubuntu integration. The named integration MUST already have
+    the git + AWS secrets attached via `secret_ref_ids` and `tofu`, `gh`,
+    `awscli`, `jq`, `git`, `curl` available — see `aios-integration-ubuntu`
+    `install_tools`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = <<-EOT
+    Optional Guild integration name to use for the AWS MCP sandbox instead of
+    the module-provisioned one. When set (non-empty), this module does NOT
+    create its own AWS integration. Typical sharing pattern for SREs and IaC
+    agents that already have an `aws-production` (or equivalent) integration.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = <<-EOT
+    Optional suffix appended to the agent / workflow / runbook / webhook /
+    nested integration resource names so multiple instances of this module can
+    coexist in one Guild tenant without colliding (e.g. `prod` vs `staging`).
+    Empty by default. Forwarded into SOP `templatefile()` calls via
+    `module_prefix` so the SOP text references the correct module-prefixed
+    tool names at runtime.
+  EOT
+  type        = string
+  default     = ""
 
   validation {
-    condition = (
-      trimspace(var.integration_names.github) != ""
-      && trimspace(var.integration_names.ubuntu_cli) != ""
-      && trimspace(var.integration_names.aws) != ""
-    )
-    error_message = "integration_names.github, integration_names.ubuntu_cli, and integration_names.aws must all be non-empty."
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
   }
 }
+
+# =============================================================================
+# Remote runner attach (optional)
+# =============================================================================
 
 variable "remote_runner_name" {
   description = <<-EOT

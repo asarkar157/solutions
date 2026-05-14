@@ -154,17 +154,21 @@ module "sre_agents" {
     post_action_verification = module.policies.policy_ids.post_action_verification
   }
 
-  integration_names = {
-    slack = module.slack_integration.integration_name
-  }
+  # Self-contained pattern: share the tenant-level Slack integration. Pass
+  # `slack_secret_id = module.slack_integration.secret_id` instead to let
+  # this module provision its OWN slack-prefixed integration.
+  existing_slack_integration_name = module.slack_integration.integration_name
 }
 
 module "aws_sre" {
   source = "../../modules/aios-agent-aws-sre"
 
-  model_names      = module.foundation.model_names
-  policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-  integration_name = module.aws_integration.integration_name
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+
+  # Share the tenant-level AWS integration. To provision a dedicated
+  # `aws-sre-aws` instance instead, pass `aws_secret_id = module.aws_integration.secret_id`.
+  existing_aws_integration_name = module.aws_integration.integration_name
 }
 
 # Example: attach Guild cron schedules to any agent via the composable schedules module.
@@ -191,10 +195,15 @@ module "software_engineering" {
     container_shell_hitl = module.policies.policy_ids.container_shell_hitl
   }
 
-  integration_names = {
-    github = module.github_integration.integration_name
-    slack  = module.slack_integration.integration_name
-  }
+  # Share tenant-level GitHub + Slack. Drop the existing_* lines (or replace
+  # with `*_secret_id = module.*.secret_id`) to provision module-owned copies.
+  existing_github_integration_name = module.github_integration.integration_name
+  existing_slack_integration_name  = module.slack_integration.integration_name
+
+  # Required passthrough — no aios-integration-linear-mcp / -cursor-mcp wrappers
+  # exist yet. Set these to pre-provisioned Guild integration names.
+  existing_linear_mcp_integration_name = var.linear_mcp_integration_name
+  existing_cursor_mcp_integration_name = var.cursor_mcp_integration_name
 }
 
 module "cost_optimizer" {
@@ -203,10 +212,8 @@ module "cost_optimizer" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    aws   = module.aws_integration.integration_name
-    slack = module.slack_integration.integration_name
-  }
+  existing_aws_integration_name   = module.aws_integration.integration_name
+  existing_slack_integration_name = module.slack_integration.integration_name
 }
 
 # Weekly FinOps report — Mondays 09:00 UTC. Drives the cost-optimizer's
@@ -239,10 +246,8 @@ module "alert_triage" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    grafana = module.grafana_integration[0].integration_name
-    slack   = module.slack_integration.integration_name
-  }
+  existing_grafana_integration_name = module.grafana_integration[0].integration_name
+  existing_slack_integration_name   = module.slack_integration.integration_name
 }
 
 # Use case: Unused resource detection (≥ 30 days inactive) + cleanup automation.
@@ -251,15 +256,11 @@ module "alert_triage" {
 module "resource_janitor" {
   source = "../../modules/aios-agent-resource-janitor"
 
-  # aios-foundation now exposes model_names as list(string); pass it directly.
   model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-
-  integration_names = {
-    aws   = module.aws_integration.integration_name
-    slack = module.slack_integration.integration_name
-  }
+  existing_aws_integration_name   = module.aws_integration.integration_name
+  existing_slack_integration_name = module.slack_integration.integration_name
 
   inactivity_days       = 30
   cleanup_dwell_days    = 7
@@ -292,13 +293,10 @@ module "pipeline_insights" {
   source = "../../modules/aios-agent-pipeline-insights"
 
   model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-
-  integration_names = {
-    github = module.github_integration.integration_name
-    slack  = module.slack_integration.integration_name
-  }
+  existing_github_integration_name = module.github_integration.integration_name
+  existing_slack_integration_name  = module.slack_integration.integration_name
 
   enable_slack_webhook = false
 }
@@ -310,13 +308,10 @@ module "release_tracker" {
   source = "../../modules/aios-agent-release-tracker"
 
   model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  policy_ids = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-
-  integration_names = {
-    github = module.github_integration.integration_name
-    slack  = module.slack_integration.integration_name
-  }
+  existing_github_integration_name = module.github_integration.integration_name
+  existing_slack_integration_name  = module.slack_integration.integration_name
 
   service_catalog = {
     # Replace with your real service → repository mapping.
@@ -337,10 +332,8 @@ module "compliance_auditor" {
     data_risk_pii = module.policies.policy_ids.data_risk_pii
   }
 
-  integration_names = {
-    aws    = module.aws_integration.integration_name
-    github = module.github_integration.integration_name
-  }
+  existing_aws_integration_name    = module.aws_integration.integration_name
+  existing_github_integration_name = module.github_integration.integration_name
 }
 
 module "marketing" {
@@ -356,10 +349,8 @@ module "onboarding" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    slack  = module.slack_integration.integration_name
-    github = module.github_integration.integration_name
-  }
+  existing_slack_integration_name  = module.slack_integration.integration_name
+  existing_github_integration_name = module.github_integration.integration_name
 }
 
 module "terraform_bot" {
@@ -368,10 +359,17 @@ module "terraform_bot" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    github     = module.github_integration.integration_name
-    ubuntu_cli = module.ubuntu_integration.integration_name
-  }
+  # Self-contained pattern: pass a tenant-level GitHub PAT secret. The module
+  # provisions its OWN GitHub + Ubuntu Guild integrations internally, prefixed
+  # `terraform-bot-github` / `terraform-bot-ubuntu` so the LLM sees consistent
+  # MCP tool names in every SOP. Re-use the `module.github_integration` secret
+  # so we keep ONE PAT in Vault for the whole tenant.
+  github_secret_id = module.github_integration.secret_id
+
+  # To SHARE the tenant-level integrations (legacy pattern) instead of letting
+  # the module provision its own, uncomment these:
+  # existing_github_integration_name = module.github_integration.integration_name
+  # existing_ubuntu_integration_name = module.ubuntu_integration.integration_name
 
   # Optional remote runner: set name + remote_runner_attach_to_agent = true
   # remote_runner_name              = "my-org-tofu-runner"
@@ -383,19 +381,18 @@ module "terraform_bot" {
 # existing scenarios under examples/scenarios/, or scaffolds a brand-new
 # scenario PR (5 files + scripts/demo.sh registry entry), validates with
 # tofu fmt + validate, opens the PR, and comments back on the originating
-# issue. Same integration set as terraform_bot (GitHub + Ubuntu CLI) so
-# `gh` CLI work piggybacks on the existing Ubuntu sandbox. See
+# issue. Self-contained: the module provisions its own
+# `scenario-author-github` + `scenario-author-ubuntu` Guild integrations,
+# both bound to the same tenant-level PAT secret so `gh` and `git` are
+# pre-authed inside the sandbox (no token threading through subagent
+# goals — that pattern failed in early traces). See
 # modules/aios-agent-scenario-author/README.md and docs/se-feedback.md.
 module "scenario_author" {
   source = "../../modules/aios-agent-scenario-author"
 
-  model_names = module.foundation.model_names
-  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-
-  integration_names = {
-    github     = module.github_integration.integration_name
-    ubuntu_cli = module.ubuntu_integration.integration_name
-  }
+  model_names      = module.foundation.model_names
+  policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+  github_secret_id = module.github_integration.secret_id
 
   # Defaults: appcd-dev/solutions + scenario-request label.
   # Override repository_full_name for forks or staging tenants.
@@ -409,11 +406,13 @@ module "db_state_splitter" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    github     = module.github_integration.integration_name
-    ubuntu_cli = module.ubuntu_integration.integration_name
-    aws        = module.aws_integration.integration_name
-  }
+  # Self-contained pattern: pass GitHub + AWS PAT secrets and let the module
+  # provision its own module-prefixed integrations. Or set
+  # `existing_*_integration_name` to share the tenant-level integrations.
+  github_secret_id = module.github_integration.secret_id
+  aws_secret_id    = module.aws_integration.secret_id
+
+  existing_ubuntu_integration_name = module.ubuntu_integration.integration_name
 
   # Required: StackGen Consumer MCP attached above. AppStack materialization is mandatory.
   stackgen_mcp_integration_name = sg_guild_integration.stackgen_mcp.name

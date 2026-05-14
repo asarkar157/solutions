@@ -1,20 +1,37 @@
 variable "slack_bot_token" {
-  description = "Slack Bot Token"
+  description = <<-EOT
+    Slack Bot Token. When set, this module creates a fresh `sg_secret` of
+    category `Notification`, subcategory `slack` and binds the integration
+    to it. Mutually exclusive with `existing_secret_id` — set exactly one.
+  EOT
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "slack_signing_secret" {
-  description = "Slack Signing Secret"
+  description = "Slack Signing Secret. Only used when creating a fresh secret (i.e. `existing_secret_id` is empty)."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "slack_webhook_url" {
-  description = "Slack Webhook URL"
+  description = "Slack Webhook URL. Only used when creating a fresh secret (i.e. `existing_secret_id` is empty)."
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional ID of a pre-existing `sg_secret` holding Slack credentials. When
+    set, this module skips creating its own secret and binds the Slack
+    integration directly to the supplied secret. Use this when several agent
+    modules share a single tenant-level Slack workspace. Mutually exclusive
+    with `slack_bot_token` — set exactly one.
+  EOT
+  type        = string
   default     = ""
 }
 

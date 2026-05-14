@@ -1,7 +1,29 @@
 variable "github_token" {
-  description = "GitHub personal access token (requires repo, read:org scopes)"
+  description = <<-EOT
+    GitHub personal access token (requires `repo`, `read:org` scopes). When set, this module
+    creates a fresh `sg_secret` of category `SCM`/subcategory `github` and binds the integration
+    to it. Mutually exclusive with `existing_secret_id` — set exactly one. Pass `""` (the
+    default) when `existing_secret_id` is supplied instead.
+  EOT
   type        = string
+  default     = ""
   sensitive   = true
+}
+
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional ID of a pre-existing `sg_secret` holding the GitHub PAT. When set, this module
+    skips creating its own secret and binds the GitHub integration directly to the supplied
+    secret. Use this when several agent modules share a single tenant-level PAT in Vault and
+    you do not want a duplicate `sg_secret` per consumer. Mutually exclusive with
+    `github_token` — set exactly one.
+
+    The referenced secret SHOULD use category `SCM`, subcategory `github`, with metadata
+    `{ provider = "github", token = <pat> }` to remain compatible with the Guild GitHub
+    integration container's secret reader.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "integration_name" {

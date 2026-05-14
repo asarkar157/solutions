@@ -4,6 +4,84 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "sdlc"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_cloud_infra_name          = "cloud-infrastructure-engineer${local.suffix}"
+  agent_k8s_ops_name              = "kubernetes-operator${local.suffix}"
+  agent_github_scm_name           = "github-scm-manager${local.suffix}"
+  agent_qa_testing_name           = "qa-test-engineer${local.suffix}"
+  agent_docs_writer_name          = "documentation-writer${local.suffix}"
+  agent_ui_frontend_name          = "ui-frontend-developer${local.suffix}"
+  agent_linear_pm_name            = "project-manager${local.suffix}"
+  agent_datadog_alert_triage_name = "datadog-alert-analyst${local.suffix}"
+  agent_github_pr_reminder_name   = "pr-review-reminder${local.suffix}"
+
+  workflow_release_name          = "release-pipeline${local.suffix}"
+  workflow_developer_intake_name = "developer-request-intake${local.suffix}"
+  sop_stackgen_mcp_iac_name      = "stackgen-mcp-iac${local.suffix}"
+  evidence_dev_intake_name       = "sdlc-developer-request-intake-evidence${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+  aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
+  gcp_integration_name    = "${local.module_prefix}-gcp${local.suffix}"
+
+  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_aws    = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+  provision_gcp    = trimspace(var.gcp_secret_id) != "" && trimspace(var.existing_gcp_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+  resolved_gcp_integration_name = trimspace(var.existing_gcp_integration_name) != "" ? var.existing_gcp_integration_name : (
+    local.provision_gcp ? module.gcp_integration[0].integration_name : ""
+  )
+  resolved_stackgen_mcp_integration_name = trimspace(var.stackgen_mcp_integration_name)
+  resolved_linear_mcp_integration_name   = trimspace(var.linear_mcp_integration_name)
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+}
+
+module "gcp_integration" {
+  count  = local.provision_gcp ? 1 : 0
+  source = "../aios-integration-gcp"
+
+  integration_name   = local.gcp_integration_name
+  existing_secret_id = var.gcp_secret_id
+}
+
 # ============================================================================
 # SDLC Domain Module
 # ============================================================================
@@ -17,7 +95,7 @@ terraform {
 # ============================================================================
 
 resource "sg_agent" "cloud_infra" {
-  name        = "cloud-infrastructure-engineer"
+  name        = local.agent_cloud_infra_name
   persona     = file("${path.module}/personas/cloud-infra.md")
   model_names = compact(var.model_names)
 
@@ -26,61 +104,61 @@ resource "sg_agent" "cloud_infra" {
   }
 
   integrations = compact([
-    lookup(var.integration_names, "aws_production", ""),
-    lookup(var.integration_names, "stackgen_mcp", ""),
-    lookup(var.integration_names, "gcp_production", ""),
-    lookup(var.integration_names, "slack", ""),
+    local.resolved_aws_integration_name,
+    local.resolved_stackgen_mcp_integration_name,
+    local.resolved_gcp_integration_name,
+    local.resolved_slack_integration_name,
   ])
 }
 
 resource "sg_agent" "k8s_ops" {
-  name        = "kubernetes-operator"
+  name        = local.agent_k8s_ops_name
   persona     = file("${path.module}/personas/k8s-ops.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "github_scm" {
-  name        = "github-scm-manager"
+  name        = local.agent_github_scm_name
   persona     = file("${path.module}/personas/github-scm.md")
   model_names = compact(var.model_names)
 
-  integrations = var.github_token != "" ? compact([lookup(var.integration_names, "github_scm", "github-integration")]) : []
+  integrations = compact([local.resolved_github_integration_name])
 }
 
 resource "sg_agent" "qa_testing" {
-  name        = "qa-test-engineer"
+  name        = local.agent_qa_testing_name
   persona     = file("${path.module}/personas/qa-testing.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "docs_writer" {
-  name        = "documentation-writer"
+  name        = local.agent_docs_writer_name
   persona     = file("${path.module}/personas/docs-writer.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "ui_frontend" {
-  name        = "ui-frontend-developer"
+  name        = local.agent_ui_frontend_name
   persona     = file("${path.module}/personas/ui-frontend.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "linear_pm" {
-  name        = "project-manager"
+  name        = local.agent_linear_pm_name
   persona     = file("${path.module}/personas/linear-pm.md")
   model_names = compact(var.model_names)
 
-  integrations = var.linear_mcp_integration_name != "" ? [var.linear_mcp_integration_name] : []
+  integrations = local.resolved_linear_mcp_integration_name != "" ? [local.resolved_linear_mcp_integration_name] : []
 }
 
 resource "sg_agent" "datadog_alert_triage" {
-  name        = "datadog-alert-analyst"
+  name        = local.agent_datadog_alert_triage_name
   persona     = file("${path.module}/personas/datadog-alert-triage.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "github_pr_reminder" {
-  name        = "pr-review-reminder"
+  name        = local.agent_github_pr_reminder_name
   persona     = file("${path.module}/personas/github-pr-reminder.md")
   model_names = compact(var.model_names)
 
@@ -160,7 +238,7 @@ resource "sg_agent_budget" "github_pr_reminder" {
 # ============================================================================
 
 resource "sg_runbook_sop" "stackgen_mcp_iac" {
-  name        = "stackgen-mcp-iac"
+  name        = local.sop_stackgen_mcp_iac_name
   approve     = true
   description = trimspace(file("${path.module}/templates/stackgen-mcp-iac.md"))
 }
@@ -272,7 +350,7 @@ resource "sg_agent_policy_attachment" "github_pr_reminder_org_restriction" {
 # ============================================================================
 
 resource "sg_workflow" "release_pipeline" {
-  name        = "release-pipeline"
+  name        = local.workflow_release_name
   domain      = "release-pipeline"
   description = trimspace(templatefile("${path.module}/templates/workflow-release-pipeline.md", {}))
   # Guild `approve`: auto-approve the workflow *definition* draft after apply (provider sg_workflow).
@@ -391,7 +469,7 @@ resource "sg_workflow" "release_pipeline" {
 # ============================================================================
 
 resource "sg_evidence_checklist" "developer_request_intake_evidence" {
-  name        = "sdlc-developer-request-intake-evidence"
+  name        = local.evidence_dev_intake_name
   description = "Proof-of-work for developer platform requests: classification, tracking issue, policy evaluation, and execution evidence before closing."
   approve     = true
   required_items = [
@@ -412,7 +490,7 @@ resource "sg_evidence_checklist" "developer_request_intake_evidence" {
 # ============================================================================
 
 resource "sg_workflow" "developer_request_intake" {
-  name        = "developer-request-intake"
+  name        = local.workflow_developer_intake_name
   domain      = "developer-services"
   description = trimspace(templatefile("${path.module}/templates/workflow-developer-request-intake.md", {}))
   # Guild `approve`: auto-approve the workflow *definition* draft after apply (provider sg_workflow).

@@ -8,12 +8,72 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "release-tracker"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name    = "${local.module_prefix}${local.suffix}"
+  workflow_name = "microservice-release-tracking${local.suffix}"
+
+  sop_latest_tags_name      = "latest-tags-and-releases${local.suffix}"
+  sop_container_image_name  = "container-image-tag-discovery${local.suffix}"
+  sop_deployed_version_name = "deployed-version-correlation${local.suffix}"
+  sop_release_diff_name     = "release-diff${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+
+  # `provision_github` must be plan-time known (drives `count`). Consumers
+  # often forward a computed `github_secret_id` (e.g. `module.github_pat[0].secret_id`)
+  # so we don't inspect it here. The inner module surfaces a clear error
+  # when both `github_secret_id` and `existing_github_integration_name` are
+  # missing. Slack is optional — keeping the secret_id clause preserves the
+  # "skip slack entirely when both inputs are blank" semantics.
+  provision_github = trimspace(var.existing_github_integration_name) == ""
+  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+}
+
+resource "terraform_data" "github_integration_required" {
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.resolved_github_integration_name) != ""
+      error_message = "aios-agent-release-tracker needs a GitHub Guild integration: provide `github_secret_id` (module provisions one) or `existing_github_integration_name`."
+    }
+  }
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+  description        = "GitHub integration owned by the ${local.agent_name} agent (read-only tags/releases/GHCR queries)."
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+  description        = "Slack integration owned by the ${local.agent_name} agent (periodic digests + replies)."
+}
+
 # =============================================================================
 # Microservice Release & Tag Tracker (read-only, GitHub-driven)
 # =============================================================================
 
 resource "sg_agent" "release_tracker" {
-  name        = "release-tracker"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/release-tracker.md")
   model_names = compact(var.model_names)
 
@@ -22,8 +82,8 @@ resource "sg_agent" "release_tracker" {
   }
 
   integrations = compact([
-    lookup(var.integration_names, "github", ""),
-    lookup(var.integration_names, "slack", ""),
+    local.resolved_github_integration_name,
+    local.resolved_slack_integration_name,
   ])
 }
 
@@ -44,7 +104,7 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 # -----------------------------------------------------------------------------
 
 resource "sg_runbook_sop" "latest_tags_and_releases" {
-  name    = "latest-tags-and-releases"
+  name    = local.sop_latest_tags_name
   approve = true
   description = trimspace(templatefile("${path.module}/templates/latest-tags-and-releases.md", {
     tag_limit     = var.tag_limit
@@ -53,7 +113,7 @@ resource "sg_runbook_sop" "latest_tags_and_releases" {
 }
 
 resource "sg_runbook_sop" "container_image_tag_discovery" {
-  name    = "container-image-tag-discovery"
+  name    = local.sop_container_image_name
   approve = true
   description = trimspace(templatefile("${path.module}/templates/container-image-tag-discovery.md", {
     tag_limit = var.tag_limit
@@ -61,13 +121,13 @@ resource "sg_runbook_sop" "container_image_tag_discovery" {
 }
 
 resource "sg_runbook_sop" "deployed_version_correlation" {
-  name        = "deployed-version-correlation"
+  name        = local.sop_deployed_version_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/deployed-version-correlation.md", {}))
 }
 
 resource "sg_runbook_sop" "release_diff" {
-  name        = "release-diff"
+  name        = local.sop_release_diff_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/release-diff.md", {}))
 }
@@ -77,7 +137,7 @@ resource "sg_runbook_sop" "release_diff" {
 # -----------------------------------------------------------------------------
 
 resource "sg_workflow" "release_tracking" {
-  name        = "microservice-release-tracking"
+  name        = local.workflow_name
   domain      = "delivery-intelligence"
   description = trimspace(templatefile("${path.module}/templates/workflow-release-tracking.md", {}))
   approve     = true
@@ -119,14 +179,14 @@ resource "sg_workflow" "release_tracking" {
       stage_id   = "resolve-target"
       agent_ref  = sg_agent.release_tracker.name
       note       = format("Service catalog is %s.", length(var.service_catalog) > 0 ? "configured" : "empty — operator must supply repository directly")
-      skill_refs = concat(["release-tracker-resolve-target"], try(var.workflow_skill_refs["microservice-release-tracking::resolve-target"], []))
+      skill_refs = concat(["release-tracker-resolve-target"], try(var.workflow_skill_refs["${local.workflow_name}::resolve-target"], []))
     },
     {
       stage_id         = "fetch-tags-releases"
       agent_ref        = sg_agent.release_tracker.name
       stage_depends_on = ["resolve-target"]
       runbook_refs     = [sg_runbook_sop.latest_tags_and_releases.name]
-      skill_refs       = concat(["release-tracker-tags-releases"], try(var.workflow_skill_refs["microservice-release-tracking::fetch-tags-releases"], []))
+      skill_refs       = concat(["release-tracker-tags-releases"], try(var.workflow_skill_refs["${local.workflow_name}::fetch-tags-releases"], []))
     },
     {
       stage_id         = "fetch-image-tags"
@@ -134,27 +194,27 @@ resource "sg_workflow" "release_tracking" {
       stage_depends_on = ["resolve-target"]
       runbook_refs     = [sg_runbook_sop.container_image_tag_discovery.name]
       note             = format("Default image namespace template: %s", var.image_namespace_template)
-      skill_refs       = concat(["release-tracker-image-tags"], try(var.workflow_skill_refs["microservice-release-tracking::fetch-image-tags"], []))
+      skill_refs       = concat(["release-tracker-image-tags"], try(var.workflow_skill_refs["${local.workflow_name}::fetch-image-tags"], []))
     },
     {
       stage_id         = "deployed-version"
       agent_ref        = sg_agent.release_tracker.name
       stage_depends_on = ["resolve-target"]
       runbook_refs     = [sg_runbook_sop.deployed_version_correlation.name]
-      skill_refs       = concat(["release-tracker-deployed-version"], try(var.workflow_skill_refs["microservice-release-tracking::deployed-version"], []))
+      skill_refs       = concat(["release-tracker-deployed-version"], try(var.workflow_skill_refs["${local.workflow_name}::deployed-version"], []))
     },
     {
       stage_id         = "diff"
       agent_ref        = sg_agent.release_tracker.name
       stage_depends_on = ["resolve-target"]
       runbook_refs     = [sg_runbook_sop.release_diff.name]
-      skill_refs       = concat(["release-tracker-diff"], try(var.workflow_skill_refs["microservice-release-tracking::diff"], []))
+      skill_refs       = concat(["release-tracker-diff"], try(var.workflow_skill_refs["${local.workflow_name}::diff"], []))
     },
     {
       stage_id         = "compose-answer"
       agent_ref        = sg_agent.release_tracker.name
       stage_depends_on = ["fetch-tags-releases", "fetch-image-tags", "deployed-version", "diff"]
-      skill_refs       = concat(["release-tracker-compose-answer"], try(var.workflow_skill_refs["microservice-release-tracking::compose-answer"], []))
+      skill_refs       = concat(["release-tracker-compose-answer"], try(var.workflow_skill_refs["${local.workflow_name}::compose-answer"], []))
     },
   ]
 }

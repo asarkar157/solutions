@@ -25,3 +25,23 @@ output "evidence_checklist_name" {
   description = "Evidence checklist used by the destructive cleanup workflow."
   value       = sg_evidence_checklist.unused_resource_cleanup_evidence.name
 }
+
+output "aws_integration_name" {
+  description = "Resolved AWS Guild integration name."
+  value       = local.resolved_aws_integration_name
+}
+
+output "azure_integration_name" {
+  description = "Resolved Azure Guild integration name."
+  value       = local.resolved_azure_integration_name
+}
+
+output "gcp_integration_name" {
+  description = "Resolved GCP Guild integration name."
+  value       = local.resolved_gcp_integration_name
+}
+
+output "slack_integration_name" {
+  description = "Resolved Slack Guild integration name."
+  value       = local.resolved_slack_integration_name
+}

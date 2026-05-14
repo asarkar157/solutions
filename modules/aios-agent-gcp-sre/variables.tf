@@ -12,9 +12,30 @@ variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
 
-variable "integration_name" {
-  type    = string
-  default = "gcp-production"
+# =============================================================================
+# Self-contained integration wiring (replaces the old `integration_name` input).
+# =============================================================================
+
+variable "gcp_secret_id" {
+  description = "**Required.** ID of an `sg_secret` (`CloudProvider`/`gcp`) holding service account credentials. Forward [`aios-integration-gcp`](../aios-integration-gcp).secret_id or an existing GCP-shaped secret."
+  type        = string
+}
+
+variable "existing_gcp_integration_name" {
+  description = "Optional Guild integration name to share an existing GCP integration instead of provisioning one."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budget" {
@@ -31,4 +52,3 @@ variable "workflow_skill_refs" {
   type        = map(list(string))
   default     = {}
 }
-

@@ -17,9 +17,28 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
-  description = "Integration names passed from the root module"
-  type = object({
-    sentry = string
-  })
+# =============================================================================
+# Integration wiring. No `aios-integration-sentry` module exists yet, so the
+# only way to wire Sentry in is via `existing_sentry_integration_name`.
+# =============================================================================
+
+variable "existing_sentry_integration_name" {
+  description = "Guild integration name for an externally-provisioned Sentry integration. Required — no aios-integration-sentry wrapper exists."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.existing_sentry_integration_name) != ""
+    error_message = "existing_sentry_integration_name is required: pass the name of a pre-provisioned Sentry Guild integration."
+  }
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }

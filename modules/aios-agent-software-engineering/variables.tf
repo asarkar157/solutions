@@ -10,9 +10,63 @@ variable "model_names" {
 variable "policy_ids" {
   type = object({ dangerous_ops = string, container_shell_hitl = optional(string, "") })
 }
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set, the module provisions an internal GitHub Guild integration for the cursor-developer agent."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration so developers can get notified."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_linear_mcp_integration_name" {
+  description = "Guild integration name for an externally-provisioned Linear MCP integration. Required (no aios-integration-linear-mcp wrapper)."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.existing_linear_mcp_integration_name) != ""
+    error_message = "existing_linear_mcp_integration_name is required."
+  }
+}
+
+variable "existing_cursor_mcp_integration_name" {
+  description = "Guild integration name for an externally-provisioned Cursor MCP integration. Required."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.existing_cursor_mcp_integration_name) != ""
+    error_message = "existing_cursor_mcp_integration_name is required."
+  }
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 variable "linear_readonly_tools" {
   type    = list(string)

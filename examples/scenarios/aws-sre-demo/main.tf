@@ -63,7 +63,7 @@ module "slack_integration" {
 module "aws_sre" {
   source = "../../../modules/aios-agent-aws-sre"
 
-  model_names      = module.foundation.model_names
-  policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
-  integration_name = module.aws_integration.integration_name
+  model_names                   = module.foundation.model_names
+  policy_ids                    = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
+  existing_aws_integration_name = module.aws_integration.integration_name
 }

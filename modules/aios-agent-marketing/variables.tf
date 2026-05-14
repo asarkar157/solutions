@@ -15,6 +15,17 @@ variable "policy_ids" {
   })
 }
 
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
+}
+
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).

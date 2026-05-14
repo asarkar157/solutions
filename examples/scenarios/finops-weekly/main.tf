@@ -59,10 +59,8 @@ module "cost_optimizer" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    aws   = module.aws_integration.integration_name
-    slack = module.slack_integration.integration_name
-  }
+  existing_aws_integration_name   = module.aws_integration.integration_name
+  existing_slack_integration_name = module.slack_integration.integration_name
 }
 
 module "resource_janitor" {
@@ -71,10 +69,8 @@ module "resource_janitor" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    aws   = module.aws_integration.integration_name
-    slack = module.slack_integration.integration_name
-  }
+  existing_aws_integration_name   = module.aws_integration.integration_name
+  existing_slack_integration_name = module.slack_integration.integration_name
 
   inactivity_days    = var.inactivity_days
   cleanup_dwell_days = 7

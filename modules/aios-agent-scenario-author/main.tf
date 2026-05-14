@@ -12,17 +12,83 @@ terraform {
 }
 
 locals {
+  module_prefix = "scenario-author"
+
   # Normalize name_suffix: empty → "" (no suffix), non-empty → "-<suffix>"
   # so every named resource ends up valid kebab-case.
   suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
 
-  agent_name             = "scenario-author${local.suffix}"
-  workflow_name          = "scenario-request-triage${local.suffix}"
-  webhook_name           = "github-scenario-request-receiver${local.suffix}"
-  sop_orchestration_name = "scenario-author-orchestration-sop${local.suffix}"
-  sop_triage_name        = "scenario-triage-sop${local.suffix}"
-  sop_scaffold_name      = "scenario-scaffold-sop${local.suffix}"
-  sop_pr_and_notify_name = "scenario-pr-and-notify-sop${local.suffix}"
+  agent_name             = "${local.module_prefix}${local.suffix}"
+  workflow_name          = "${local.module_prefix}-request-triage${local.suffix}"
+  webhook_name           = "${local.module_prefix}-github-receiver${local.suffix}"
+  sop_orchestration_name = "${local.module_prefix}-orchestration-sop${local.suffix}"
+  sop_triage_name        = "${local.module_prefix}-triage-sop${local.suffix}"
+  sop_scaffold_name      = "${local.module_prefix}-scaffold-sop${local.suffix}"
+  sop_pr_and_notify_name = "${local.module_prefix}-pr-and-notify-sop${local.suffix}"
+
+  # Module-identity-prefixed integration names. These ARE the MCP tool
+  # prefixes the LLM sees at runtime; every reference in the persona / SOPs
+  # is templated via `${github_tool_prefix}` / `${ubuntu_tool_prefix}` below.
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+
+  # Resolve to either the module-owned integration or the consumer-supplied
+  # existing one. `coalesce` returns the first non-empty value.
+  resolved_github_integration_name = coalesce(
+    trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : null,
+    try(module.github_integration[0].integration_name, null),
+    local.github_integration_name,
+  )
+  resolved_ubuntu_integration_name = coalesce(
+    trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : null,
+    try(module.ubuntu_integration[0].integration_name, null),
+    local.ubuntu_integration_name,
+  )
+
+  template_vars = {
+    module_prefix           = local.module_prefix
+    github_tool_prefix      = local.resolved_github_integration_name
+    ubuntu_tool_prefix      = local.resolved_ubuntu_integration_name
+    github_integration_name = local.resolved_github_integration_name
+    ubuntu_integration_name = local.resolved_ubuntu_integration_name
+    repository_full_name    = var.repository_full_name
+    scenario_request_label  = var.scenario_request_label
+  }
+
+  rendered_personas = {
+    for filename in fileset("${path.module}/personas", "*.md.tftpl") :
+    replace(filename, ".tftpl", "") => templatefile("${path.module}/personas/${filename}", local.template_vars)
+  }
+
+  rendered_templates = {
+    for filename in fileset("${path.module}/templates", "*.md.tftpl") :
+    replace(filename, ".tftpl", "") => templatefile("${path.module}/templates/${filename}", local.template_vars)
+  }
+}
+
+# =============================================================================
+# Owned integrations — provisioned when the consumer hasn't supplied an
+# existing one to share. Both are bound to the SAME `var.github_secret_id` so
+# the Ubuntu sandbox sees `GH_TOKEN` (or the image-equivalent) pre-set and the
+# GitHub API sandbox can authenticate `gh api` calls.
+# =============================================================================
+
+module "github_integration" {
+  count  = trimspace(var.existing_github_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+  description        = "GitHub integration owned by the ${local.agent_name} agent (issue fetch, gh api). Bound to a shared tenant-level PAT secret."
+}
+
+module "ubuntu_integration" {
+  count  = trimspace(var.existing_ubuntu_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = [var.github_secret_id]
+  install_tools    = ["tofu", "gh", "git", "curl"]
 }
 
 # =============================================================================
@@ -37,13 +103,12 @@ locals {
 
 resource "sg_agent" "scenario_author" {
   name        = local.agent_name
-  persona     = file("${path.module}/personas/scenario-author.md")
+  persona     = local.rendered_personas["scenario-author.md"]
   model_names = compact(var.model_names)
 
-  # Both integrations are required (see variable validation).
   integrations = [
-    var.integration_names.github,
-    var.integration_names.ubuntu_cli,
+    local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
   ]
 }
 
@@ -60,41 +125,38 @@ resource "sg_agent_policy_attachment" "scenario_author_dangerous_ops" {
 }
 
 # =============================================================================
-# Runbook SOPs — loaded from ./templates/*.md to keep main.tf focused
+# Runbook SOPs — loaded from ./templates/*.md.tftpl so module-prefixed tool
+# names (e.g. `scenario-author-ubuntu_execute_command`) flow into the SOP body
+# automatically when `name_suffix` is used.
 # =============================================================================
 
 resource "sg_runbook_sop" "scenario_author_orchestration" {
   name        = local.sop_orchestration_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/scenario-author-orchestration.md"))
+  description = trimspace(local.rendered_templates["scenario-author-orchestration.md"])
 }
 
 resource "sg_runbook_sop" "scenario_triage" {
   name        = local.sop_triage_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/scenario-triage.md"))
+  description = trimspace(local.rendered_templates["scenario-triage.md"])
 }
 
 resource "sg_runbook_sop" "scenario_scaffold" {
   name        = local.sop_scaffold_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/scenario-scaffold.md"))
+  description = trimspace(local.rendered_templates["scenario-scaffold.md"])
 }
 
 resource "sg_runbook_sop" "scenario_pr_and_notify" {
   name        = local.sop_pr_and_notify_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/scenario-pr-and-notify.md"))
+  description = trimspace(local.rendered_templates["scenario-pr-and-notify.md"])
 }
 
 # =============================================================================
 # Workflow — scenario-request-triage
 # =============================================================================
-# Four stages mapped 1:1 to the orchestration SOP's named subagent phases:
-#   analyze-issue → triage → scaffold-validate-pr → notify-issue-comment
-# notify-issue-comment ALWAYS runs (it's the user-visible output) and
-# branches on captured notes to pick the right comment body (gate-fail,
-# existing match, draft PR, happy PR, blocked).
 
 resource "sg_workflow" "scenario_request_triage" {
   name        = local.workflow_name
@@ -125,8 +187,8 @@ resource "sg_workflow" "scenario_request_triage" {
   stages = [
     {
       stage_id    = "analyze-issue"
-      description = "Extract trigger payload, capture GitHub token via the GitHub integration, fetch the issue body, and run the repo + label gate."
-      note        = "Single-subagent stage. Spawn `analyze-issue-fetch-issue-and-token` (orchestration SOP Template A). Evaluate the §0c gate. If the gate fails, spawn `analyze-issue-comment-gate-fail` (Template F) and stop the workflow at this stage."
+      description = "Extract trigger payload, fetch the issue body, and run the repo + label gate. Because the Ubuntu sandbox already has the GitHub PAT pre-bound, no `gh auth token` capture step is needed."
+      note        = "Single-subagent stage. Spawn `analyze-issue-fetch-issue` (orchestration SOP Template A). Evaluate the §0c gate. If the gate fails, spawn `analyze-issue-comment-gate-fail` (Template F) and stop the workflow at this stage."
       required    = true
     },
     {
@@ -175,9 +237,9 @@ resource "sg_workflow" "scenario_request_triage" {
              - `issue_author`                ← `issue.user.login`
            If `repository_full_name` or `issue_or_pr_number` is empty, branch to §6(a) of `scenario-author-orchestration-sop` and STOP.
 
-        2. `read_notes` for `issue_details` and `gh_token`. If BOTH are populated (re-entry case), skip to step 4.
+        2. `read_notes` for `issue_details`. If populated (re-entry case), skip to step 4.
 
-        3. Spawn EXACTLY one subagent named `analyze-issue-fetch-issue-and-token` per orchestration-sop Template A. It MUST do both: (a) `gh auth token` → note `gh_token` (sensitive), (b) `gh api /repos/<repository_full_name>/issues/<n>` with the `--jq` filter from Template A → note `issue_details`.
+        3. Spawn EXACTLY one subagent named `analyze-issue-fetch-issue` per orchestration-sop Template A. It calls `${local.resolved_github_integration_name}_execute_command` with `gh api /repos/<repository_full_name>/issues/<n>` and the `--jq` filter from Template A → note `issue_details`. NO token capture step — the Ubuntu sandbox already has the PAT pre-bound via `secret_ref_ids`.
 
         4. Evaluate the §0c gate using the notes:
              a) `gate_result = "wrong_repo"` if `repository_full_name` ≠ `${var.repository_full_name}`.
@@ -186,12 +248,13 @@ resource "sg_workflow" "scenario_request_triage" {
 
         5. If `gate_result` is NOT `pass`: spawn EXACTLY one subagent `analyze-issue-comment-gate-fail` (Template F) which posts the canned gate-fail comment. After it returns, note `stage_summary:analyze-issue="gate ${var.scenario_request_label} -> <gate_result>; commented and stopping"` and STOP the workflow (downstream stages will short-circuit via `read_notes` of `gate_result`).
 
-        6. If `gate_result == "pass"`: note `stage_summary:analyze-issue="gate pass; issue=<n>, slug-candidate=<from-title>, queued for triage"`. NEVER include `gh_token` value in this summary.
+        6. If `gate_result == "pass"`: note `stage_summary:analyze-issue="gate pass; issue=<n>, slug-candidate=<from-title>, queued for triage"`.
 
         Forbidden:
         - Cloning the repo (that's `triage-clone`'s job).
         - Searching the org with `gh repo list` or `gh search issues`.
         - Spawning more than the two named subagents above.
+        - Capturing or echoing the PAT — the sandbox auto-injects it.
       EOT
     },
     {
@@ -213,9 +276,9 @@ resource "sg_workflow" "scenario_request_triage" {
 
         Plan (happy path):
 
-        1. `read_notes` for `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `gh_token`, `issue_details`, `repo_clone_path`, `existing_scenarios`, `existing_match`.
+        1. `read_notes` for `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_details`, `repo_clone_path`, `existing_scenarios`, `existing_match`.
 
-        2. If `repo_clone_path` is empty, spawn ONE subagent `triage-clone` per orchestration-sop Template B + scenario-triage-sop steps 1-7. Its `goal` MUST inline the full scenario-triage-sop body (subagents cannot see learned skills). On `clone_blocker="auth"` or 404, follow §6(c) (post blocked notification via the final stage) and STOP.
+        2. If `repo_clone_path` is empty, spawn ONE subagent `triage-clone` per orchestration-sop Template B + scenario-triage-sop steps 1-7. Its `goal` MUST inline the full scenario-triage-sop body (subagents cannot see learned skills). The Ubuntu sandbox already has the GitHub PAT in env (`GIT_TOKEN` / `GH_TOKEN`) — the subagent calls `${local.resolved_ubuntu_integration_name}_execute_series` and `git clone https://github.com/<repository_full_name>.git` Just Works. On clone 404, follow §6(c) (post blocked notification via the final stage) and STOP.
 
         3. After the subagent returns, read `existing_match`. If non-null, the next stage will short-circuit — note `stage_summary:triage="existing match: <existing_match.name>; routing to notify"` and yield.
 
@@ -254,9 +317,9 @@ resource "sg_workflow" "scenario_request_triage" {
 
         Plan (happy path):
 
-        1. `read_notes` for `repo_clone_path`, `scenario_slug`, `pitch_quote`, `gap_rationale`, `requested_modules`, `requested_integrations`, `talk_track`, `demo_length`, `issue_details`, `gh_token`, `repository_full_name`, `repository_default_branch`, `issue_or_pr_number`, `validation_summary`, `pr_url`.
+        1. `read_notes` for `repo_clone_path`, `scenario_slug`, `pitch_quote`, `gap_rationale`, `requested_modules`, `requested_integrations`, `talk_track`, `demo_length`, `issue_details`, `repository_full_name`, `repository_default_branch`, `issue_or_pr_number`, `validation_summary`, `pr_url`.
 
-        2. If `validation_summary` is empty AND `scaffold_summary` is empty: spawn `scaffold-write-and-validate` (orchestration-sop Template C). Its `goal` MUST inline `scenario-scaffold-sop` steps 1-9 verbatim plus the current values of all the notes from step 1 (subagents cannot see skills). Persist `scaffold_summary`, `validation_summary`.
+        2. If `validation_summary` is empty AND `scaffold_summary` is empty: spawn `scaffold-write-and-validate` (orchestration-sop Template C). Its `goal` MUST inline `scenario-scaffold-sop` steps 1-9 verbatim plus the current values of all the notes from step 1. Persist `scaffold_summary`, `validation_summary`.
 
         3. If `pr_url` is empty AND `working_branch` is empty AND scaffold step succeeded (either `validation_summary` starts with `ok:` OR `failed:`): spawn `scaffold-pr` (orchestration-sop Template D). Its `goal` MUST inline `scenario-pr-and-notify-sop` steps 1-4 verbatim plus current notes. Persist `working_branch`, `pr_url`. If `validation_summary` starts with `failed:`, the subagent MUST add `--draft` to `gh pr create` and prepend `[draft]` to the title.
 
@@ -287,7 +350,7 @@ resource "sg_workflow" "scenario_request_triage" {
 
         Plan:
 
-        1. `read_notes` for `gh_token`, `repository_full_name`, `issue_or_pr_number`, `gate_result`, `existing_match`, `pr_url`, `working_branch`, `scenario_slug`, `validation_summary`, `scaffold_summary`, and ALL `stage_summary:*` keys.
+        1. `read_notes` for `repository_full_name`, `issue_or_pr_number`, `gate_result`, `existing_match`, `pr_url`, `working_branch`, `scenario_slug`, `validation_summary`, `scaffold_summary`, and ALL `stage_summary:*` keys.
 
         2. Skip the comment entirely IF AND ONLY IF `gate_result != "pass"` (the gate-fail comment was already posted in `analyze-issue`). In that case, note `stage_summary:notify-issue-comment="skipped: gate-fail comment already posted"` and yield.
 
@@ -299,7 +362,7 @@ resource "sg_workflow" "scenario_request_triage" {
              e) `pr_url` non-empty AND `validation_summary` starts with `failed:` → "Draft PR (validation failed)" comment.
              f) Else (no PR, no match, no clear blocker — only happens when the agent yielded mid-stage with no notes) → "Triaged, no action taken" comment that also asks the SE to re-open the issue.
 
-        4. note `stage_summary:notify-issue-comment` with: chosen comment kind + the issue URL. NEVER include `gh_token` value.
+        4. note `stage_summary:notify-issue-comment` with: chosen comment kind + the issue URL.
       EOT
     }
   ]

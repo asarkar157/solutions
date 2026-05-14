@@ -5,39 +5,49 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "grafana-sre"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name = "grafana-observability-sre${local.suffix}"
+
+  sop_service_health_name  = "grafana-service-health-pass${local.suffix}"
+  sop_alert_noise_name     = "grafana-alert-noise-check${local.suffix}"
+  sop_golden_signals_name  = "grafana-four-golden-signals${local.suffix}"
+  sop_slo_name             = "grafana-slo-error-budget-review${local.suffix}"
+  sop_dora_name            = "grafana-dora-delivery-visibility${local.suffix}"
+  sop_change_failure_name  = "grafana-change-failure-correlation${local.suffix}"
+  sop_restore_signals_name = "grafana-restore-time-signals${local.suffix}"
+  sop_red_use_name         = "grafana-red-use-workload${local.suffix}"
+
+  grafana_integration_name = "${local.module_prefix}-grafana${local.suffix}"
+
+  resolved_grafana_integration_name = coalesce(
+    trimspace(var.existing_grafana_integration_name) != "" ? var.existing_grafana_integration_name : null,
+    try(module.grafana_integration[0].integration_name, null),
+    local.grafana_integration_name,
+  )
+}
+
+module "grafana_integration" {
+  count  = trimspace(var.existing_grafana_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-grafana"
+
+  integration_name   = local.grafana_integration_name
+  existing_secret_id = var.grafana_secret_id
+  description        = "Grafana integration owned by the ${local.agent_name} agent (Loki/Mimir/Tempo + alert/dashboard queries)."
+}
+
 # =============================================================================
 # Grafana Observability SRE Agent Module
 # =============================================================================
-# Self-contained: creates its own vault secret, integration, and agent with
-# 8 observability runbooks following Google SRE and DORA practices.
-
-resource "sg_secret" "grafana_vault" {
-  name        = var.vault_secret_name
-  description = trimspace(templatefile("${path.module}/templates/secret-grafana-vault.md", {}))
-  category    = "CloudProvider"
-  subcategory = "grafana"
-  metadata = {
-    base_url  = var.grafana_base_url
-    api_token = var.grafana_api_token
-  }
-}
-
-resource "sg_guild_integration" "grafana" {
-  name           = var.integration_name
-  type           = "grafana"
-  scope          = "PROJECT"
-  secret_ref_ids = [sg_secret.grafana_vault.id]
-  enabled        = true
-  description    = trimspace(templatefile("${path.module}/templates/integration-grafana-description.md.tftpl", { grafana_base_url = var.grafana_base_url }))
-
-  image = { name = var.integration_image }
-}
 
 resource "sg_agent" "grafana_sre" {
-  name         = "grafana-observability-sre"
+  name         = local.agent_name
   persona      = file("${path.module}/personas/grafana-sre.md")
   model_names  = compact(var.model_names)
-  integrations = [sg_guild_integration.grafana.name]
+  integrations = [local.resolved_grafana_integration_name]
 }
 
 resource "sg_agent_budget" "grafana_sre" {
@@ -62,49 +72,49 @@ resource "sg_agent_policy_attachment" "data_risk" {
 # --- Runbooks (8 total) ---
 
 resource "sg_runbook_sop" "service_health_pass" {
-  name        = "grafana-service-health-pass"
+  name        = local.sop_service_health_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-service-health-pass.md", {}))
 }
 
 resource "sg_runbook_sop" "alert_noise_check" {
-  name        = "grafana-alert-noise-check"
+  name        = local.sop_alert_noise_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-alert-noise-check.md", {}))
 }
 
 resource "sg_runbook_sop" "four_golden_signals" {
-  name        = "grafana-four-golden-signals"
+  name        = local.sop_golden_signals_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-four-golden-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "slo_error_budget" {
-  name        = "grafana-slo-error-budget-review"
+  name        = local.sop_slo_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-slo-error-budget-review.md", {}))
 }
 
 resource "sg_runbook_sop" "dora_visibility" {
-  name        = "grafana-dora-delivery-visibility"
+  name        = local.sop_dora_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-dora-delivery-visibility.md", {}))
 }
 
 resource "sg_runbook_sop" "change_failure_correlation" {
-  name        = "grafana-change-failure-correlation"
+  name        = local.sop_change_failure_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-change-failure-correlation.md", {}))
 }
 
 resource "sg_runbook_sop" "restore_time_signals" {
-  name        = "grafana-restore-time-signals"
+  name        = local.sop_restore_signals_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-restore-time-signals.md", {}))
 }
 
 resource "sg_runbook_sop" "red_use_workload" {
-  name        = "grafana-red-use-workload"
+  name        = local.sop_red_use_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/grafana-red-use-workload.md", {}))
 }

@@ -20,9 +20,43 @@ variable "policy_ids" {
     azure_tool_governance    = optional(string, "")
   })
 }
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "azure_secret_id" {
+  description = "Optional `sg_secret` ID for Azure credentials. When set, the module provisions an internal Azure Guild integration."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration so the agent can post incident updates."
+  type        = string
+  default     = ""
+}
+
+variable "existing_azure_integration_name" {
+  description = "Optional Guild integration name to share an existing Azure integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 variable "azure_readonly_tools" {
   type    = list(string)

@@ -24,3 +24,18 @@ output "evidence_checklist_names" {
     incident_quick_triage = sg_evidence_checklist.incident_quick_triage.name
   }
 }
+
+output "grafana_integration_name" {
+  description = "Resolved Grafana Guild integration name (provisioned internally, shared via override, or empty if not wired)."
+  value       = local.resolved_grafana_integration_name
+}
+
+output "slack_integration_name" {
+  description = "Resolved Slack Guild integration name."
+  value       = local.resolved_slack_integration_name
+}
+
+output "linear_integration_name" {
+  description = "Resolved Linear Guild integration name."
+  value       = local.resolved_linear_integration_name
+}

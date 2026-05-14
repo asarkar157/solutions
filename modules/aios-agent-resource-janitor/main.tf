@@ -8,12 +8,93 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "resource-janitor"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name              = "resource-janitor${local.suffix}"
+  workflow_detection_name = "unused-resource-detection${local.suffix}"
+  workflow_cleanup_name   = "unused-resource-cleanup${local.suffix}"
+  sop_lambda_name         = "lambda-inactivity-scan${local.suffix}"
+  sop_s3_name             = "s3-stale-bucket-scan${local.suffix}"
+  sop_compute_name        = "idle-compute-extended-scan${local.suffix}"
+  sop_safe_cleanup_name   = "safe-cleanup-procedure${local.suffix}"
+  evidence_cleanup_name   = "unused-resource-cleanup-evidence${local.suffix}"
+
+  aws_integration_name   = "${local.module_prefix}-aws${local.suffix}"
+  azure_integration_name = "${local.module_prefix}-azure${local.suffix}"
+  gcp_integration_name   = "${local.module_prefix}-gcp${local.suffix}"
+  slack_integration_name = "${local.module_prefix}-slack${local.suffix}"
+
+  provision_aws   = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+  provision_azure = trimspace(var.azure_secret_id) != "" && trimspace(var.existing_azure_integration_name) == ""
+  provision_gcp   = trimspace(var.gcp_secret_id) != "" && trimspace(var.existing_gcp_integration_name) == ""
+  provision_slack = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+  resolved_azure_integration_name = trimspace(var.existing_azure_integration_name) != "" ? var.existing_azure_integration_name : (
+    local.provision_azure ? module.azure_integration[0].integration_name : ""
+  )
+  resolved_gcp_integration_name = trimspace(var.existing_gcp_integration_name) != "" ? var.existing_gcp_integration_name : (
+    local.provision_gcp ? module.gcp_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+
+  _scan_surface_count = length(compact([local.resolved_aws_integration_name, local.resolved_azure_integration_name, local.resolved_gcp_integration_name]))
+}
+
+resource "terraform_data" "scan_surface_required" {
+  lifecycle {
+    precondition {
+      condition     = local._scan_surface_count > 0
+      error_message = "aios-agent-resource-janitor needs at least one cloud surface: provide aws_secret_id, azure_secret_id, or gcp_secret_id (or one of the existing_*_integration_name overrides)."
+    }
+  }
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+}
+
+module "azure_integration" {
+  count  = local.provision_azure ? 1 : 0
+  source = "../aios-integration-azure"
+
+  integration_name   = local.azure_integration_name
+  existing_secret_id = var.azure_secret_id
+}
+
+module "gcp_integration" {
+  count  = local.provision_gcp ? 1 : 0
+  source = "../aios-integration-gcp"
+
+  integration_name   = local.gcp_integration_name
+  existing_secret_id = var.gcp_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
 # =============================================================================
 # Multi-Cloud Unused Resource Janitor — agent + runbooks + workflows
 # =============================================================================
 
 resource "sg_agent" "resource_janitor" {
-  name        = "resource-janitor"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/resource-janitor.md")
   model_names = compact(var.model_names)
 
@@ -22,10 +103,10 @@ resource "sg_agent" "resource_janitor" {
   }
 
   integrations = compact([
-    lookup(var.integration_names, "aws", "") != "" ? var.integration_names.aws : null,
-    lookup(var.integration_names, "azure", "") != "" ? var.integration_names.azure : null,
-    lookup(var.integration_names, "gcp", "") != "" ? var.integration_names.gcp : null,
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
+    local.resolved_aws_integration_name,
+    local.resolved_azure_integration_name,
+    local.resolved_gcp_integration_name,
+    local.resolved_slack_integration_name,
   ])
 }
 
@@ -46,7 +127,7 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 # -----------------------------------------------------------------------------
 
 resource "sg_runbook_sop" "lambda_inactivity_scan" {
-  name    = "lambda-inactivity-scan"
+  name    = local.sop_lambda_name
   approve = true
   description = trimspace(templatefile("${path.module}/templates/lambda-inactivity-scan.md", {
     inactivity_days = var.inactivity_days
@@ -54,7 +135,7 @@ resource "sg_runbook_sop" "lambda_inactivity_scan" {
 }
 
 resource "sg_runbook_sop" "s3_stale_bucket_scan" {
-  name    = "s3-stale-bucket-scan"
+  name    = local.sop_s3_name
   approve = true
   description = trimspace(templatefile("${path.module}/templates/s3-stale-bucket-scan.md", {
     inactivity_days = var.inactivity_days
@@ -62,7 +143,7 @@ resource "sg_runbook_sop" "s3_stale_bucket_scan" {
 }
 
 resource "sg_runbook_sop" "idle_compute_extended_scan" {
-  name    = "idle-compute-extended-scan"
+  name    = local.sop_compute_name
   approve = true
   description = trimspace(templatefile("${path.module}/templates/idle-compute-extended-scan.md", {
     inactivity_days = var.inactivity_days
@@ -70,7 +151,7 @@ resource "sg_runbook_sop" "idle_compute_extended_scan" {
 }
 
 resource "sg_runbook_sop" "safe_cleanup_procedure" {
-  name        = "safe-cleanup-procedure"
+  name        = local.sop_safe_cleanup_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/safe-cleanup-procedure.md", {}))
 }
@@ -80,7 +161,7 @@ resource "sg_runbook_sop" "safe_cleanup_procedure" {
 # -----------------------------------------------------------------------------
 
 resource "sg_evidence_checklist" "unused_resource_cleanup_evidence" {
-  name        = "unused-resource-cleanup-evidence"
+  name        = local.evidence_cleanup_name
   description = "Proof-of-work for destructive cleanup runs: detection batch, owner notification, quarantine tags, and operator approval before deletion."
   approve     = true
   required_items = [
@@ -105,7 +186,7 @@ resource "sg_evidence_checklist" "unused_resource_cleanup_evidence" {
 # -----------------------------------------------------------------------------
 
 resource "sg_workflow" "unused_resource_detection" {
-  name        = "unused-resource-detection"
+  name        = local.workflow_detection_name
   domain      = "finops"
   description = trimspace(templatefile("${path.module}/templates/workflow-unused-resource-detection.md", {}))
   approve     = true
@@ -167,7 +248,7 @@ resource "sg_workflow" "unused_resource_detection" {
 # -----------------------------------------------------------------------------
 
 resource "sg_workflow" "unused_resource_cleanup" {
-  name                   = "unused-resource-cleanup"
+  name                   = local.workflow_cleanup_name
   domain                 = "finops"
   description            = trimspace(templatefile("${path.module}/templates/workflow-unused-resource-cleanup.md", {}))
   approve                = true

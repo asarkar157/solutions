@@ -15,9 +15,43 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration so the auditor can pull IAM / Config evidence."
+  type        = string
+  default     = ""
+}
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for a GitHub PAT. When set, the module provisions an internal GitHub Guild integration for change-management evidence review."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budget" {

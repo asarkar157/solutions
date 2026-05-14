@@ -20,6 +20,28 @@ output "runbook_sop_names" {
   }
 }
 
+output "github_integration_name" {
+  description = <<-EOT
+    Final Guild name of the GitHub integration the agent attaches to. Equals the
+    consumer-supplied `existing_github_integration_name` when set, otherwise the
+    module-prefixed name `scenario-author-github[-<name_suffix>]` produced by the
+    internal `module.github_integration[0]`. Use this when composing the same
+    integration across multiple agent modules via `existing_*_integration_name`
+    overrides to dedupe containers.
+  EOT
+  value       = local.resolved_github_integration_name
+}
+
+output "ubuntu_integration_name" {
+  description = <<-EOT
+    Final Guild name of the Ubuntu CLI integration the agent attaches to. Equals
+    the consumer-supplied `existing_ubuntu_integration_name` when set, otherwise
+    the module-prefixed name `scenario-author-ubuntu[-<name_suffix>]` produced by
+    the internal `module.ubuntu_integration[0]`.
+  EOT
+  value       = local.resolved_ubuntu_integration_name
+}
+
 output "webhook_id" {
   description = "ID of the GitHub webhook ingress. Configure GitHub to POST `issue` events here. Empty when `enable_webhook = false`."
   value       = try(sg_webhook.github_scenario_request[0].id, "")

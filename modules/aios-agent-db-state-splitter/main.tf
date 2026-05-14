@@ -15,9 +15,77 @@ data "sg_remote_runner" "db_state_split_architect" {
 }
 
 locals {
+  module_prefix = "db-state-splitter"
+
+  # Normalize name_suffix: empty → "" (no suffix), non-empty → "-<suffix>"
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name = "db-state-split-architect${local.suffix}"
+
+  workflow_primary_name   = "db-monorepo-state-split-convergence${local.suffix}"
+  workflow_secondary_name = "orphan-iac-module-authoring${local.suffix}"
+  webhook_name            = "github-db-state-split-receiver${local.suffix}"
+
+  sop_orchestration_name     = "db-state-split-orchestration-sop${local.suffix}"
+  sop_shard_extraction_name  = "terraform-state-shard-extraction-sop${local.suffix}"
+  sop_registry_reverse_name  = "terraform-registry-reverse-iac-sop${local.suffix}"
+  sop_substate_converge_name = "terraform-substate-convergence-sop${local.suffix}"
+  sop_orphan_bootstrap_name  = "orphan-iac-module-bootstrap-sop${local.suffix}"
+  sop_appstack_playbook_name = "stackgen-appstack-mcp-playbook-sop${local.suffix}"
+  policy_auto_approve_name   = "db-state-split-stackgen-mcp-auto-approve${local.suffix}"
+  evidence_primary_name      = "db-monorepo-state-split-evidence${local.suffix}"
+  evidence_orphan_name       = "orphan-iac-module-authoring-evidence${local.suffix}"
+
+  # Module-identity-prefixed integration names. These ARE the MCP tool
+  # prefixes the LLM sees at runtime; every literal `${local.resolved_ubuntu_integration_name}_*` reference
+  # in the SOPs / persona is templated below.
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+  aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
+
+  # `provision_*` must be plan-time known because it drives `count` on the
+  # nested integration modules. We deliberately do NOT inspect
+  # `var.*_secret_id` here — the consumer often wires those from another
+  # module's output (`module.github_pat[0].secret_id`,
+  # `module.aws_integration[0].secret_id`) which is only known at apply time.
+  # When `existing_*_integration_name` is empty we always try to provision; the
+  # inner integration module's preconditions surface a clear error if the
+  # secret input is also missing.
+  provision_github = trimspace(var.existing_github_integration_name) == ""
+  provision_ubuntu = trimspace(var.existing_ubuntu_integration_name) == ""
+  provision_aws    = trimspace(var.existing_aws_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu ? module.ubuntu_integration[0].integration_name : ""
+  )
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+
   # Guild tool names are <integration_name>_<mcp_tool>; pattern suffix * bypasses HITL for all MCP tools on that integration.
   # `stackgen_mcp_integration_name` is required (variables.tf validates non-empty) so this list is always populated.
   stackgen_mcp_hitl_patterns = ["${trimspace(var.stackgen_mcp_integration_name)}_*"]
+
+  template_vars = {
+    module_prefix            = local.module_prefix
+    suffix                   = local.suffix
+    ubuntu_tool_prefix       = local.resolved_ubuntu_integration_name
+    github_tool_prefix       = local.resolved_github_integration_name
+    aws_tool_prefix          = local.resolved_aws_integration_name
+    stackgen_mcp_tool_prefix = trimspace(var.stackgen_mcp_integration_name)
+    max_iterations           = var.max_convergence_iterations
+    remote_runner_block      = local.remote_runner_block
+  }
+
+  rendered_persona = templatefile("${path.module}/personas/db-state-split-architect.md.tftpl", local.template_vars)
+
+  rendered_templates = {
+    for filename in fileset("${path.module}/templates", "*.md.tftpl") :
+    replace(filename, ".tftpl", "") => templatefile("${path.module}/templates/${filename}", local.template_vars)
+  }
 
   remote_runner_block = trimspace(var.remote_runner_name) != "" ? trimspace(<<-RUNNER
     Operator supplied **remote_runner_name** = "${var.remote_runner_name}".
@@ -26,10 +94,62 @@ locals {
     If no such tool is available, fall back to Ubuntu CLI and **serialize** plans if needed.
     RUNNER
     ) : trimspace(<<-RUNNER
-    No `remote_runner_name` was set on the module. Run **all** shell, `tofu`/`terraform`, `jq`, `git`, and state pulls via **Ubuntu CLI** subagents only. Per the **Execution Optimization Protocol** (db-state-split-orchestration-sop), multi-step work is batched into one `ubuntu-cli_execute_series`; `ubuntu-cli_execute_command` is reserved for a single cohesive command; `ubuntu-cli_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned fan-out for independent per-group / per-shard work.
+    No `remote_runner_name` was set on the module. Run **all** shell, `tofu`/`terraform`, `jq`, `git`, and state pulls via **Ubuntu CLI** subagents only. Per the **Execution Optimization Protocol** (db-state-split-orchestration-sop), multi-step work is batched into one `${local.resolved_ubuntu_integration_name}_execute_series`; `${local.resolved_ubuntu_integration_name}_execute_command` is reserved for a single cohesive command; `${local.resolved_ubuntu_integration_name}_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned fan-out for independent per-group / per-shard work.
     The **Ubuntu CLI integration** must still have whatever credentials the backend needs for `monolith_state_uri` (IAM keys, workload identity, `gcloud`/`az` login, etc.); this module does not inject cloud provider integrations beyond what Guild binds to that integration.
     RUNNER
   )
+}
+
+# =============================================================================
+# Owned integrations — provisioned when the consumer hasn't supplied an
+# existing one to share. Ubuntu gets both `github_secret_id` and `aws_secret_id`
+# attached as `secret_ref_ids` so `git clone`, `gh`, and `tofu` against AWS
+# state backends all work inside the sandbox without explicit token capture.
+# =============================================================================
+
+resource "terraform_data" "github_integration_required" {
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.resolved_github_integration_name) != ""
+      error_message = "aios-agent-db-state-splitter needs a GitHub Guild integration: provide `github_secret_id` (module provisions one) or `existing_github_integration_name`."
+    }
+  }
+}
+
+resource "terraform_data" "aws_integration_required" {
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.resolved_aws_integration_name) != ""
+      error_message = "aios-agent-db-state-splitter needs an AWS Guild integration: provide `aws_secret_id` (module provisions one) or `existing_aws_integration_name`."
+    }
+  }
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+  description        = "GitHub integration owned by the ${local.agent_name} agent (issue/PR triage, gh api). Bound to a shared tenant-level PAT secret."
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id, var.aws_secret_id])
+  install_tools    = ["tofu", "awscli", "gh", "git", "curl"]
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+  description        = "AWS Guild integration owned by the ${local.agent_name} agent (read-only state inspection via aws_cli_* tools)."
 }
 
 # =============================================================================
@@ -37,7 +157,7 @@ locals {
 # =============================================================================
 
 resource "sg_policy" "db_state_split_stackgen_mcp_auto_approve" {
-  name        = "db-state-split-stackgen-mcp-auto-approve"
+  name        = local.policy_auto_approve_name
   description = "Companion intervention policy for db-state-split-architect; when stackgen_mcp_integration_name is set, hitl.always_allowed includes <integration>_* so Consumer MCP tools skip HITL."
   type        = "intervention"
   rego_source = file("${path.module}/policies/stackgen-mcp-auto-approve.rego")
@@ -48,8 +168,8 @@ resource "sg_policy" "db_state_split_stackgen_mcp_auto_approve" {
 # =============================================================================
 
 resource "sg_agent" "db_state_split_architect" {
-  name        = "db-state-split-architect"
-  persona     = file("${path.module}/personas/db-state-split-architect.md")
+  name        = local.agent_name
+  persona     = local.rendered_persona
   model_names = compact(var.model_names)
 
   hitl = {
@@ -60,12 +180,12 @@ resource "sg_agent" "db_state_split_architect" {
 
   remote_runners = length(data.sg_remote_runner.db_state_split_architect) > 0 ? toset([data.sg_remote_runner.db_state_split_architect[0].name]) : null
 
-  integrations = [
-    var.integration_names.github,
-    var.integration_names.ubuntu_cli,
-    var.integration_names.aws,
+  integrations = compact([
+    local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
+    local.resolved_aws_integration_name,
     trimspace(var.stackgen_mcp_integration_name),
-  ]
+  ])
 }
 
 resource "sg_agent_budget" "db_state_split_architect" {
@@ -91,42 +211,39 @@ resource "sg_agent_policy_attachment" "db_state_split_architect_stackgen_mcp_aut
 # =============================================================================
 
 resource "sg_runbook_sop" "db_state_split_orchestration" {
-  name    = "db-state-split-orchestration-sop"
-  approve = true
-  description = trimspace(templatefile("${path.module}/templates/db-state-split-orchestration.md.tftpl", {
-    max_iterations      = var.max_convergence_iterations
-    remote_runner_block = local.remote_runner_block
-  }))
+  name        = local.sop_orchestration_name
+  approve     = true
+  description = trimspace(local.rendered_templates["db-state-split-orchestration.md"])
 }
 
 resource "sg_runbook_sop" "terraform_state_shard_extraction" {
-  name        = "terraform-state-shard-extraction-sop"
+  name        = local.sop_shard_extraction_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/terraform-state-shard-extraction.md"))
+  description = trimspace(local.rendered_templates["terraform-state-shard-extraction.md"])
 }
 
 resource "sg_runbook_sop" "terraform_registry_reverse_iac" {
-  name        = "terraform-registry-reverse-iac-sop"
+  name        = local.sop_registry_reverse_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/terraform-registry-reverse-iac.md"))
+  description = trimspace(local.rendered_templates["terraform-registry-reverse-iac.md"])
 }
 
 resource "sg_runbook_sop" "terraform_substate_convergence" {
-  name        = "terraform-substate-convergence-sop"
+  name        = local.sop_substate_converge_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/terraform-substate-convergence.md"))
+  description = trimspace(local.rendered_templates["terraform-substate-convergence.md"])
 }
 
 resource "sg_runbook_sop" "orphan_iac_module_bootstrap" {
-  name        = "orphan-iac-module-bootstrap-sop"
+  name        = local.sop_orphan_bootstrap_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/orphan-iac-module-bootstrap.md"))
+  description = trimspace(local.rendered_templates["orphan-iac-module-bootstrap.md"])
 }
 
 resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
-  name        = "stackgen-appstack-mcp-playbook-sop"
+  name        = local.sop_appstack_playbook_name
   approve     = true
-  description = trimspace(file("${path.module}/templates/stackgen-appstack-mcp-playbook.md"))
+  description = trimspace(local.rendered_templates["stackgen-appstack-mcp-playbook.md"])
 }
 
 # =============================================================================
@@ -134,7 +251,7 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
 # =============================================================================
 
 resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
-  name        = "db-monorepo-state-split-evidence"
+  name        = local.evidence_primary_name
   description = "Proof-of-work for monorepo state split: counts reconciled, shard manifests, plan matrix, HCL hydration converged per group, AppStack membership verified per group, and handoff artifacts."
   approve     = true
   required_items = [
@@ -168,7 +285,7 @@ resource "sg_evidence_checklist" "db_monorepo_state_split_evidence" {
 }
 
 resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
-  name        = "orphan-iac-module-authoring-evidence"
+  name        = local.evidence_orphan_name
   description = "Proof-of-work for orphan module pipeline: bundle classified, module scaffold validated, memory and PR handoff."
   approve     = true
   required_items = [
@@ -189,7 +306,7 @@ resource "sg_evidence_checklist" "orphan_iac_module_authoring_evidence" {
 # =============================================================================
 
 resource "sg_workflow" "db_monorepo_state_split_convergence" {
-  name        = "db-monorepo-state-split-convergence"
+  name        = local.workflow_primary_name
   domain      = "infrastructure-as-code"
   description = <<-EOT
     Splits a monolithic Terraform/OpenTofu state across **AWS, Azure, and GCP** into **logical resource groups**
@@ -198,7 +315,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     Optional **`grouping_strategy`** + **`max_resources_per_appstack`** cap large type buckets into smaller connected shards.
     **HCL is fully agent-authored, and only HCL:** the reverse-IaC stage runs `tofu plan -generate-config-out=generated.tf` to materialize resource bodies from import blocks; every committed file under `groups/<group_id>/` is `.tf` (HCL), never `*.tf.json`. Empty-body `main.tf` stubs are never handed off to a human; addresses the generator cannot read (provider auth / deleted) move to `orphans_bundle` automatically.
     **Git access** for `git clone iac_repository_url` runs inside the Ubuntu container with env-mounted credentials (`GIT_TOKEN` / `GIT_HOST` / `GIT_USERNAME` or `GIT_SSH_PRIVATE_KEY` + `GIT_SSH_KNOWN_HOSTS`) — same `sg_secret` → `secret_ref_ids` pattern as AWS creds. See module README "Operator prerequisites → Git connectivity".
-    **Execution Optimization Protocol (hard rule):** multi-step shell work batches into one `ubuntu-cli_execute_series`; `ubuntu-cli_execute_command` is for a single cohesive command only; independent per-group / per-shard fan-out uses `ubuntu-cli_execute_parallel` or `flow_type:"parallel"` subagent batches — never N concurrent `execute_command` calls in a single turn. See orchestration SOP § *Execution Optimization Protocol*.
+    **Execution Optimization Protocol (hard rule):** multi-step shell work batches into one `${local.resolved_ubuntu_integration_name}_execute_series`; `${local.resolved_ubuntu_integration_name}_execute_command` is for a single cohesive command only; independent per-group / per-shard fan-out uses `${local.resolved_ubuntu_integration_name}_execute_parallel` or `flow_type:"parallel"` subagent batches — never N concurrent `execute_command` calls in a single turn. See orchestration SOP § *Execution Optimization Protocol*.
     Env profile + StackGen Plan action runs are **optional**: pass **`stackgen_target_environment`** (an existing project env) only if you want them — leave it unset to skip those steps and rely on Ubuntu `tofu plan` parity. **`stackgen_environments_required="true"`** turns "env not in project settings" into a single operator notify; default is silent skip.
     **DAG:** after `registry-and-import-codegen` (fast registry lookup + per-group TF root scaffolding + `import {}` blocks), three stages run **in parallel** — **HCL hydration** (`tofu plan -generate-config-out` looped per group), **AppStack materialization** (StackGen MCP), and **orphan secondary handoff**. **Multi-shard plan convergence** waits for all three (3-way fan-in).
   EOT
@@ -317,7 +434,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       note = <<-EOT
         Budget: ≤ 2 Ubuntu-CLI subagents, ≤ $2, ≤ 6m.
         **Subagent discipline:** delegate this stage to ONE child subagent named exactly `ingest-monolith-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars (script paths only — never inline `jq`/bash). No `-v2`/`-scripts`/etc. suffixes; re-plan instead of re-trying. See db-state-split-orchestration-sop **Subagent-spawn discipline**.
-        **Execution Optimization Protocol (hard rule):** the four phases below are **four `ubuntu-cli_execute_series` calls**, not 20+ `ubuntu-cli_execute_command` calls. Audit logs showed 8 simultaneous `execute_command` calls at one timestamp in this stage — that is forbidden. Phase 0 (preflight), Phase 1 (clone), Phase 2 (state download + count), Phase 3 (final note write + disk-mirror) each batch into one `execute_series`. `execute_command` is for a single cohesive command only (e.g. `cat /tmp/db-state-split-<workflow_id>/notes.json` at stage entry). See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
+        **Execution Optimization Protocol (hard rule):** the four phases below are **four `${local.resolved_ubuntu_integration_name}_execute_series` calls**, not 20+ `${local.resolved_ubuntu_integration_name}_execute_command` calls. Audit logs showed 8 simultaneous `execute_command` calls at one timestamp in this stage — that is forbidden. Phase 0 (preflight), Phase 1 (clone), Phase 2 (state download + count), Phase 3 (final note write + disk-mirror) each batch into one `execute_series`. `execute_command` is for a single cohesive command only (e.g. `cat /tmp/db-state-split-<workflow_id>/notes.json` at stage entry). See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
         0) **Preflight `execute_series`:** `mktemp -d` (or `mkdir -p`) under `/tmp/db-state-split-<workflow_id>/` (deterministic per workflow run id), `chmod 700`, `touch .write_test && rm .write_test`, then initialize `/tmp/db-state-split-<workflow_id>/notes.json` with `echo '{}' > …` (disk-mirror seed). `note` `repo_clone_path` / `monolith_state_local_path` under that tree. Avoid `/workspace` unless proven writable.
         1) **Clone `execute_series`:** read_notes (then `cat notes.json` if present); **clone IaC repo using env-mounted git credentials** — follow db-state-split-orchestration-sop § *Git connectivity* exactly (parse host, prefer `GIT_TOKEN_<HOST>`, then generic `GIT_TOKEN` / legacy `GITHUB_TOKEN`, then SSH key). Use `git -c credential.helper=` + URL rewrite so the token never lands in `~/.git-credentials`. **Never** echo `$GIT_TOKEN` / `$GIT_SSH_PRIVATE_KEY` into `note` / `notify` / chat / logs. If env is empty and clone returns 401/403/`could not read Username`, `notify` once with `{stage:'ingest-monolith', error:'git_credentials_missing', host:"$GIT_URL_HOST"}` and **return** — do NOT `ask_clarifying_question` for a token. If clone fails for filesystem reasons, use a fresh `/tmp/...` directory and `note` the real `repo_clone_path`. If workflow inputs include `grouping_policy_json`, `note` it.
         2) **State-download `execute_series`:** download state from `monolith_state_uri` → `monolith_state_local_path` AND compute `monolith_resource_count` AND `jq`-merge the canonical keys into the disk-mirror — **one** series, not three `execute_command` calls. If `monolith_resource_count > 5000` AND workflow inputs did not set `grouping_strategy` / `max_resources_per_appstack`, auto-promote: `note grouping_strategy="connectivity_capped"`, `note max_resources_per_appstack="80"`, and surface it in `stage_summary:ingest-monolith` (see db-state-split-orchestration-sop **Large-state auto-promote heuristic**).
@@ -334,7 +451,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::discover-db-anchors"], [])
       )
       note = <<-EOT
-        **Stage entry contract (cold-start fast-fail):** in order, (1) `read_notes` (2) if 0 keys, `ubuntu-cli_execute_command` `cat /tmp/db-state-split-<workflow_id>/notes.json` and import the JSON into your working context (3) if both empty AND no `/tmp/db-state-split-<workflow_id>/` tree exists, do **not** invent recovery — `notify` once with `{stage:'discover-db-anchors', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report. Reserve `ask_clarifying_question` for cases where the operator genuinely has new information to give (missing cloud creds, an explicit `grouping_strategy` decision the workflow can't auto-derive) — not for confirming prior-stage outputs that should already be in notes/disk-mirror. See db-state-split-orchestration-sop **Cold-start fast-fail**.
+        **Stage entry contract (cold-start fast-fail):** in order, (1) `read_notes` (2) if 0 keys, `${local.resolved_ubuntu_integration_name}_execute_command` `cat /tmp/db-state-split-<workflow_id>/notes.json` and import the JSON into your working context (3) if both empty AND no `/tmp/db-state-split-<workflow_id>/` tree exists, do **not** invent recovery — `notify` once with `{stage:'discover-db-anchors', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report. Reserve `ask_clarifying_question` for cases where the operator genuinely has new information to give (missing cloud creds, an explicit `grouping_strategy` decision the workflow can't auto-derive) — not for confirming prior-stage outputs that should already be in notes/disk-mirror. See db-state-split-orchestration-sop **Cold-start fast-fail**.
         **Required keys after stage entry:** `monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, optional `grouping_policy_json` / `grouping_strategy` / `max_resources_per_appstack`. If only `monolith_state_local_path` is missing but the `/tmp/db-state-split-<workflow_id>/terraform.tfstate` file exists, adopt that path silently — do **not** ask the operator.
         **Subagent discipline:** delegate to ONE child subagent named exactly `discover-db-anchors-runner`, `task_type="terminal_calling"`, spawn goal ≤ 1000 chars referencing the script path (never inline `jq`). If the subagent does not converge, **re-plan** the subgoal (split into smaller children like `discover-db-anchors-build-seeds` / `discover-db-anchors-build-inventory`, change tool list, or change `task_type`) rather than re-running the same payload under a new name.
         Apply grouping policy + multi-vendor seeds; write `logical_group_seeds` and `db_anchor_inventory` (and mirror to `notes.json`). Auto-promote to `connectivity_capped` if `monolith_resource_count > 5000` and no operator input set the strategy (see large-state heuristic).
@@ -420,8 +537,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if both empty OR no `groups/` directory under `/tmp/db-state-split-<workflow_id>/` → `notify` once with `{stage:'hcl-hydrate-per-group', error:'cold_start_no_upstream'}` and return.
         **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary` (with per-group scaffold paths), `registry_mapping_report`, `orphans_bundle`.
         **Parallel siblings:** this stage runs concurrently with `materialize-stackgen-appstacks` and `orphans-secondary-pipeline`. Use disjoint `note` keys: this stage owns `hcl_hydration_status:<group_id>` and may append to `orphans_bundle` with `reason:"import_failed_*"` entries. **Do not** read or write `stackgen_appstack_*` or `secondary_workflow_payload` here.
-        **Subagent discipline — per-group parallel fan-out:** per-group `tofu init` + `tofu plan -generate-config-out` is fully independent across groups, so this is the right place to fan out. Spawn N parallel children named `hcl-hydrate-runner-batch-<NN>` (`task_type="coding"`, `flow_type:"parallel"`), each owning a disjoint group_id range, each child capped at ≤ 270s per `ubuntu-cli_*` call. Spawn goal ≤ 1000 chars (script paths only). If any batch does not converge, **re-plan** (smaller batch size, narrower group range, change tools) rather than re-running the same payload under a `-v2` name.
-        **Execution Optimization Protocol (hard rule):** inside each batch child, the per-group Pass 1 + Pass 2 + `tofu fmt` MUST be **one** `ubuntu-cli_execute_series` per `group_id`, not three `ubuntu-cli_execute_command` calls. **Across groups**, fan out via `flow_type:"parallel"` batch children (this stage's pattern) or `ubuntu-cli_execute_parallel` — **never** N concurrent `ubuntu-cli_execute_command` calls in a single turn. See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
+        **Subagent discipline — per-group parallel fan-out:** per-group `tofu init` + `tofu plan -generate-config-out` is fully independent across groups, so this is the right place to fan out. Spawn N parallel children named `hcl-hydrate-runner-batch-<NN>` (`task_type="coding"`, `flow_type:"parallel"`), each owning a disjoint group_id range, each child capped at ≤ 270s per `${local.resolved_ubuntu_integration_name}_*` call. Spawn goal ≤ 1000 chars (script paths only). If any batch does not converge, **re-plan** (smaller batch size, narrower group range, change tools) rather than re-running the same payload under a `-v2` name.
+        **Execution Optimization Protocol (hard rule):** inside each batch child, the per-group Pass 1 + Pass 2 + `tofu fmt` MUST be **one** `${local.resolved_ubuntu_integration_name}_execute_series` per `group_id`, not three `${local.resolved_ubuntu_integration_name}_execute_command` calls. **Across groups**, fan out via `flow_type:"parallel"` batch children (this stage's pattern) or `${local.resolved_ubuntu_integration_name}_execute_parallel` — **never** N concurrent `${local.resolved_ubuntu_integration_name}_execute_command` calls in a single turn. See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
         For each `group_id` in the batch, run **Pass 1** (`tofu init -input=false -no-color && tofu plan -generate-config-out=generated.tf -input=false -lock=false -out=hydrate.tfplan`) then **Pass 2** (`tofu plan -input=false -lock=false -out=verify.tfplan`), batched together in one `execute_series`. Loop per group until `plan_no_changes=true` or surface failed addresses to `orphans_bundle{reason:"import_failed_<provider_message>"}`. **Never** leave empty-body `resource "aws_X" "Y" {}` stubs and **never** emit owner "HCL AUTHOR" — see terraform-registry-reverse-iac-sop § *HCL hydration*.
         **HCL-only output (hard rule):** `generated.tf` and any patches you apply MUST be HCL `.tf`. The `-generate-config-out=generated.tf` flag is the only sanctioned codegen path; never `-generate-config-out=*.tf.json`. Do not synthesize `*.tf.json` via `jq` / `python -c json.dumps` when an attribute is awkward — push the address to `orphans_bundle{reason:"requires_dynamic_codegen"}` instead and let `orphan-iac-module-authoring` wrap it (still HCL). `hcl_hydration_status:<group_id>.generated_tf_path` MUST end in `.tf` for the convergence + final gates to accept the group. Run `tofu fmt` on every group root after each pass.
         Persist `hcl_hydration_status:<group_id>={generated_tf_path, generated_resources, plan_no_changes, remaining_actions, attempt}` per group, and update the shared `orphans_bundle` with any new `import_failed_*` entries. Mirror all to `/tmp/db-state-split-<workflow_id>/notes.json`.
@@ -497,7 +614,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Stage entry contract (cold-start fast-fail):** (1) `read_notes` (2) if 0 keys, `cat /tmp/db-state-split-<workflow_id>/notes.json` (3) if BOTH empty AND no `/tmp/db-state-split-<workflow_id>/groups/` directory exists → this is a vacuous cold-start. **Do NOT** emit a multi-table "all SKIPPED" markdown report. `notify` once with `{stage:'multi-shard-plan-convergence', error:'cold_start_no_upstream'}` and return. Don't substitute `ask_clarifying_question` for the fast-fail path — production DAGs showed it waiting ~5 min per call for prior-stage state the operator can't supply.
         **Required keys after stage entry:** `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>` (per group), `stackgen_env_profile:<group_id>` (per group), `stackgen_plan_run:<group_id>` (per group).
         **Subagent discipline:** delegate the plan matrix to ONE `multi-shard-plan-runner` (`task_type="terminal_calling"`, spawn goal ≤ 1000 chars). For very large shard counts, decompose into parallel children `multi-shard-plan-runner-batch-<NN>` covering disjoint group_id ranges (still ≤ 270s `timeout_seconds` per Ubuntu call inside each child). If any batch does not converge, **re-plan** the decomposition (smaller batch size, narrower group range, different tool list) rather than re-running the same payload.
-        **Execution Optimization Protocol (hard rule):** inside each shard, `tofu init` + `tofu plan` + plan-summary `jq` MUST be **one** `ubuntu-cli_execute_series` per shard. **Across shards**, fan out via `ubuntu-cli_execute_parallel` or `flow_type:"parallel"` `multi-shard-plan-runner-batch-<NN>` children — **never** N concurrent `ubuntu-cli_execute_command` calls in a single turn. `ubuntu-cli_execute_command` is reserved for a single cohesive command. See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
+        **Execution Optimization Protocol (hard rule):** inside each shard, `tofu init` + `tofu plan` + plan-summary `jq` MUST be **one** `${local.resolved_ubuntu_integration_name}_execute_series` per shard. **Across shards**, fan out via `${local.resolved_ubuntu_integration_name}_execute_parallel` or `flow_type:"parallel"` `multi-shard-plan-runner-batch-<NN>` children — **never** N concurrent `${local.resolved_ubuntu_integration_name}_execute_command` calls in a single turn. `${local.resolved_ubuntu_integration_name}_execute_command` is reserved for a single cohesive command. See db-state-split-orchestration-sop § *Execution Optimization Protocol*.
         **HCL hydration pre-check first** (Loop B-hcl). For every `group_id`, `hcl_hydration_status:<group_id>.plan_no_changes` must be `true`. If any group is `false` or missing, **return execution to `hcl-hydrate-per-group`** for that group's hydration sub-loop; **do not** raise an operator-facing 🔴 "HCL AUTHOR" item — the workflow owns HCL via `tofu plan -generate-config-out=` (terraform-registry-reverse-iac-sop § *HCL hydration*).
         **Membership pre-check second** (Loop B-membership). For every `group_id`, read `stackgen_appstack_membership:<group_id>` and confirm `ok=true`, `expected_count==actual_count`, and `cross_group_bleed==[]`. Any failure → re-enter **stackgen-appstack-mcp-playbook-sop** step 3.5 for that group.
         Run TF plan matrix per `logical_group_manifest`. **StackGen Plan is OPTIONAL:** for groups whose `stackgen_env_profile:<group_id>` is `{skipped:...}` or `stackgen_plan_run:<group_id>` is already `{skipped:...}`, skip `create_appstack_action_run` and rely on Ubuntu `tofu plan` parity. For the rest (membership ok and env profile present), run **`create_appstack_action_run`** (Plan) per AppStack and collect **`get_action_run`** / **`get_action_run_logs`**. If any drift, Loop B then re-plan until pass or iteration cap. Treat any new `env_not_in_project_settings` here as a soft skip (same semantics as the materialization stage).
@@ -534,7 +651,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
 # =============================================================================
 
 resource "sg_workflow" "orphan_iac_module_authoring" {
-  name        = "orphan-iac-module-authoring"
+  name        = local.workflow_secondary_name
   domain      = "infrastructure-as-code"
   description = <<-EOT
     Guild pipeline that materializes Terraform modules from orphan resource bundles produced by
@@ -624,7 +741,7 @@ resource "sg_workflow" "orphan_iac_module_authoring" {
 resource "sg_webhook" "github_db_state_split" {
   count = var.enable_github_webhook ? 1 : 0
 
-  name        = "github-db-state-split-receiver"
+  name        = local.webhook_name
   target_type = "workflow"
   target_name = sg_workflow.db_monorepo_state_split_convergence.name
   action      = "GitHub issue or PR about splitting monorepo Terraform state into logical groups and StackGen AppStacks (multi-cloud); triage and run db-monorepo-state-split-convergence with repository_url and state URI from the body."

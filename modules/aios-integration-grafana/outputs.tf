@@ -8,5 +8,7 @@ output "integration_id" {
 }
 
 output "secret_id" {
-  value = sg_secret.grafana_vault.id
+  description = "ID of the `sg_secret` bound to the Grafana integration."
+  value       = local.secret_id
+  sensitive   = true
 }

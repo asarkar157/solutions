@@ -89,7 +89,7 @@ module "repo_to_iac" {
     dangerous_ops = module.policies.policy_ids.dangerous_ops
   }
 
-  github_integration_name = module.github_integration.integration_name
+  existing_github_integration_name = module.github_integration.integration_name
 
   stackgen_mcp_integration_name = var.create_stackgen_mcp_integrations ? var.stackgen_mcp_integration_name : ""
 }

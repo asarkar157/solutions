@@ -12,17 +12,17 @@
 #   - scripts/verify-persona-length.sh (wired into `make check` + CI persona-length job)
 #   - tofu-provider-stackgen: sg_agent.persona has a schema-level maxlen:15000 validator
 resource "terraform_data" "persona_length_guard" {
-  for_each = fileset("${path.module}/personas", "*.md")
+  for_each = toset([for k, v in local.rendered_personas : k])
 
   input = each.value
 
   lifecycle {
     precondition {
-      condition = length(file("${path.module}/personas/${each.value}")) <= 15000
+      condition = length(local.rendered_personas[each.value]) <= 15000
       error_message = format(
-        "Persona personas/%s is %d chars; Guild caps at 15000. Trim the file before applying.",
+        "Rendered persona personas/%s is %d chars; Guild caps at 15000. Trim the file before applying.",
         each.value,
-        length(file("${path.module}/personas/${each.value}")),
+        length(local.rendered_personas[each.value]),
       )
     }
   }

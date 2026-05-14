@@ -5,6 +5,65 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "sre"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_triage_name             = "alert-triage-analyst${local.suffix}"
+  agent_change_correlation_name = "change-correlation-analyst${local.suffix}"
+  agent_auto_remediation_name   = "auto-remediation-engineer${local.suffix}"
+  agent_risk_posture_name       = "risk-posture-assessor${local.suffix}"
+  agent_incident_name           = "incident-commander${local.suffix}"
+
+  workflow_incident_name       = "incident-response${local.suffix}"
+  workflow_incident_quick_name = "incident-triage${local.suffix}"
+
+  grafana_integration_name = "${local.module_prefix}-grafana${local.suffix}"
+  slack_integration_name   = "${local.module_prefix}-slack${local.suffix}"
+  linear_integration_name  = "${local.module_prefix}-linear${local.suffix}"
+
+  provision_grafana = trimspace(var.grafana_secret_id) != "" && trimspace(var.existing_grafana_integration_name) == ""
+  provision_slack   = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_linear  = trimspace(var.linear_credential_provider_id) != "" && trimspace(var.existing_linear_integration_name) == ""
+
+  resolved_grafana_integration_name = trimspace(var.existing_grafana_integration_name) != "" ? var.existing_grafana_integration_name : (
+    local.provision_grafana ? module.grafana_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_linear_integration_name = trimspace(var.existing_linear_integration_name) != "" ? var.existing_linear_integration_name : (
+    local.provision_linear ? module.linear_integration[0].integration_name : ""
+  )
+}
+
+module "grafana_integration" {
+  count  = local.provision_grafana ? 1 : 0
+  source = "../aios-integration-grafana"
+
+  integration_name   = local.grafana_integration_name
+  existing_secret_id = var.grafana_secret_id
+  description        = "Grafana integration owned by the SRE module (incident triage + dashboard queries)."
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+  description        = "Slack integration owned by the SRE module (incident comms + war room channel ops)."
+}
+
+module "linear_integration" {
+  count  = local.provision_linear ? 1 : 0
+  source = "../aios-integration-linear"
+
+  integration_name       = local.linear_integration_name
+  credential_provider_id = var.linear_credential_provider_id
+}
+
 # =============================================================================
 # AIOS SRE Agent Module
 # =============================================================================
@@ -17,23 +76,21 @@ terraform {
 # =============================================================================
 
 resource "sg_agent" "sre_triage" {
-  name        = "alert-triage-analyst"
+  name        = local.agent_triage_name
   persona     = file("${path.module}/personas/sre-triage.md")
   model_names = compact(var.model_names)
 
-  integrations = compact([
-    lookup(var.integration_names, "grafana", "") != "" ? var.integration_names.grafana : null,
-  ])
+  integrations = compact([local.resolved_grafana_integration_name])
 }
 
 resource "sg_agent" "sre_change_correlation" {
-  name        = "change-correlation-analyst"
+  name        = local.agent_change_correlation_name
   persona     = file("${path.module}/personas/sre-change-correlation.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "sre_auto_remediation" {
-  name        = "auto-remediation-engineer"
+  name        = local.agent_auto_remediation_name
   persona     = file("${path.module}/personas/sre-auto-remediation.md")
   model_names = compact(var.model_names)
 
@@ -45,20 +102,20 @@ resource "sg_agent" "sre_auto_remediation" {
 }
 
 resource "sg_agent" "sre_risk_posture" {
-  name        = "risk-posture-assessor"
+  name        = local.agent_risk_posture_name
   persona     = file("${path.module}/personas/sre-risk-posture.md")
   model_names = compact(var.model_names)
 }
 
 resource "sg_agent" "sre_incident" {
-  name        = "incident-commander"
+  name        = local.agent_incident_name
   persona     = file("${path.module}/personas/sre-incident.md")
   model_names = compact(var.model_names)
 
   integrations = compact([
-    lookup(var.integration_names, "grafana", "") != "" ? var.integration_names.grafana : null,
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
-    lookup(var.integration_names, "linear", "") != "" ? var.integration_names.linear : null,
+    local.resolved_grafana_integration_name,
+    local.resolved_slack_integration_name,
+    local.resolved_linear_integration_name,
   ])
 }
 
@@ -97,7 +154,6 @@ resource "sg_agent_budget" "sre_risk_posture" {
 }
 
 locals {
-  # Optional attachments: create only when the policies module supplied a non-empty ID and the flag allows it.
   attach_policy = {
     sre_remediation          = try(var.policy_create_flags.sre_remediation, true) && try(var.policy_ids.sre_remediation, "") != ""
     prod_write_gate          = try(var.policy_create_flags.prod_write_gate, true) && try(var.policy_ids.prod_write_gate, "") != ""
@@ -456,7 +512,7 @@ resource "sg_evidence_checklist" "incident_quick_triage" {
 # =============================================================================
 
 resource "sg_workflow" "incident_response" {
-  name        = "incident-response"
+  name        = local.workflow_incident_name
   domain      = "incident-response"
   description = trimspace(templatefile("${path.module}/templates/workflow-incident-response.md", {}))
   approve     = true
@@ -507,7 +563,7 @@ resource "sg_workflow" "incident_response" {
 }
 
 resource "sg_workflow" "incident_quick_triage" {
-  name        = "incident-triage"
+  name        = local.workflow_incident_quick_name
   domain      = "incident-response"
   description = trimspace(templatefile("${path.module}/templates/workflow-incident-triage.md", {}))
   approve     = true

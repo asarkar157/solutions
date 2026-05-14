@@ -21,17 +21,17 @@ variable "secret_ref_ids" {
 variable "install_tools" {
   description = <<-EOT
     List of CLI tools to install at container startup via the pre_launch.sh hook.
-    Supported values: tofu, terraform, awscli, kubectl, helm, gcloud, az.
-    Example: ["tofu", "awscli", "kubectl"]
+    Supported values: tofu, terraform, awscli, kubectl, helm, gcloud, az, gh, git, curl.
+    Example: ["tofu", "gh", "git"]
   EOT
   type        = list(string)
   default     = []
 
   validation {
     condition = alltrue([
-      for t in var.install_tools : contains(["tofu", "terraform", "awscli", "kubectl", "helm", "gcloud", "az"], t)
+      for t in var.install_tools : contains(["tofu", "terraform", "awscli", "kubectl", "helm", "gcloud", "az", "gh", "git", "curl"], t)
     ])
-    error_message = "Each element must be one of: tofu, terraform, awscli, kubectl, helm, gcloud, az."
+    error_message = "Each element must be one of: tofu, terraform, awscli, kubectl, helm, gcloud, az, gh, git, curl."
   }
 }
 

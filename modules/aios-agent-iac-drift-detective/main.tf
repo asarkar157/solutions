@@ -8,9 +8,43 @@ terraform {
   }
 }
 
-variable "integration_names" {
-  type    = map(string)
-  default = {}
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set, the module provisions an internal GitHub Guild integration so the drift detective can open a backport PR."
+  type        = string
+  default     = ""
+}
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration so the detective can read live state."
+  type        = string
+  default     = ""
+}
+
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "model_names" {
@@ -52,30 +86,69 @@ variable "remote_runner_attach_to_agent" {
   }
 }
 
+locals {
+  module_prefix = "iac-drift-detective"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name          = "iac-drift-detective${local.suffix}"
+  workflow_name       = "iac-drift-remediation${local.suffix}"
+  sop_drift_scan_name = "iac-drift-scan${local.suffix}"
+
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
+
+  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_aws    = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+}
+
 data "sg_remote_runner" "iac_drift_detective" {
   count = var.remote_runner_attach_to_agent ? 1 : 0
   name  = trimspace(var.remote_runner_name)
 }
 
 resource "sg_agent" "iac_drift_detective" {
-  name           = "iac-drift-detective"
+  name           = local.agent_name
   persona        = file("${path.module}/personas/drift-detective.md")
   model_names    = compact(var.model_names)
   remote_runners = length(data.sg_remote_runner.iac_drift_detective) > 0 ? toset([data.sg_remote_runner.iac_drift_detective[0].name]) : null
   integrations = compact([
-    lookup(var.integration_names, "github", ""),
-    lookup(var.integration_names, "aws", ""),
+    local.resolved_github_integration_name,
+    local.resolved_aws_integration_name,
   ])
 }
 
 resource "sg_runbook_sop" "drift_scan" {
-  name        = "iac-drift-scan"
+  name        = local.sop_drift_scan_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/drift-scan.md", {}))
 }
 
 resource "sg_workflow" "drift_remediation" {
-  name        = "iac-drift-remediation"
+  name        = local.workflow_name
   domain      = "cloudops"
   description = "Detect out-of-band cloud changes and reconcile them with Terraform code."
   approve     = true

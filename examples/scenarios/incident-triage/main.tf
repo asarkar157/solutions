@@ -68,9 +68,7 @@ module "sre_agents" {
     post_action_verification = module.policies.policy_ids.post_action_verification
   }
 
-  integration_names = {
-    slack = module.slack_integration.integration_name
-  }
+  existing_slack_integration_name = module.slack_integration.integration_name
 }
 
 module "alert_triage" {
@@ -79,8 +77,6 @@ module "alert_triage" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = {
-    grafana = module.grafana_integration.integration_name
-    slack   = module.slack_integration.integration_name
-  }
+  existing_grafana_integration_name = module.grafana_integration.integration_name
+  existing_slack_integration_name   = module.slack_integration.integration_name
 }

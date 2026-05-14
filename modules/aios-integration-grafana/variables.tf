@@ -1,12 +1,25 @@
 variable "grafana_server" {
-  description = "Base URL of the Grafana server (e.g. https://grafana.example.com)"
+  description = "Base URL of the Grafana server (e.g. https://grafana.example.com). Used to write the auto-created secret. Empty when `existing_secret_id` is supplied."
   type        = string
+  default     = ""
 }
 
 variable "grafana_token" {
-  description = "Grafana service account token"
+  description = "Grafana service account token. Used to write the auto-created secret. Empty when `existing_secret_id` is supplied. Mutually exclusive with `existing_secret_id`."
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "existing_secret_id" {
+  description = <<-EOT
+    Optional ID of a pre-existing `sg_secret` holding Grafana credentials.
+    When set, this module skips creating its own secret and binds the
+    integration directly to the supplied secret. Mutually exclusive with
+    `grafana_token` — set exactly one.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "integration_name" {

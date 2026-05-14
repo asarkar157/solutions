@@ -25,3 +25,8 @@ output "runbook_names" {
     stackgen_mcp_consumer_tool_catalog   = sg_runbook_sop.stackgen_mcp_consumer_tool_catalog.name
   }
 }
+
+output "github_integration_name" {
+  description = "Name of the GitHub Guild integration the agent uses."
+  value       = local.resolved_github_integration_name
+}

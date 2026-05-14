@@ -7,26 +7,39 @@ variable "model_names" {
     error_message = "model_names must contain at least one non-empty model name."
   }
 }
+
 variable "policy_ids" {
   type = object({ dangerous_ops = string, sre_remediation = optional(string, "") })
 }
 
-variable "github_integration_name" {
-  description = <<-EOT
-    Guild GitHub integration name to attach (for example `module.github_integration.integration_name`).
-    When empty and `github_token` is non-empty, the module attaches the legacy default name `github-integration`.
-    Credentials live on the Guild integration / Vault secret — this module does not inject the token into agent runtime.
-  EOT
+# =============================================================================
+# Self-contained integration wiring (replaces the old `github_integration_name`
+# + raw `github_token` inputs).
+# =============================================================================
+
+variable "github_secret_id" {
+  description = "Optional `sg_secret` ID for the GitHub PAT. When set (and `existing_github_integration_name` is empty), this module provisions an internal GitHub Guild integration. One of `github_secret_id` / `existing_github_integration_name` must be provided."
   type        = string
   default     = ""
 }
 
-variable "github_token" {
-  description = "Legacy gate only: when non-empty and `github_integration_name` is empty, attaches integration named `github-integration`. The token value is not passed to the agent."
+variable "existing_github_integration_name" {
+  description = "Optional Guild integration name to share an existing GitHub integration instead of provisioning one. When set, the module skips its own integration container."
   type        = string
-  sensitive   = true
   default     = ""
 }
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / policy / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
+}
+
 variable "agent_budget" {
   type    = number
   default = 15
@@ -41,4 +54,3 @@ variable "workflow_skill_refs" {
   type        = map(list(string))
   default     = {}
 }
-

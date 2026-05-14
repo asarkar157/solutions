@@ -12,10 +12,31 @@ variable "policy_ids" {
   type = object({ dangerous_ops = string })
 }
 
-variable "integration_name" {
-  description = "AWS integration name from the integration module"
+# =============================================================================
+# Self-contained integration wiring (replaces the old `integration_name` input).
+# =============================================================================
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` (`CloudProvider`/`aws`) ID. When set (and `existing_aws_integration_name` is empty), the module provisions an internal AWS Guild integration bound to this secret. When `existing_aws_integration_name` is provided, this can stay empty."
   type        = string
-  default     = "aws-production"
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration instead of provisioning one. When set, the module skips its own integration container."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budget" {

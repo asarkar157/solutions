@@ -7,6 +7,13 @@ terraform {
   }
 }
 
+locals {
+  suffix     = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+  agent_name = "sentry-observer${local.suffix}"
+
+  resolved_sentry_integration_name = trimspace(var.existing_sentry_integration_name)
+}
+
 # ============================================================================
 # Sentry Observer Module
 # ============================================================================
@@ -14,11 +21,11 @@ terraform {
 # and incident tracking.
 
 resource "sg_agent" "sentry_observer" {
-  name        = "sentry-observer"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/sentry-observer.md")
   model_names = compact(var.model_names)
 
-  integrations = [var.integration_names.sentry]
+  integrations = [local.resolved_sentry_integration_name]
 }
 
 resource "sg_agent_budget" "sentry_observer" {

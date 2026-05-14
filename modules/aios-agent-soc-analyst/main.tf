@@ -5,22 +5,77 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "soc-analyst"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name            = "soc-analyst${local.suffix}"
+  workflow_triage_name  = "soc-alert-triage${local.suffix}"
+  workflow_hunt_name    = "soc-threat-hunt${local.suffix}"
+  sop_alert_triage_name = "alert-triage${local.suffix}"
+  sop_threat_hunt_name  = "threat-hunt${local.suffix}"
+
+  aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+
+  provision_aws    = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
+    local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_splunk_integration_name = trimspace(var.existing_splunk_integration_name)
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+}
+
+module "slack_integration" {
+  count  = local.provision_slack ? 1 : 0
+  source = "../aios-integration-slack"
+
+  integration_name   = local.slack_integration_name
+  existing_secret_id = var.slack_secret_id
+}
+
 # =============================================================================
 # Enterprise SOC Analyst AI Agent Module
 # =============================================================================
 
 resource "sg_agent" "soc_analyst" {
-  name        = "soc-analyst"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/soc-analyst.md")
   model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["web_search", "note", "read_notes", "query_logs"] }
 
   integrations = compact([
-    lookup(var.integration_names, "aws", "") != "" ? var.integration_names.aws : null,
-    lookup(var.integration_names, "github", "") != "" ? var.integration_names.github : null,
-    lookup(var.integration_names, "slack", "") != "" ? var.integration_names.slack : null,
-    lookup(var.integration_names, "splunk", "") != "" ? var.integration_names.splunk : null,
+    local.resolved_aws_integration_name,
+    local.resolved_github_integration_name,
+    local.resolved_slack_integration_name,
+    local.resolved_splunk_integration_name,
   ])
 }
 
@@ -40,13 +95,13 @@ resource "sg_agent_policy_attachment" "read_only" {
 # --- Runbooks ---
 
 resource "sg_runbook_sop" "alert_triage" {
-  name        = "alert-triage"
+  name        = local.sop_alert_triage_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/alert-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "threat_hunt" {
-  name        = "threat-hunt"
+  name        = local.sop_threat_hunt_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/threat-hunt.md", {}))
 }
@@ -54,7 +109,7 @@ resource "sg_runbook_sop" "threat_hunt" {
 # --- Workflows ---
 
 resource "sg_workflow" "soc_alert_triage" {
-  name        = "soc-alert-triage"
+  name        = local.workflow_triage_name
   domain      = "secops"
   description = trimspace(templatefile("${path.module}/templates/workflow-alert-triage.md", {}))
   approve     = true
@@ -81,7 +136,7 @@ resource "sg_workflow" "soc_alert_triage" {
 }
 
 resource "sg_workflow" "soc_threat_hunt" {
-  name        = "soc-threat-hunt"
+  name        = local.workflow_hunt_name
   domain      = "secops"
   description = trimspace(templatefile("${path.module}/templates/workflow-threat-hunt.md", {}))
   approve     = true

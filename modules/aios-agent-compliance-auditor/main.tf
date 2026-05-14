@@ -5,27 +5,71 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "compliance-auditor"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name               = "compliance-auditor${local.suffix}"
+  workflow_assessment_name = "compliance-assessment${local.suffix}"
+  policy_data_access_name  = "compliance-data-access${local.suffix}"
+  sop_soc2_access_name     = "soc2-access-review${local.suffix}"
+  sop_soc2_change_name     = "soc2-change-management${local.suffix}"
+  sop_gdpr_data_name       = "gdpr-data-mapping${local.suffix}"
+  sop_audit_log_name       = "audit-log-analysis${local.suffix}"
+  evidence_assessment_name = "compliance-assessment-evidence${local.suffix}"
+
+  aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
+  github_integration_name = "${local.module_prefix}-github${local.suffix}"
+
+  provision_aws    = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+
+  resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
+    local.provision_aws ? module.aws_integration[0].integration_name : ""
+  )
+  resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
+    local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+}
+
+module "aws_integration" {
+  count  = local.provision_aws ? 1 : 0
+  source = "../aios-integration-aws"
+
+  integration_name   = local.aws_integration_name
+  existing_secret_id = var.aws_secret_id
+}
+
+module "github_integration" {
+  count  = local.provision_github ? 1 : 0
+  source = "../aios-integration-github"
+
+  integration_name   = local.github_integration_name
+  existing_secret_id = var.github_secret_id
+}
+
 # =============================================================================
 # Compliance Auditor Agent Module
 # =============================================================================
 
 resource "sg_policy" "compliance_data_access" {
-  name        = "compliance-data-access"
+  name        = local.policy_data_access_name
   description = trimspace(templatefile("${path.module}/templates/policy-compliance-data-access.md", {}))
   type        = "intervention"
   rego_source = file("${path.module}/policies/compliance-data-access.rego")
 }
 
 resource "sg_agent" "compliance_auditor" {
-  name        = "compliance-auditor"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/compliance-auditor.md")
   model_names = compact(var.model_names)
 
   hitl = { always_allowed = ["web_search", "note", "read_notes"] }
 
   integrations = compact([
-    lookup(var.integration_names, "aws", "") != "" ? var.integration_names.aws : null,
-    lookup(var.integration_names, "github", "") != "" ? var.integration_names.github : null,
+    local.resolved_aws_integration_name,
+    local.resolved_github_integration_name,
   ])
 }
 
@@ -57,31 +101,31 @@ resource "sg_agent_policy_attachment" "data_risk_pii" {
 # --- Runbooks ---
 
 resource "sg_runbook_sop" "soc2_access_review" {
-  name        = "soc2-access-review"
+  name        = local.sop_soc2_access_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/soc2-access-review.md", {}))
 }
 
 resource "sg_runbook_sop" "soc2_change_management" {
-  name        = "soc2-change-management"
+  name        = local.sop_soc2_change_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/soc2-change-management.md", {}))
 }
 
 resource "sg_runbook_sop" "gdpr_data_mapping" {
-  name        = "gdpr-data-mapping"
+  name        = local.sop_gdpr_data_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/gdpr-data-mapping.md", {}))
 }
 
 resource "sg_runbook_sop" "audit_log_analysis" {
-  name        = "audit-log-analysis"
+  name        = local.sop_audit_log_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/audit-log-analysis.md", {}))
 }
 
 resource "sg_evidence_checklist" "compliance_assessment_evidence" {
-  name        = "compliance-assessment-evidence"
+  name        = local.evidence_assessment_name
   description = "Proof-of-work for SOC2 / change-management / audit-log review stages before publishing a compliance report."
   approve     = true
   required_items = [
@@ -100,7 +144,7 @@ resource "sg_evidence_checklist" "compliance_assessment_evidence" {
 # --- Workflows ---
 
 resource "sg_workflow" "compliance_assessment" {
-  name        = "compliance-assessment"
+  name        = local.workflow_assessment_name
   domain      = "compliance"
   description = trimspace(templatefile("${path.module}/templates/workflow-compliance-assessment.md", {}))
   approve     = true

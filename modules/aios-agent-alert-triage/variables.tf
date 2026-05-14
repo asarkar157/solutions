@@ -15,12 +15,43 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
-  description = "Names of the integrations"
-  type = object({
-    grafana = string
-    slack   = string
-  })
+# =============================================================================
+# Self-contained integration wiring.
+# =============================================================================
+
+variable "grafana_secret_id" {
+  description = "Optional `sg_secret` ID for Grafana credentials. When set, the module provisions an internal Grafana Guild integration so the coordinator can ingest alert details."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration so the coordinator can publish triage results."
+  type        = string
+  default     = ""
+}
+
+variable "existing_grafana_integration_name" {
+  description = "Optional Guild integration name to share an existing Grafana integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "workflow_skill_refs" {

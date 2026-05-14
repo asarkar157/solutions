@@ -21,26 +21,69 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
-  description = <<-EOT
-    Map of cloud / notification integrations to attach to the resource-janitor agent.
-    Recognized keys (all optional individually, but at least ONE of aws / azure / gcp
-    must be set — otherwise the agent has no surface to scan):
-      - aws    : AWS integration name (enables Lambda + S3 + EBS + EIP / NAT / snapshot scans)
-      - azure  : Azure integration name (extends scans to managed disks / VMs / public IPs)
-      - gcp    : GCP integration name (extends scans to compute and persistent disks)
-      - slack  : Slack integration name for owner-grouped findings + cleanup notifications
-  EOT
-  type        = map(string)
-  default     = {}
+# =============================================================================
+# Self-contained integration wiring.
+# At least ONE of aws_secret_id / azure_secret_id / gcp_secret_id (or their
+# existing_*_integration_name overrides) must be set — otherwise the agent has
+# no surface to scan.
+# =============================================================================
+
+variable "aws_secret_id" {
+  description = "Optional `sg_secret` ID for AWS credentials. When set, the module provisions an internal AWS Guild integration (Lambda + S3 + EBS + EIP / NAT / snapshot scans)."
+  type        = string
+  default     = ""
+}
+
+variable "azure_secret_id" {
+  description = "Optional `sg_secret` ID for Azure credentials. When set, the module provisions an internal Azure Guild integration (managed disks / VMs / public IPs)."
+  type        = string
+  default     = ""
+}
+
+variable "gcp_secret_id" {
+  description = "Optional `sg_secret` ID for GCP credentials. When set, the module provisions an internal GCP Guild integration (compute + persistent disks)."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack credentials. When set, the module provisions an internal Slack Guild integration for owner-grouped findings + cleanup notifications."
+  type        = string
+  default     = ""
+}
+
+variable "existing_aws_integration_name" {
+  description = "Optional Guild integration name to share an existing AWS integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_azure_integration_name" {
+  description = "Optional Guild integration name to share an existing Azure integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_gcp_integration_name" {
+  description = "Optional Guild integration name to share an existing GCP integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names."
+  type        = string
+  default     = ""
 
   validation {
-    condition = length(compact([
-      lookup(var.integration_names, "aws", ""),
-      lookup(var.integration_names, "azure", ""),
-      lookup(var.integration_names, "gcp", ""),
-    ])) > 0
-    error_message = "integration_names must include at least one non-empty cloud integration (aws, azure, or gcp); resource-janitor has nothing to scan otherwise."
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
   }
 }
 

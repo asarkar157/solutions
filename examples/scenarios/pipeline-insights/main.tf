@@ -58,22 +58,14 @@ module "slack_integration" {
   slack_bot_token = var.slack_bot_token
 }
 
-locals {
-  insights_integrations = merge(
-    {
-      github = module.github_integration.integration_name
-    },
-    length(module.slack_integration) > 0 ? { slack = module.slack_integration[0].integration_name } : {},
-  )
-}
-
 module "pipeline_insights" {
   source = "../../../modules/aios-agent-pipeline-insights"
 
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = local.insights_integrations
+  existing_github_integration_name = module.github_integration.integration_name
+  existing_slack_integration_name  = length(module.slack_integration) > 0 ? module.slack_integration[0].integration_name : ""
 }
 
 module "release_tracker" {
@@ -82,7 +74,8 @@ module "release_tracker" {
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  integration_names = local.insights_integrations
+  existing_github_integration_name = module.github_integration.integration_name
+  existing_slack_integration_name  = length(module.slack_integration) > 0 ? module.slack_integration[0].integration_name : ""
 
   service_catalog          = var.service_catalog
   image_namespace_template = var.image_namespace_template

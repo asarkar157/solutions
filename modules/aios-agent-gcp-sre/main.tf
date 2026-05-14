@@ -5,30 +5,63 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "gcp-sre"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name           = "gcp-sre${local.suffix}"
+  policy_governance_id = "gcp-tool-governance${local.suffix}"
+
+  sop_gke_diag_name  = "gke-cluster-diagnostics${local.suffix}"
+  sop_sec_audit_name = "gcp-security-audit${local.suffix}"
+  sop_cost_name      = "gcp-cost-analysis${local.suffix}"
+  sop_cloud_sql_name = "cloud-sql-health-check${local.suffix}"
+
+  workflow_audit_name    = "gcp-unified-audit${local.suffix}"
+  workflow_incident_name = "gke-incident-response${local.suffix}"
+
+  gcp_integration_name = "${local.module_prefix}-gcp${local.suffix}"
+
+  resolved_gcp_integration_name = coalesce(
+    trimspace(var.existing_gcp_integration_name) != "" ? var.existing_gcp_integration_name : null,
+    try(module.gcp_integration[0].integration_name, null),
+    local.gcp_integration_name,
+  )
+}
+
+module "gcp_integration" {
+  count  = trimspace(var.existing_gcp_integration_name) == "" ? 1 : 0
+  source = "../aios-integration-gcp"
+
+  integration_name   = local.gcp_integration_name
+  existing_secret_id = var.gcp_secret_id
+}
+
 # =============================================================================
 # GCP SRE Agent Module
 # =============================================================================
 
 resource "sg_policy" "gcp_tool_governance" {
-  name        = "gcp-tool-governance"
+  name        = local.policy_governance_id
   description = trimspace(templatefile("${path.module}/templates/policy-gcp-tool-governance.md", {}))
   type        = "logic"
   rego_source = file("${path.module}/policies/gcp-tool-governance.rego")
 }
 
 resource "sg_agent" "gcp_sre" {
-  name        = "gcp-sre"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/gcp-sre.md")
   model_names = compact(var.model_names)
 
   hitl = {
     always_allowed = [
-      "${var.integration_name}_test_connection",
-      "${var.integration_name}_execute_command"
+      "${local.resolved_gcp_integration_name}_test_connection",
+      "${local.resolved_gcp_integration_name}_execute_command"
     ]
   }
 
-  integrations = compact([var.integration_name])
+  integrations = [local.resolved_gcp_integration_name]
 }
 
 resource "sg_agent_budget" "gcp_sre" {
@@ -52,25 +85,25 @@ resource "sg_agent_policy_attachment" "gcp_governance" {
 # --- Runbooks ---
 
 resource "sg_runbook_sop" "gke_diagnostics" {
-  name        = "gke-cluster-diagnostics"
+  name        = local.sop_gke_diag_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/gke-cluster-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_security_audit" {
-  name        = "gcp-security-audit"
+  name        = local.sop_sec_audit_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/gcp-security-audit.md", {}))
 }
 
 resource "sg_runbook_sop" "gcp_cost_analysis" {
-  name        = "gcp-cost-analysis"
+  name        = local.sop_cost_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/gcp-cost-analysis.md", {}))
 }
 
 resource "sg_runbook_sop" "cloud_sql_health" {
-  name        = "cloud-sql-health-check"
+  name        = local.sop_cloud_sql_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/cloud-sql-health-check.md", {}))
 }
@@ -78,7 +111,7 @@ resource "sg_runbook_sop" "cloud_sql_health" {
 # --- Workflows ---
 
 resource "sg_workflow" "gcp_unified_audit" {
-  name        = "gcp-unified-audit"
+  name        = local.workflow_audit_name
   domain      = "sre-operations"
   description = trimspace(templatefile("${path.module}/templates/workflow-gcp-unified-audit.md", {}))
   approve     = true
@@ -93,14 +126,14 @@ resource "sg_workflow" "gcp_unified_audit" {
   ]
 
   stage_bindings = [
-    { stage_id = "security-scan", agent_ref = sg_agent.gcp_sre.name, note = "GCP security audit", skill_refs = concat(["gcp-security-posture"], try(var.workflow_skill_refs["gcp-unified-audit::security-scan"], [])) },
-    { stage_id = "cost-analysis", agent_ref = sg_agent.gcp_sre.name, note = "GCP cost analysis", skill_refs = concat(["gcp-cost-optimization"], try(var.workflow_skill_refs["gcp-unified-audit::cost-analysis"], [])) },
-    { stage_id = "consolidate", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["security-scan", "cost-analysis"], note = "Report generation", skill_refs = concat(["gcp-audit-reporting"], try(var.workflow_skill_refs["gcp-unified-audit::consolidate"], [])) },
+    { stage_id = "security-scan", agent_ref = sg_agent.gcp_sre.name, note = "GCP security audit", skill_refs = concat(["gcp-security-posture"], try(var.workflow_skill_refs["${local.workflow_audit_name}::security-scan"], [])) },
+    { stage_id = "cost-analysis", agent_ref = sg_agent.gcp_sre.name, note = "GCP cost analysis", skill_refs = concat(["gcp-cost-optimization"], try(var.workflow_skill_refs["${local.workflow_audit_name}::cost-analysis"], [])) },
+    { stage_id = "consolidate", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["security-scan", "cost-analysis"], note = "Report generation", skill_refs = concat(["gcp-audit-reporting"], try(var.workflow_skill_refs["${local.workflow_audit_name}::consolidate"], [])) },
   ]
 }
 
 resource "sg_workflow" "gke_incident_response" {
-  name        = "gke-incident-response"
+  name        = local.workflow_incident_name
   domain      = "incident-response"
   description = trimspace(templatefile("${path.module}/templates/workflow-gke-incident-response.md", {}))
   approve     = true
@@ -119,8 +152,8 @@ resource "sg_workflow" "gke_incident_response" {
   ]
 
   stage_bindings = [
-    { stage_id = "diagnose-cluster", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.gke_diagnostics.name], skill_refs = concat(["gcp-gke-diagnostics"], try(var.workflow_skill_refs["gke-incident-response::diagnose-cluster"], [])) },
-    { stage_id = "check-dependencies", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.cloud_sql_health.name], skill_refs = concat(["gcp-cloud-sql-health"], try(var.workflow_skill_refs["gke-incident-response::check-dependencies"], [])) },
-    { stage_id = "recommend-action", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["diagnose-cluster", "check-dependencies"], skill_refs = concat(["gcp-gke-remediation"], try(var.workflow_skill_refs["gke-incident-response::recommend-action"], [])) },
+    { stage_id = "diagnose-cluster", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.gke_diagnostics.name], skill_refs = concat(["gcp-gke-diagnostics"], try(var.workflow_skill_refs["${local.workflow_incident_name}::diagnose-cluster"], [])) },
+    { stage_id = "check-dependencies", agent_ref = sg_agent.gcp_sre.name, runbook_refs = [sg_runbook_sop.cloud_sql_health.name], skill_refs = concat(["gcp-cloud-sql-health"], try(var.workflow_skill_refs["${local.workflow_incident_name}::check-dependencies"], [])) },
+    { stage_id = "recommend-action", agent_ref = sg_agent.gcp_sre.name, stage_depends_on = ["diagnose-cluster", "check-dependencies"], skill_refs = concat(["gcp-gke-remediation"], try(var.workflow_skill_refs["${local.workflow_incident_name}::recommend-action"], [])) },
   ]
 }

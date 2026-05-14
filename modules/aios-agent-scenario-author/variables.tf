@@ -15,31 +15,51 @@ variable "policy_ids" {
   })
 }
 
-variable "integration_names" {
+variable "github_secret_id" {
   description = <<-EOT
-    Guild integration names attached to the scenario-author agent.
+    ID of a pre-existing `sg_secret` holding the GitHub PAT this bot uses to fetch issues,
+    clone the repo, open the scaffold PR, and comment back on the originating issue. The
+    same secret is bound to BOTH integrations this module provisions internally:
+      - the `scenario-author-github` Guild integration (for `gh api` calls from the API
+        sandbox), and
+      - the `scenario-author-ubuntu` Guild integration (so `gh auth status` /
+        `git clone` / `gh pr create` work inside the shell sandbox without the agent
+        having to thread a token through subagent goals).
 
-    - `github` (required) — GitHub Guild integration. The agent uses it to call
-      `gh api`, `gh auth token`, and to fetch the triggering issue. Must be
-      authenticated against the repository named in `repository_full_name`.
-    - `ubuntu_cli` (required) — Ubuntu CLI Guild integration. The agent uses
-      it to `git clone` the repo, scaffold files, run `tofu fmt`/`validate`,
-      `gh pr create`, and `gh issue comment`. Provision via
-      `modules/aios-integration-ubuntu` and pass `integration_name` as
-      `ubuntu_cli`. The runbooks install the `gh` CLI on first use.
-
-    Both are required (see validation). Omitting `ubuntu_cli` leaves only
-    GitHub API access and breaks the scaffold / validate / PR flow.
+    Required. Recommended PAT scopes: `repo`, `read:org`. Pass `sg_secret.<name>.id` from
+    the consumer root. Use the same secret across multiple agent modules to keep ONE PAT
+    in Vault per tenant.
   EOT
-  type = object({
-    github     = string
-    ubuntu_cli = string
-  })
+  type        = string
 
   validation {
-    condition     = trimspace(var.integration_names.github) != "" && trimspace(var.integration_names.ubuntu_cli) != ""
-    error_message = "integration_names.github and integration_names.ubuntu_cli must both be non-empty."
+    condition     = trimspace(var.github_secret_id) != ""
+    error_message = "github_secret_id is required; the scenario-author bot cannot fetch issues or open PRs without it."
   }
+}
+
+variable "existing_github_integration_name" {
+  description = <<-EOT
+    Optional. When set, this module SKIPS provisioning its own `scenario-author-github`
+    Guild integration and attaches the agent to the supplied existing integration name
+    instead. Use this when the tenant already runs a shared `github-integration`
+    container that you want the agent to share, rather than spinning up a per-bot
+    container. Default `""` keeps the self-contained behaviour.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = <<-EOT
+    Optional. When set, this module SKIPS provisioning its own `scenario-author-ubuntu`
+    Guild integration and attaches the agent to the supplied existing integration name
+    instead. Note the existing Ubuntu container must already have the GitHub PAT
+    surfaced as `GH_TOKEN` env (otherwise `gh` / `git clone` will fail inside the
+    sandbox). Default `""` keeps the self-contained behaviour.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "repository_full_name" {
@@ -114,10 +134,11 @@ variable "workflow_skill_refs" {
 variable "name_suffix" {
   description = <<-EOT
     Optional suffix appended (with a leading `-`) to every named resource this
-    module creates: the agent, the four runbook SOPs, the workflow, and the
-    webhook. Use when the same Guild tenant must host more than one
-    scenario-author instance — e.g. one bot per repo. Default `""` keeps the
-    canonical names (`scenario-author`, `scenario-request-triage`, etc.).
+    module creates: the agent, the four runbook SOPs, the workflow, the
+    webhook, and BOTH internal integrations (`scenario-author-github`,
+    `scenario-author-ubuntu`). Use when the same Guild tenant must host more
+    than one scenario-author instance — e.g. one bot per repo. Default `""`
+    keeps the canonical names.
 
     Allowed characters: lowercase letters, digits, `-`. Leading / trailing `-`
     are stripped.

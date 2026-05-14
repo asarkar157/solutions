@@ -138,7 +138,7 @@ module "repo_to_iac" {
     dangerous_ops = module.policies.policy_ids.dangerous_ops
   }
 
-  github_integration_name = module.github_integration[0].integration_name
+  existing_github_integration_name = module.github_integration[0].integration_name
 
   stackgen_mcp_integration_name = var.create_stackgen_mcp_integrations ? var.stackgen_mcp_integration_name : ""
 }
@@ -164,7 +164,6 @@ module "sre_agents" {
     post_action_verification = module.policies.policy_ids.post_action_verification
   }
 
-  integration_names = {}
 }
 
 # -----------------------------------------------------------------------------
@@ -193,17 +192,11 @@ module "sdlc" {
     change_validation = module.sre_agents.evidence_checklist_names.change_validation
   }
 
-  integration_names = merge(
-    {
-      aws_production = module.aws_integration.integration_name
-    },
-    var.create_stackgen_mcp_integrations ? { stackgen_mcp = var.stackgen_mcp_integration_name } : {},
-    local.github_integration_enabled ? { github_scm = module.github_integration[0].integration_name } : {},
-    trimspace(var.gcp_integration_name) != "" ? { gcp_production = var.gcp_integration_name } : {},
-    trimspace(var.slack_integration_name) != "" ? { slack = var.slack_integration_name } : {},
-  )
+  existing_aws_integration_name    = module.aws_integration.integration_name
+  existing_github_integration_name = local.github_integration_enabled ? module.github_integration[0].integration_name : ""
+  existing_gcp_integration_name    = var.gcp_integration_name
+  existing_slack_integration_name  = var.slack_integration_name
 
-  linear_mcp_integration_name = var.linear_integration_name
-
-  github_token = var.github_token
+  stackgen_mcp_integration_name = var.create_stackgen_mcp_integrations ? var.stackgen_mcp_integration_name : ""
+  linear_mcp_integration_name   = var.linear_integration_name
 }

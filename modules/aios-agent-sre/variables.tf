@@ -36,10 +36,55 @@ variable "policy_create_flags" {
   default = {}
 }
 
-variable "integration_names" {
-  description = "Map of integration names to connect to agents (grafana, slack, linear)"
-  type        = map(string)
-  default     = {}
+# =============================================================================
+# Self-contained integration wiring (replaces the old `integration_names` map).
+# =============================================================================
+
+variable "grafana_secret_id" {
+  description = "Optional `sg_secret` ID for Grafana. When set, this module provisions an internal Grafana Guild integration so triage / incident agents can query metrics/logs."
+  type        = string
+  default     = ""
+}
+
+variable "slack_secret_id" {
+  description = "Optional `sg_secret` ID for Slack workspace credentials. When set, this module provisions an internal Slack Guild integration so the incident commander can post status updates."
+  type        = string
+  default     = ""
+}
+
+variable "linear_credential_provider_id" {
+  description = "Optional OAuth credential provider ID (see StackGen Vault) for Linear. When set, this module provisions an internal Linear Guild integration so the incident commander can file follow-up tickets."
+  type        = string
+  default     = ""
+}
+
+variable "existing_grafana_integration_name" {
+  description = "Optional Guild integration name to share an existing Grafana integration instead of provisioning one."
+  type        = string
+  default     = ""
+}
+
+variable "existing_slack_integration_name" {
+  description = "Optional Guild integration name to share an existing Slack integration."
+  type        = string
+  default     = ""
+}
+
+variable "existing_linear_integration_name" {
+  description = "Optional Guild integration name to share an existing Linear integration."
+  type        = string
+  default     = ""
+}
+
+variable "name_suffix" {
+  description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-]*$", var.name_suffix))
+    error_message = "name_suffix must be empty or contain only letters, digits, and hyphens."
+  }
 }
 
 variable "agent_budgets" {

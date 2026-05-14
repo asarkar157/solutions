@@ -4,6 +4,35 @@ terraform {
   }
 }
 
+locals {
+  module_prefix = "ubuntu-cli-inspector"
+
+  suffix = trimspace(var.name_suffix) == "" ? "" : "-${trimspace(var.name_suffix)}"
+
+  agent_name       = "ubuntu-cli-inspector${local.suffix}"
+  sop_network_name = "ubuntu-network-diagnostics${local.suffix}"
+  sop_process_name = "ubuntu-process-triage${local.suffix}"
+  sop_disk_name    = "ubuntu-disk-triage${local.suffix}"
+  sop_log_name     = "ubuntu-log-analysis${local.suffix}"
+
+  ubuntu_integration_name = "ubuntu-cli${local.suffix}"
+
+  provision_ubuntu = trimspace(var.existing_ubuntu_integration_name) == ""
+
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu ? module.ubuntu_integration[0].integration_name : ""
+  )
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = var.install_tools
+}
+
 # ============================================================================
 # Ubuntu CLI SRE Module
 # ============================================================================
@@ -18,11 +47,11 @@ terraform {
 # ============================================================================
 
 resource "sg_agent" "ubuntu_cli_agent" {
-  name        = "ubuntu-cli-inspector"
+  name        = local.agent_name
   persona     = file("${path.module}/personas/ubuntu-sre.md")
   model_names = compact(var.model_names)
 
-  integrations = [var.integration_names.ubuntu_cli]
+  integrations = compact([local.resolved_ubuntu_integration_name])
 }
 
 # ============================================================================
@@ -56,25 +85,25 @@ resource "sg_agent_policy_attachment" "ubuntu_shell_hitl" {
 # ============================================================================
 
 resource "sg_runbook_sop" "ubuntu_network_diagnostics" {
-  name        = "ubuntu-network-diagnostics"
+  name        = local.sop_network_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-network-diagnostics.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_process_triage" {
-  name        = "ubuntu-process-triage"
+  name        = local.sop_process_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-process-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_disk_triage" {
-  name        = "ubuntu-disk-triage"
+  name        = local.sop_disk_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-disk-triage.md", {}))
 }
 
 resource "sg_runbook_sop" "ubuntu_log_analysis" {
-  name        = "ubuntu-log-analysis"
+  name        = local.sop_log_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/ubuntu-log-analysis.md", {}))
 }
