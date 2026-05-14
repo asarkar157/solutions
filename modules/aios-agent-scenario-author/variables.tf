@@ -26,16 +26,17 @@ variable "github_secret_id" {
     (`OpenAsCursorGithubApp = true`) for the clone, branch, commit, and PR creation —
     this PAT is intentionally NOT shared with the Cursor sandbox.
 
-    Required. Recommended PAT scopes: `repo`, `read:org`. Pass `sg_secret.<name>.id` from
-    the consumer root. Use the same secret across multiple agent modules to keep ONE PAT
+    Mutually exclusive with `existing_github_integration_name`: set exactly one.
+    Required when this module provisions its own internal `scenario-author-github`
+    Guild integration; leave empty (`""`) when attaching to a tenant-shared
+    `github-integration` via `existing_github_integration_name`.
+
+    Recommended PAT scopes: `repo`, `read:org`. Pass `sg_secret.<name>.id` from the
+    consumer root. Use the same secret across multiple agent modules to keep ONE PAT
     in Vault per tenant.
   EOT
   type        = string
-
-  validation {
-    condition     = trimspace(var.github_secret_id) != ""
-    error_message = "github_secret_id is required; the scenario-author bot cannot fetch the issue or post a reply comment without it."
-  }
+  default     = ""
 }
 
 variable "cursor_api_key" {
@@ -59,9 +60,10 @@ variable "existing_github_integration_name" {
   description = <<-EOT
     Optional. When set, this module SKIPS provisioning its own `scenario-author-github`
     Guild integration and attaches the agent to the supplied existing integration name
-    instead. Use this when the tenant already runs a shared `github-integration`
-    container that you want the agent to share, rather than spinning up a per-bot
-    container. Default `""` keeps the self-contained behaviour.
+    instead (e.g. the OAuth-backed `github-integration` provisioned by the tenancy
+    module and shared with `aios-agent-software-engineering`). Mutually exclusive with
+    `github_secret_id`: set exactly one. Default `""` keeps the self-contained
+    behaviour, which requires `github_secret_id`.
   EOT
   type        = string
   default     = ""

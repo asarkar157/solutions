@@ -50,9 +50,11 @@ via nested `aios-integration-*` blocks. Dependencies:
 - `aios-policies` (the `dangerous_ops` policy id).
 - `aios-integration-github` (instantiated INSIDE this module under the name
   `scenario-author-github[-<name_suffix>]`, bound to the tenant
-  `github_secret_id`).
+  `github_secret_id`) — SKIPPED when `existing_github_integration_name`
+  is supplied instead.
 - `aios-integration-cursor` (instantiated INSIDE this module under the name
-  `scenario-author-cursor[-<name_suffix>]`, fed `cursor_api_key`).
+  `scenario-author-cursor[-<name_suffix>]`, fed `cursor_api_key`) —
+  SKIPPED when `existing_cursor_integration_name` is supplied instead.
 
 Tenants that want to SHARE a pre-existing `github-integration` /
 `cursor-tool` container across multiple agent modules can pass
@@ -108,21 +110,32 @@ module "scenario_author" {
 ### Sharing integrations across modules
 
 When the tenant already runs a shared `cursor-tool` (e.g. for
-`aios-agent-software-engineering`) and a shared `github-integration`,
-opt out of internal provisioning with the overrides:
+`aios-agent-software-engineering`) and a shared `github-integration`
+(typically the OAuth-backed one provisioned by the tenancy module),
+opt out of internal provisioning entirely with the overrides:
 
 ```hcl
 module "scenario_author" {
-  # ... same inputs as above, MINUS cursor_api_key ...
+  source      = "github.com/appcd-dev/solutions//modules/aios-agent-scenario-author?ref=main"
+  model_names = module.foundation.model_names
+  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 
-  existing_github_integration_name = module.github_integration.integration_name
-  existing_cursor_integration_name = module.cursor_integration.integration_name
+  # No github_secret_id or cursor_api_key needed — both are zero-config.
+  existing_github_integration_name = "github-integration"
+  existing_cursor_integration_name = sg_guild_integration.cursor_mcp.name
+
+  repository_full_name = "appcd-dev/solutions"
 }
 ```
 
-`cursor_api_key` and `existing_cursor_integration_name` are
-**mutually exclusive** — set exactly one. The plan-time precondition in
-`main.tf` enforces this.
+Both input pairs are **mutually exclusive** — set exactly one of each:
+
+| Surface | Self-contained input | Shared override                       |
+| ------- | -------------------- | ------------------------------------- |
+| GitHub  | `github_secret_id`   | `existing_github_integration_name`    |
+| Cursor  | `cursor_api_key`     | `existing_cursor_integration_name`    |
+
+The plan-time preconditions in `main.tf` enforce this for both pairs.
 
 After `tofu apply`, wire the webhook in GitHub:
 
@@ -143,9 +156,9 @@ After `tofu apply`, wire the webhook in GitHub:
 | ----------------------------------- | --------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `model_names`                       | `list(string)`                                      | _required_                                       | Same shape every other agent module takes — pass `module.foundation.model_names`.                                                                            |
 | `policy_ids`                        | `object({ dangerous_ops = string })`                | _required_                                       | Only the `dangerous_ops` key is consumed.                                                                                                                    |
-| `github_secret_id`                  | `string`                                            | _required_                                       | ID of a pre-existing `sg_secret` holding the GitHub PAT. Bound to the internal GitHub integration so `gh api` and `gh issue comment` authenticate.           |
+| `github_secret_id`                  | `string`                                            | `""`                                             | ID of a pre-existing `sg_secret` holding the GitHub PAT. Required when not supplying `existing_github_integration_name`. Mutually exclusive with `existing_github_integration_name`. |
 | `cursor_api_key`                    | `string` (sensitive)                                | `""`                                             | Cursor Cloud Agents API key. Required when not supplying `existing_cursor_integration_name`. Mutually exclusive with `existing_cursor_integration_name`.    |
-| `existing_github_integration_name`  | `string`                                            | `""`                                             | When set, skip internal GitHub integration provisioning and attach to the supplied existing name (sharing model).                                            |
+| `existing_github_integration_name`  | `string`                                            | `""`                                             | When set, skip internal GitHub integration provisioning and attach to the supplied existing name (sharing model). Mutually exclusive with `github_secret_id`. |
 | `existing_cursor_integration_name`  | `string`                                            | `""`                                             | When set, skip internal Cursor integration provisioning and attach to the supplied existing name (sharing model). Mutually exclusive with `cursor_api_key`. |
 | `repository_full_name`              | `string`                                            | `appcd-dev/solutions`                            | Hard repo gate. Any other repo's webhook events get a "wrong repo" comment. **Gotcha**: if the GitHub repo is renamed, re-apply with the new name.            |
 | `scenario_request_label`            | `string`                                            | `scenario-request`                               | Hard label gate. Issues without this label get a "missing label" comment.                                                                                    |

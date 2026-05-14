@@ -82,6 +82,25 @@ resource "terraform_data" "validate_cursor_input" {
   }
 }
 
+# Mutually-exclusive github input gate: either provision internally with
+# `github_secret_id` (and let this module spin up `scenario-author-github`)
+# OR attach to a pre-existing integration via `existing_github_integration_name`
+# (typical when the tenant already runs the OAuth-backed `github-integration`
+# shared with `aios-agent-software-engineering`). Caught at plan time so the
+# user gets a clear error instead of a confusing "integration not found" later.
+resource "terraform_data" "validate_github_input" {
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != ""
+      error_message = "aios-agent-scenario-author requires exactly one of `github_secret_id` (self-contained) or `existing_github_integration_name` (shared) to be set."
+    }
+    precondition {
+      condition     = !(trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) != "")
+      error_message = "aios-agent-scenario-author cannot accept both `github_secret_id` and `existing_github_integration_name`; pass exactly one."
+    }
+  }
+}
+
 # =============================================================================
 # Owned integrations — provisioned when the consumer hasn't supplied an
 # existing one to share.
@@ -96,7 +115,7 @@ resource "terraform_data" "validate_cursor_input" {
 # =============================================================================
 
 module "github_integration" {
-  count  = trimspace(var.existing_github_integration_name) == "" ? 1 : 0
+  count  = trimspace(var.existing_github_integration_name) == "" && trimspace(var.github_secret_id) != "" ? 1 : 0
   source = "../aios-integration-github"
 
   integration_name   = local.github_integration_name
