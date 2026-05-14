@@ -17,14 +17,14 @@ variable "policy_ids" {
 
 variable "github_secret_id" {
   description = <<-EOT
-    ID of a pre-existing `sg_secret` holding the GitHub PAT this bot uses to fetch issues,
-    clone the repo, open the scaffold PR, and comment back on the originating issue. The
-    same secret is bound to BOTH integrations this module provisions internally:
-      - the `scenario-author-github` Guild integration (for `gh api` calls from the API
-        sandbox), and
-      - the `scenario-author-ubuntu` Guild integration (so `gh auth status` /
-        `git clone` / `gh pr create` work inside the shell sandbox without the agent
-        having to thread a token through subagent goals).
+    ID of a pre-existing `sg_secret` holding the GitHub PAT this bot uses to fetch the
+    triggering issue and to comment back on it. Bound to the internal
+    `scenario-author-github` Guild integration so `gh api` calls authenticate without the
+    agent threading a token through subagent context.
+
+    The Cursor Cloud Agent that authors the PR uses Cursor's own GitHub App integration
+    (`OpenAsCursorGithubApp = true`) for the clone, branch, commit, and PR creation —
+    this PAT is intentionally NOT shared with the Cursor sandbox.
 
     Required. Recommended PAT scopes: `repo`, `read:org`. Pass `sg_secret.<name>.id` from
     the consumer root. Use the same secret across multiple agent modules to keep ONE PAT
@@ -34,8 +34,25 @@ variable "github_secret_id" {
 
   validation {
     condition     = trimspace(var.github_secret_id) != ""
-    error_message = "github_secret_id is required; the scenario-author bot cannot fetch issues or open PRs without it."
+    error_message = "github_secret_id is required; the scenario-author bot cannot fetch the issue or post a reply comment without it."
   }
+}
+
+variable "cursor_api_key" {
+  description = <<-EOT
+    Cursor Cloud Agents API key used to author the scenario PR. When set (and
+    `existing_cursor_integration_name` is unset), this module provisions a self-contained
+    `scenario-author-cursor` Guild integration that wraps the Cursor MCP and gives the
+    agent access to the `cursor_agents_*` tools (`run_task`, `launch`, `get_status`,
+    `get_conversation`, `add_followup`, …).
+
+    Mutually exclusive with `existing_cursor_integration_name`: set exactly one. If you
+    already run a shared `cursor-tool` integration for `aios-agent-software-engineering`
+    or another module, supply `existing_cursor_integration_name` and leave this empty.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "existing_github_integration_name" {
@@ -50,13 +67,13 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
-variable "existing_ubuntu_integration_name" {
+variable "existing_cursor_integration_name" {
   description = <<-EOT
-    Optional. When set, this module SKIPS provisioning its own `scenario-author-ubuntu`
+    Optional. When set, this module SKIPS provisioning its own `scenario-author-cursor`
     Guild integration and attaches the agent to the supplied existing integration name
-    instead. Note the existing Ubuntu container must already have the GitHub PAT
-    surfaced as `GH_TOKEN` env (otherwise `gh` / `git clone` will fail inside the
-    sandbox). Default `""` keeps the self-contained behaviour.
+    instead (e.g. the `cursor-tool` integration shared with
+    `aios-agent-software-engineering`). Mutually exclusive with `cursor_api_key`.
+    Default `""` keeps the self-contained behaviour, which requires `cursor_api_key`.
   EOT
   type        = string
   default     = ""
@@ -96,9 +113,11 @@ variable "scenario_request_label" {
 
 variable "agent_budget" {
   description = <<-EOT
-    Daily USD spend cap for the scenario-author agent. The full happy-path
-    workflow (analyze-issue + triage + scaffold + PR + notify) typically
-    costs $2-$4 per run; $10/day fits comfortably with retries.
+    Daily USD spend cap for the scenario-author agent. The Cursor-delegated
+    happy path (analyze-issue + cursor-author + notify) typically costs
+    ~$1-$2 per run on the planner side; the Cursor Cloud Agent's compute
+    cost is metered separately by Cursor against `cursor_api_key`. $10/day
+    on the planner side fits comfortably with retries.
   EOT
   type        = number
   default     = 10
@@ -124,8 +143,8 @@ variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs appended to each stage_binding. Keys are
     "scenario-request-triage::<stage_id>" where stage_id matches one of:
-    `analyze-issue`, `triage`, `scaffold-validate-pr`, `notify-issue-comment`.
-    Each value is appended after the module defaults for that stage.
+    `analyze-issue`, `cursor-author`, `notify-issue-comment`. Each value is
+    appended after the module defaults for that stage.
   EOT
   type        = map(list(string))
   default     = {}
@@ -134,9 +153,9 @@ variable "workflow_skill_refs" {
 variable "name_suffix" {
   description = <<-EOT
     Optional suffix appended (with a leading `-`) to every named resource this
-    module creates: the agent, the four runbook SOPs, the workflow, the
-    webhook, and BOTH internal integrations (`scenario-author-github`,
-    `scenario-author-ubuntu`). Use when the same Guild tenant must host more
+    module creates: the agent, the runbook SOPs, the workflow, the webhook,
+    and BOTH internal integrations (`scenario-author-github`,
+    `scenario-author-cursor`). Use when the same Guild tenant must host more
     than one scenario-author instance — e.g. one bot per repo. Default `""`
     keeps the canonical names.
 

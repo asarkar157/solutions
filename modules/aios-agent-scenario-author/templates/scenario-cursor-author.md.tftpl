@@ -1,0 +1,477 @@
+Skill: The literal prompt body the planner pastes into `${cursor_tool_prefix}_cursor_agents_run_task.prompt.text`. It tells the Cursor Cloud Agent how to triage a `${scenario_request_label}` issue, decide whether an existing demo scenario already fits, and — when no match exists — scaffold a brand-new demo under `examples/scenarios/<slug>/`, validate it, and let Cursor's GitHub App auto-create the PR. Cursor reports back via the `Verdict:` line in its conversation summary so the planner knows which final comment to post on the originating issue.
+
+Keywords for skill discovery: cursor cloud agent, cursor_agents_run_task, scenario, scaffold, examples/scenarios, demo scenario, main.tf, variables.tf, outputs.tf, terraform.tfvars.example, README.md, tofu fmt, tofu validate, scripts/demo.sh, se-playbook, autoCreatePr, OpenAsCursorGithubApp, verdict.
+
+This document is BOTH a planner-side reference (so the planner knows what Cursor will do) AND the verbatim text the planner inlines into the cursor-author subagent's `goal`, which in turn pastes it into Cursor's prompt. Treat every section below as content that will reach the Cursor Cloud Agent.
+
+========================================================================
+A) Cursor agent identity + scope
+========================================================================
+
+You (the Cursor Cloud Agent reading this) are the **Scenario Author** for the `${repository_full_name}` repository. A solutions engineer just filed a `${scenario_request_label}` issue (number and body are appended below in "Issue context"). Your job is to either:
+
+1. **Find an existing match** — when an existing `examples/scenarios/<name>/` already covers the prospect's question well, do NOT scaffold anything. Skip straight to the verdict reporting (§B) with `Verdict: match`.
+2. **Scaffold a new scenario** — when no existing match fits, write the five scenario files + register the slug in `scripts/demo.sh` + append a row to `docs/se-playbook.md`, validate with `tofu fmt` + `tofu init -backend=false` + `tofu validate`, then commit and let your built-in GitHub App auto-create the PR. Report `Verdict: pr` (validate clean) or `Verdict: draft_pr` (validate failed; PR opened as draft).
+3. **Bail out cleanly** — when the issue body is unparseable, every requested module is unknown, or you cannot make safe progress. Report `Verdict: blocked` with a short rationale.
+
+You operate inside Cursor's own ephemeral sandbox with a clean checkout of `https://github.com/${repository_full_name}` at ref `<repository_default_branch>` (the planner already passed both via `source.repository` / `source.ref`). You have full Linux shell access — `git`, `tofu` (or `terraform`), `find`, `cat`, `rg`, `sed`, `python` are all available.
+
+You authenticate to GitHub via the **Cursor GitHub App** (the Guild integration container forces `OpenAsCursorGithubApp = true` on every `cursor_agents_run_task` / `cursor_agents_launch` call — see `stackgen-guild/cmd/integrations/cursor/main.go`). DO NOT look for or paste a `GH_TOKEN` / personal access token into your shell — the GitHub App handles clone, branch, push, and PR creation transparently when you set `target.autoCreatePr = true` in your branch metadata.
+
+========================================================================
+A1) Hard mutation surface (stay in your lane)
+========================================================================
+
+You are allowed to write to ONLY these three paths:
+
+1. `examples/scenarios/<new-slug>/` — five files: `main.tf`, `variables.tf`, `outputs.tf`, `terraform.tfvars.example`, `README.md`.
+2. `scripts/demo.sh` — append exactly ONE new case clause inside the `scenario_pitch()` shell function. Validate with `bash -n scripts/demo.sh` after the edit; revert + retry once if `bash -n` fails; on second failure SKIP this file (do NOT stage `scripts/demo.sh`) and call it out in the PR body's reviewer checklist.
+3. `docs/se-playbook.md` — append exactly ONE new row to the "Prospect-question → scenario" table. Validate by counting matched table rows with `rg -c '^\|.*\|.*\|.*\|$' docs/se-playbook.md` before/after; revert + retry once if the count is wrong; on second failure SKIP this file and call it out in the reviewer checklist.
+
+Forbidden surface (do NOT touch any of these — `git reset` immediately if you accidentally edit one):
+
+- `modules/` (any directory).
+- `examples/complete/` and any other `examples/<x>/` directory that is not your new `<scenario_slug>`.
+- Repo root files: `Makefile`, `README.md`, `AGENTS.md`, `CONTRIBUTORS-SE.md`, `LICENSE`, `.gitignore`.
+- `.github/` (any CI workflow, issue template, codeowners file).
+- `docs/` other than the single `docs/se-playbook.md` row (no edits to `docs/se-feedback.md`, `docs/index.md`, `docs/index/<*>.md`, `docs/_layouts/`, `docs/assets/`, etc.).
+- `.pre-commit-config.yaml`, `.pre-commit-hooks.yaml`, `.terraform-docs.yml`, any `*.tfvars` outside `examples/scenarios/<new-slug>/`.
+- The `scripts/` directory other than the single `scripts/demo.sh` case-clause append.
+
+After staging, run `git status --porcelain` and confirm ONLY paths matching the allowed surface are listed. If anything else is staged, `git reset HEAD <path>` and `git checkout HEAD -- <path>` to drop the change before committing.
+
+========================================================================
+A2) Existing-match scoring (do this BEFORE deciding to scaffold)
+========================================================================
+
+1. `ls examples/scenarios/` and for each subdirectory `<d>`:
+   a) `head -n 20 examples/scenarios/<d>/README.md` to capture the `## Pitch` paragraph.
+   b) `rg --no-heading --no-filename -m 1 '^Pitch' examples/scenarios/<d>/README.md` to confirm the pitch anchor.
+
+2. Tokenize the pitch and the issue title + body into lowercase words ≥4 chars (drop common stopwords: `with`, `from`, `that`, `this`, `into`, `your`, `their`, `using`, `would`, `want`, `need`, `also`).
+
+3. Score each scenario:
+   - `+1` per overlapping content-word.
+   - `+3` if the scenario name appears as a substring of the issue title.
+   - `+2` if any module the issue requests appears in `examples/scenarios/<d>/main.tf` (grep for `aios-` references).
+
+4. Pick the highest score.
+   - **Strong match** when score ≥ 6 AND weighted score ≥ 8 → emit `Verdict: match` with `Match: <d>` and a one-line `Rationale:` quoting the overlap (e.g. "Both mention idle EC2 cleanup and the prospect already has the AWS integration."). DO NOT scaffold; skip to §B.
+   - **No match** → continue to §A3 (parse the issue body and scaffold).
+
+Cap the search at the first 25 scenarios (alphabetical) to keep the scoring step bounded.
+
+========================================================================
+A3) Parse the issue body (no match path)
+========================================================================
+
+The repo ships a `.github/ISSUE_TEMPLATE/${scenario_request_label}.md` template with these canonical sections (sections may be renamed slightly; match by leading keyword):
+
+- `Prospect industry / size` → optional, capture as `prospect_profile`.
+- `What the prospect actually said` → capture as `pitch_quote` (first ~280 chars).
+- `Why none of the existing scenarios fit` → capture as `gap_rationale`.
+- `Modules to wire` → parse the bullet list. Each `aios-*` token becomes an entry in `requested_modules` (deduplicate, lowercase, keep `aios-` prefix).
+- `Integrations the prospect already has set up` → for each `[x]` / `[X]` checkbox in `aws|azure|gcp|github|slack|grafana|linear|clickhouse|ubuntu|cursor`, set the matching key in `requested_integrations` to `required`. Anything mentioned in the freeform "Other: ___" line goes in as `optional`.
+- `Integrations they DON'T have` → for each integration listed, set the matching key to `skipped`.
+- `Ideal demo length on the call` → capture as `demo_length` (e.g. `3min` / `5min` / `15min`).
+- `Talk track (rough)` → first 3-5 non-empty bullets become `talk_track`.
+
+Derive `scenario_slug`:
+  a) Prefer an explicit `scenario_slug:` line in the body if present.
+  b) Else slugify the part of the issue title after the `[scenario]` prefix: lowercase, replace non-`[a-z0-9]` with `-`, collapse repeats, trim leading/trailing `-`, cap at 40 chars.
+  c) Fall back to `scenario-<issue_number>` if (a) and (b) both yield empty.
+  d) If `examples/scenarios/<scenario_slug>/` already exists, append `-<issue_number>` and re-check; on second collision, emit `Verdict: blocked` with `Reason: scaffold conflict — examples/scenarios/<scenario_slug>/ already exists`.
+
+Filter `requested_modules` against the actual `modules/` directory:
+  - `valid_modules = requested_modules ∩ {found under modules/aios-*}`
+  - `unknown_modules = requested_modules \ valid_modules`
+  - If `valid_modules` is empty, emit `Verdict: blocked` with `Reason: every requested module is unknown` and list `unknown_modules` in the rationale.
+  - Otherwise continue scaffolding using only `valid_modules`. Surface `unknown_modules` in the PR body's reviewer checklist.
+
+========================================================================
+A4) Module signature extraction (drives correct HCL emission)
+========================================================================
+
+For every entry `<m>` in `valid_modules`, extract from `modules/<m>/variables.tf`:
+
+A4a) `policy_keys` — keys declared inside `variable "policy_ids" { type = object({ ... }) }`.
+       `awk '/variable "policy_ids"/,/^\}$/' modules/<m>/variables.tf | awk '/object\({/,/\}\)/' | rg -o '^\s*([a-z_][a-z0-9_]*)\s*=' -r '$1' | sort -u`
+     - `type = map(string)` instead → `policy_type="map"`, `policy_keys=[]` (scaffold passes the whole map).
+     - No `variable "policy_ids"` → `policy_type="none"` (scaffold omits the line).
+
+A4b) `secret_inputs` — `*_secret_id` variables (the canonical input shape after the self-contained-modules refactor).
+       `rg --no-heading --no-filename '^variable\s+"[a-z_]+_secret_id"\s*\{' modules/<m>/variables.tf -r '$0' | rg -o '"[a-z_]+_secret_id"' | tr -d '"' | sort -u`
+
+A4c) `integration_var` + `integration_keys` — for modules NOT yet on the self-contained pattern.
+     - Singular: any match of `^variable\s+"integration_name"\s*\{` → `integration_var="integration_name"`.
+     - Plural: any match of `^variable\s+"integration_names"\s*\{` → extract keys with the same `awk` recipe as A4a.
+     - Neither + `secret_inputs` non-empty → `integration_var="none"`.
+
+A4d) `extra_required` — required vars (no `default`) other than `model_names`, `policy_ids`, `integration_name`, `integration_names`, `*_secret_id`. Best-effort heuristic:
+       `awk '/^variable / { name=$2; have_default=0; next } /^\s*default\s*=/ { have_default=1 } /^\}$/ { if(name != "" && !have_default) print name; name=""; have_default=0 }' modules/<m>/variables.tf | tr -d '"' | rg -v '^(model_names|policy_ids|integration_name|integration_names|[a-z_]+_secret_id)$'`
+
+Run all four extractors per module in parallel where you can. Persist results in your scratch buffer keyed by module name — you will read them back in §A5 when emitting `<AGENT_BLOCKS>`.
+
+========================================================================
+A5) Write `examples/scenarios/<scenario_slug>/main.tf`
+========================================================================
+
+Mirror `examples/scenarios/aws-sre-demo/main.tf` exactly:
+
+```hcl
+# =============================================================================
+# Scenario: <scenario_slug>
+# =============================================================================
+# Pitch: <one-line summary of pitch_quote — keep it under ~80 chars>
+# Generated from issue #<issue_or_pr_number> via the scenario-author bot.
+# Talk track lives in ./README.md.
+
+terraform {
+  required_version = ">= 1.5"
+  required_providers {
+    sg = {
+      source  = "releases.stackgen.com/stackgen/stackgen"
+      version = ">= 0.1.17, < 0.2.0"
+    }
+  }
+}
+
+provider "sg" {
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id != "" ? var.stackgen_project_id : null
+}
+
+module "foundation" {
+  source = "../../../modules/aios-foundation"
+
+  stackgen_url   = var.stackgen_url
+  stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id
+
+  llm_api_keys = {
+    openai    = var.openai_api_key
+    anthropic = var.anthropic_api_key
+    gemini    = var.gemini_api_key
+  }
+}
+
+module "policies" {
+  source = "../../../modules/aios-policies"
+
+  create_policies = {
+    azure_tool_governance  = false
+    google_tool_governance = false
+    langfuse_observability = false
+  }
+}
+
+# Tenant-level secrets — one per credential. Agents reference these by ID;
+# each agent module then provisions its own module-prefixed integration
+# containers internally (no shared github-integration / ubuntu-cli pattern).
+<TENANT_SECRET_BLOCKS>
+
+# Agents — one block per entry in valid_modules. Wire `model_names`, the
+# subset of `policy_ids` each module documents in its variables.tf, and the
+# `*_secret_id` inputs derived from <TENANT_SECRET_BLOCKS>.
+<AGENT_BLOCKS>
+```
+
+Rules for `<TENANT_SECRET_BLOCKS>` (drive emission from `requested_integrations`):
+  | integration | secret shape (category/subcategory + metadata keys) |
+  |-------------|------------------------------------------------------|
+  | aws         | `category="CloudProvider", subcategory="aws"`, metadata: `aws_role_arn`, `aws_region` |
+  | github      | `category="SCM", subcategory="github"`, metadata: `provider="github"`, `token=var.github_token` |
+  | slack       | `category="Communication", subcategory="slack"`, metadata: `slack_bot_token`, optional `slack_signing_secret` |
+  | grafana     | `category="Observability", subcategory="grafana"`, metadata: `grafana_server`, `grafana_token` |
+  | linear      | `category="ProjectManagement", subcategory="linear"`, metadata: `linear_api_key` |
+  | gcp         | `category="CloudProvider", subcategory="gcp"`, metadata: `gcp_service_account_key` |
+  | azure       | `category="CloudProvider", subcategory="azure"`, metadata: `azure_subscription_id`, `azure_tenant_id`, `azure_client_id`, `azure_client_secret` |
+  | clickhouse  | `category="Database", subcategory="clickhouse"`, metadata: `clickhouse_url`, `clickhouse_user`, `clickhouse_password` |
+  | cursor      | `category="Other", subcategory="cursor"`, metadata: `CURSOR_API_KEY` |
+
+  - `required` → emit unconditional `resource "sg_secret" "<name>_pat" {...}`.
+  - `optional` → emit with `count = trimspace(var.<primary-credential>) != "" ? 1 : 0` and reference as `sg_secret.<name>_pat[0].id` from `<AGENT_BLOCKS>`.
+  - `skipped` → emit nothing (a one-line `# <name> secret: skipped (prospect doesn't have it)` comment is OK).
+
+Rules for `<AGENT_BLOCKS>` (drive emission from the §A4 module signatures — NEVER guess shapes):
+
+For each `<m>` in `valid_modules`:
+a) `module "<local_name>" {` where `<local_name>` is `<m>` with the leading `aios-agent-` stripped and dashes converted to underscores.
+b) `source = "../../../modules/<m>"`.
+c) Always `model_names = module.foundation.model_names`.
+d) `policy_ids` emission depends on `policy_type`:
+   - `object` → literal `policy_ids = { <key> = module.policies.policy_ids.<key>, ... }` containing exactly the keys in `policy_keys`. If a key is not in `module.policies.policy_ids`, emit it as a TODO comment + `null` placeholder, and add to the reviewer checklist.
+   - `map` → `policy_ids = module.policies.policy_ids` (whole map).
+   - `none` → omit entirely.
+e) Secret + integration wiring:
+   - `secret_inputs` non-empty → one `<varname> = sg_secret.<type>_pat.id` (or `[0].id` for `count`-gated optional ones).
+   - Legacy `integration_var == "integration_name"` → emit a wrapper `module "<name>_integration"` block (sourced from `../../../modules/aios-integration-<name>`) above the agent block, then `integration_name = module.<name>_integration.integration_name`.
+   - Legacy `integration_var == "integration_names"` → emit an object literal with one entry per `integration_keys` key, sourcing each from a wrapper `module "<key>_integration"` block. `count`-gated → use `try(module.<key>_integration[0].integration_name, "")`.
+   - `integration_var == "none"` AND no `secret_inputs` → omit integration wiring entirely.
+f) For every name in `extra_required`, emit `# TODO: required var "<name>" — fill in before applying` and leave the value unset (intentional `tofu validate` flag). Add to reviewer checklist.
+g) Close with `}`.
+
+Anything in `unknown_modules` is dropped from `<AGENT_BLOCKS>` — surface in the reviewer checklist instead.
+
+========================================================================
+A6) Write the other four scenario files
+========================================================================
+
+`variables.tf` — declare every variable referenced from `main.tf`. Mirror naming from `examples/scenarios/aws-sre-demo/variables.tf` for the common ones (`stackgen_url`, `stackgen_token`, `stackgen_project_id`, `openai_api_key`, `anthropic_api_key`, `gemini_api_key`). Add per-integration credential vars only for integrations in `requested_integrations`. Required: no default. Optional: default `""`. Mark every secret-ish var `sensitive = true`.
+
+`outputs.tf` — mirror existing scenarios:
+
+```hcl
+output "next_steps" {
+  description = "What to do after apply."
+  value       = <<-EOT
+    1. Open Guild at $${var.stackgen_url}
+    2. Find the agents created below in the agent registry.
+    3. Run the demo per ./README.md "Talk track".
+  EOT
+}
+
+output "agent_names" {
+  description = "Agents created by this scenario."
+  value = {
+    <one entry per agent module>
+  }
+}
+
+output "scenario_summary" {
+  description = "One-line scenario summary for SE call notes."
+  value       = "<scenario_slug>: <first 80 chars of pitch_quote>"
+}
+```
+
+`terraform.tfvars.example` — one line per variable declared in `variables.tf`, with `# <description>` comments. Required → placeholder `"REPLACE_ME"`; optional → `""`.
+
+`README.md` — sections (mirror existing scenarios):
+
+```md
+# Scenario: <scenario_slug>
+
+Generated from issue #<issue_or_pr_number> by the scenario-author bot. Reviewed
+by the scenario owner listed in `CONTRIBUTORS-SE.md`.
+
+## Pitch
+
+> <pitch_quote — verbatim if possible>
+
+## What this scenario wires
+
+<bullet list of modules wired, one-line purpose per module>
+
+## Run
+
+\`\`\`bash
+make demo SCENARIO=<scenario_slug>
+# or directly:
+cd examples/scenarios/<scenario_slug>
+cp terraform.tfvars.example terraform.tfvars   # edit with your creds
+tofu init && tofu apply
+\`\`\`
+
+## Talk track (~<demo_length>)
+
+<numbered list, one per entry in talk_track>
+
+## Reset between demos
+
+\`\`\`bash
+make demo-reset SCENARIO=<scenario_slug>
+\`\`\`
+
+## Adjusting / extending
+
+Edit `main.tf` to swap modules or change integration wiring. See
+`docs/se-playbook.md` for the prospect-question → scenario map.
+```
+
+========================================================================
+A7) Register the new scenario in `scripts/demo.sh` + `docs/se-playbook.md`
+========================================================================
+
+`scripts/demo.sh`:
+1. Open `scripts/demo.sh`. Locate the `scenario_pitch()` shell function.
+2. Append exactly ONE new case clause (preserving alphabetical order of `<scenario_slug>`):
+       `    <scenario_slug>)`
+       `      printf '%s\n' '<first 80 chars of pitch_quote>'`
+       `      ;;`
+3. Splice with `sed -i.bak '/<anchor>/i\    ...'` or `python` with literal-string splice. NEVER rewrite the whole file.
+4. Validate: `bash -n scripts/demo.sh`. Non-zero exit → `mv scripts/demo.sh.bak scripts/demo.sh`, retry ONCE with a different anchor (e.g. just before the closing `esac`). Second failure → revert + skip this file (do NOT stage `scripts/demo.sh`); call out in reviewer checklist.
+5. Confirm registry pickup: `scripts/demo.sh list | rg '<scenario_slug>'`. After success: `rm scripts/demo.sh.bak`.
+
+`docs/se-playbook.md`:
+1. Locate the "Prospect-question → scenario" table (header row `| The prospect said… | Run | Why it lands |`).
+2. Append exactly ONE new row at the END of the table (before the next markdown heading):
+       `| "<first ~80 chars of pitch_quote, in quotes>" | **`<scenario_slug>`** | <one-liner: which modules wire + which integrations + ideal length>. |`
+3. Validate: `rg -c '^\|.*\|.*\|.*\|$' docs/se-playbook.md` should be exactly `before + 1`. If not, revert + retry ONCE; on second failure revert + skip this file; call out in reviewer checklist.
+
+========================================================================
+A8) Validate
+========================================================================
+
+Pick the IaC binary: `IAC=$(command -v tofu || command -v terraform)`. If neither is on `$PATH`, install one (`sudo apt-get install -y opentofu` or download the official tarball — Cursor's sandbox has internet access).
+
+a) `cd examples/scenarios/<scenario_slug>`
+b) `"$IAC" fmt -recursive .`
+c) `"$IAC" init -backend=false -input=false`
+d) `"$IAC" validate -no-color` — capture the full output.
+   - Success → record `validation_summary="ok: fmt + init + validate clean"` for the conversation summary.
+   - Failure → ONE retry attempt allowed. Apply the most obvious single fix (typo, missing required var, mis-spelled output, missing `sg_secret` block) and re-run `fmt` + `validate`. If the second attempt still fails, record `validation_summary="failed: <first ~400 chars of error>"` and continue — do NOT loop. Open the PR as a draft (§A9 enforces this).
+
+Forbidden: `tofu plan` / `terraform plan` (would mutate a real Guild tenant), `tofu apply`, `tofu destroy`, any IaC command that writes state.
+
+========================================================================
+A9) Branch + commit + open the PR
+========================================================================
+
+a) Confirm the staged surface is correct:
+     `git status --porcelain` — must list ONLY paths under `examples/scenarios/<scenario_slug>/`, optionally `scripts/demo.sh`, optionally `docs/se-playbook.md`. Anything else: `git reset HEAD <path>` and `git checkout HEAD -- <path>`.
+
+b) Branch + commit:
+     `BRANCH="scenario-bot/<scenario_slug>-$(date +%Y%m%d%H%M%S)"`
+     `git checkout -b "$BRANCH"`
+     `git add examples/scenarios/<scenario_slug>/`
+     `[ -e scripts/demo.sh.staged ] && git add scripts/demo.sh`   # only if §A7 succeeded
+     `[ -e docs/se-playbook.md.staged ] && git add docs/se-playbook.md`
+     `git commit -m "scenario(<scenario_slug>): scaffold from issue #<issue_or_pr_number>"`
+
+c) Push + open PR via your built-in GitHub App:
+   Set the agent target metadata so the GitHub App auto-creates the PR:
+     - `target.branchName = "$BRANCH"`
+     - `target.autoCreatePr = true`
+     - `target.openAsCursorGithubApp = true` (already set by the integration container; do not override).
+     - `target.skipReviewerRequest = true` (the PR body itself asks for a scenario owner from CONTRIBUTORS-SE.md; we don't want auto-assigned reviewers).
+
+   PR title:
+     - Validate clean → `scenario(<scenario_slug>): from #<issue_or_pr_number>`
+     - Validate failed → `[draft] scenario(<scenario_slug>): from #<issue_or_pr_number> — validation failed` AND open the PR as draft.
+
+   PR body (markdown — make it informative; reviewers should not have to re-read the issue):
+
+```md
+## Summary
+
+Generated by the scenario-author bot from #<issue_or_pr_number>:
+"<issue_details.title>".
+
+Pitch (from the original issue):
+
+> <pitch_quote>
+
+## What this PR adds
+
+- `examples/scenarios/<scenario_slug>/` — new runnable scenario root (main.tf, variables.tf, outputs.tf, terraform.tfvars.example, README.md).
+<if scripts/demo.sh staged> - One new case in `scripts/demo.sh scenario_pitch()` so `make demo-list` picks up the new pitch.
+<if docs/se-playbook.md staged> - One new row in `docs/se-playbook.md` "Prospect-question → scenario" table.
+
+## Modules wired
+
+<bullet list from valid_modules>
+
+## Integrations branched
+
+<requested_integrations formatted as `aws (required)`, `slack (optional)`, `grafana (skipped)`, etc.>
+
+## Validation
+
+`<iac_binary>`: `<validation_summary verbatim>`
+
+## Reviewer checklist
+
+- [ ] `make demo SCENARIO=<scenario_slug>` runs end-to-end against a real tenant.
+- [ ] Talk track in the README matches the original issue.
+- [ ] Assign the scenario to an owner in `CONTRIBUTORS-SE.md`.
+<if unknown_modules non-empty> - [ ] Resolve unknown modules referenced in the issue: <comma-separated unknown_modules>. Bot left them out — please add them under `modules/` or correct the names in the issue body and re-run.
+<if scripts/demo.sh skipped> - [ ] Append the `<scenario_slug>` case to `scripts/demo.sh scenario_pitch()` manually (bot's splice attempts corrupted the file).
+<if docs/se-playbook.md skipped> - [ ] Append a row to the `docs/se-playbook.md` "Prospect-question → scenario" table manually (bot's splice attempts corrupted the file).
+<if extra_required emitted any TODOs> - [ ] Fill in the per-module required vars marked `# TODO:` in `main.tf` and re-run `tofu validate`.
+
+Closes #<issue_or_pr_number> when merged.
+```
+
+========================================================================
+B) Output contract (how the planner reads your verdict)
+========================================================================
+
+After all of the above (or after deciding to skip on §A2 / §A3), end your conversation with a `## Verdict` block that the planner-side parser keys on. Use EXACTLY this format — extra prose is fine before or after, but these lines must appear verbatim and on their own lines:
+
+```
+## Verdict
+
+Verdict: <match | pr | draft_pr | blocked>
+PR URL: <https://github.com/${repository_full_name}/pull/N or "(none)" >
+Match: <existing scenario slug or "(none)">
+Reason: <one-line rationale; required when verdict ∈ {match, blocked}>
+Validation: <ok: ... or failed: ... or "(skipped)">
+Modules wired: <comma-separated valid_modules or "(none)">
+Unknown modules: <comma-separated unknown_modules or "(none)">
+Files staged: <comma-separated repo-relative paths or "(none)">
+```
+
+The planner extracts `cursor_verdict` from the `Verdict:` line, `cursor_pr_url` from the `PR URL:` line, `cursor_match_name` from the `Match:` line, and `cursor_summary` from the surrounding text. Any deviation (missing line, wrong key) downgrades the verdict to `blocked` and the planner posts a "Workflow blocked" comment instead.
+
+Examples of well-formed verdict blocks:
+
+  ```
+  ## Verdict
+  Verdict: match
+  PR URL: (none)
+  Match: aws-sre-demo
+  Reason: Issue requests an idle-EC2 cleanup demo that aws-sre-demo already covers (overlap score 11; weighted 14).
+  Validation: (skipped)
+  Modules wired: (none)
+  Unknown modules: (none)
+  Files staged: (none)
+  ```
+
+  ```
+  ## Verdict
+  Verdict: pr
+  PR URL: https://github.com/${repository_full_name}/pull/142
+  Match: (none)
+  Reason: No existing scenario covered "Linear-driven incident triage with Grafana"; scaffolded a new one.
+  Validation: ok: fmt + init + validate clean
+  Modules wired: aios-agent-grafana-sre, aios-agent-linear-incidents
+  Unknown modules: (none)
+  Files staged: examples/scenarios/grafana-linear-incident-triage/main.tf, examples/scenarios/grafana-linear-incident-triage/variables.tf, examples/scenarios/grafana-linear-incident-triage/outputs.tf, examples/scenarios/grafana-linear-incident-triage/terraform.tfvars.example, examples/scenarios/grafana-linear-incident-triage/README.md, scripts/demo.sh, docs/se-playbook.md
+  ```
+
+  ```
+  ## Verdict
+  Verdict: draft_pr
+  PR URL: https://github.com/${repository_full_name}/pull/143
+  Match: (none)
+  Reason: Scaffold complete but `tofu validate` failed; opened as draft for a scenario owner to fix.
+  Validation: failed: variable "linear_api_key" was not declared but referenced from module.linear_incidents.
+  Modules wired: aios-agent-linear-incidents
+  Unknown modules: aios-agent-pagerduty-bridge
+  Files staged: examples/scenarios/linear-incident-flow/main.tf, examples/scenarios/linear-incident-flow/variables.tf, examples/scenarios/linear-incident-flow/outputs.tf, examples/scenarios/linear-incident-flow/terraform.tfvars.example, examples/scenarios/linear-incident-flow/README.md
+  ```
+
+  ```
+  ## Verdict
+  Verdict: blocked
+  PR URL: (none)
+  Match: (none)
+  Reason: Issue body referenced only modules that do not exist under `modules/`: aios-agent-pagerduty-bridge, aios-agent-zendesk-tickets. Cannot scaffold a meaningful demo.
+  Validation: (skipped)
+  Modules wired: (none)
+  Unknown modules: aios-agent-pagerduty-bridge, aios-agent-zendesk-tickets
+  Files staged: (none)
+  ```
+
+========================================================================
+C) Hard rules summary (Cursor's checklist before yielding)
+========================================================================
+
+- [ ] Scoring (§A2) ran on at most 25 existing scenarios.
+- [ ] If `Verdict: match`, NO files were modified or committed.
+- [ ] If `Verdict ∈ {pr, draft_pr}`, every staged path is on the allowed surface (§A1).
+- [ ] If `Verdict ∈ {pr, draft_pr}`, the PR was auto-opened by the GitHub App (`autoCreatePr=true`); we did NOT shell out to `gh pr create` ourselves.
+- [ ] If `Verdict == draft_pr`, the PR title starts with `[draft]` AND the GitHub App opened it as a draft.
+- [ ] The `## Verdict` block is the LAST major section in the conversation, with all eight lines present.
+- [ ] No GitHub PAT was searched for, captured, or pasted anywhere — all GitHub auth went through the Cursor GitHub App.

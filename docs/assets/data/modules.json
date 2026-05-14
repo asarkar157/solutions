@@ -1602,13 +1602,13 @@
     {
       "id": "aios-agent-scenario-author",
       "name": "Scenario Author",
-      "desc": "Closes the SE feedback loop: triages `scenario-request` GitHub issues, matches existing scenarios, scaffolds new `examples/scenarios/<slug>/` PRs (5 files + `scripts/demo.sh` entry), validates with `tofu fmt`/`tofu validate`, opens a PR, and comments back on the issue. Uses GitHub + Ubuntu CLI integrations (`gh` installed on first use). Strict repo + label gate; optional `sg_webhook` ingress for GitHub `issue` events.",
+      "desc": "Closes the SE feedback loop: triages `scenario-request` GitHub issues, matches existing scenarios, and delegates new `examples/scenarios/<slug>/` scaffolding (5 files + `scripts/demo.sh` entry + `docs/se-playbook.md` row + `tofu validate` + auto-PR via Cursor's GitHub App) to a Cursor Cloud Agent via `cursor_agents_run_task`, then comments back on the issue via `gh issue comment`. Uses GitHub + Cursor integrations (no Ubuntu CLI shell scripting). Strict repo + label gate; optional `sg_webhook` ingress for GitHub `issue` events.",
       "layer": 2,
       "tags": [
         "se",
         "scenarios",
         "github",
-        "ubuntu",
+        "cursor",
         "automation",
         "self-service"
       ],
@@ -1625,9 +1625,24 @@
           "r": true
         },
         {
-          "n": "integration_names",
-          "t": "object({github,ubuntu_cli})",
+          "n": "github_secret_id",
+          "t": "string",
           "r": true
+        },
+        {
+          "n": "cursor_api_key",
+          "t": "string (sensitive)",
+          "r": false
+        },
+        {
+          "n": "existing_github_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_cursor_integration_name",
+          "t": "string",
+          "r": false
         },
         {
           "n": "repository_full_name",
@@ -1637,6 +1652,11 @@
         {
           "n": "scenario_request_label",
           "t": "string",
+          "r": false
+        },
+        {
+          "n": "agent_budget",
+          "t": "number",
           "r": false
         },
         {
@@ -1659,10 +1679,12 @@
         "agent_names",
         "workflow_name",
         "runbook_sop_names",
+        "github_integration_name",
+        "cursor_integration_name",
         "webhook_id",
         "webhook_token"
       ],
-      "usage": "module \"scenario_author\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-scenario-author?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n\n  repository_full_name = \"appcd-dev/solutions\"\n}"
+      "usage": "module \"scenario_author\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-scenario-author?ref=main\"\n\n  model_names      = module.foundation.model_names\n  policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_secret_id = sg_secret.github_pat.id\n  cursor_api_key   = var.cursor_api_key\n\n  repository_full_name = \"appcd-dev/solutions\"\n}"
     }
   ]
 }

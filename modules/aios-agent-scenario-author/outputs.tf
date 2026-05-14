@@ -11,11 +11,15 @@ output "workflow_name" {
 }
 
 output "runbook_sop_names" {
-  description = "Names of the four runbook SOPs this module registers; useful when composing with other agents that want to reference them via `runbook_refs`."
+  description = <<-EOT
+    Names of the three runbook SOPs this module registers; useful when composing with
+    other agents that want to reference them via `runbook_refs`. The map shape changed
+    in the Cursor refactor (the old `triage` + `scaffold` keys were collapsed into the
+    single `cursor_author` SOP that drives `cursor_agents_run_task`).
+  EOT
   value = {
     orchestration = sg_runbook_sop.scenario_author_orchestration.name
-    triage        = sg_runbook_sop.scenario_triage.name
-    scaffold      = sg_runbook_sop.scenario_scaffold.name
+    cursor_author = sg_runbook_sop.scenario_cursor_author.name
     pr_and_notify = sg_runbook_sop.scenario_pr_and_notify.name
   }
 }
@@ -25,21 +29,22 @@ output "github_integration_name" {
     Final Guild name of the GitHub integration the agent attaches to. Equals the
     consumer-supplied `existing_github_integration_name` when set, otherwise the
     module-prefixed name `scenario-author-github[-<name_suffix>]` produced by the
-    internal `module.github_integration[0]`. Use this when composing the same
-    integration across multiple agent modules via `existing_*_integration_name`
-    overrides to dedupe containers.
+    internal `module.github_integration[0]`. Used by the planner for `gh api` reads
+    of the triggering issue and `gh issue comment` replies.
   EOT
   value       = local.resolved_github_integration_name
 }
 
-output "ubuntu_integration_name" {
+output "cursor_integration_name" {
   description = <<-EOT
-    Final Guild name of the Ubuntu CLI integration the agent attaches to. Equals
-    the consumer-supplied `existing_ubuntu_integration_name` when set, otherwise
-    the module-prefixed name `scenario-author-ubuntu[-<name_suffix>]` produced by
-    the internal `module.ubuntu_integration[0]`.
+    Final Guild name of the Cursor MCP integration the agent attaches to. Equals
+    the consumer-supplied `existing_cursor_integration_name` when set, otherwise
+    the module-prefixed name `scenario-author-cursor[-<name_suffix>]` produced by
+    the internal `module.cursor_integration[0]`. Exposes the `cursor_agents_*`
+    tools (notably `cursor_agents_run_task`) the planner uses to delegate the
+    repo clone, scaffold, and PR creation to a Cursor Cloud Agent.
   EOT
-  value       = local.resolved_ubuntu_integration_name
+  value       = local.resolved_cursor_integration_name
 }
 
 output "webhook_id" {

@@ -1,214 +1,44 @@
-Skill: Branch + commit + push + open a PR for the newly scaffolded scenario, then comment back on the originating issue. This skill assumes `${module_prefix}-scaffold-sop` already ran and left files staged in the working tree at `<repo_clone_path>`.
+Skill: Comment back on the originating `${scenario_request_label}` issue with the Cursor agent's verdict. The PR itself is created upstream by the Cursor Cloud Agent's GitHub App (`OpenAsCursorGithubApp = true`, `autoCreatePr = true`) — this skill ONLY covers the final `gh issue comment` posted via the GitHub Guild integration.
 
-Keywords for skill discovery: pull request, gh pr create, gh issue comment, git push, branch, scenario-bot, scaffold pr, scenario-request, issue comment.
+Keywords for skill discovery: gh issue comment, scenario-request, issue reply, cursor verdict, scaffolded a PR, draft PR, existing scenario match, workflow blocked, budget exhausted.
 
-Prerequisites (all from notes):
-- `repo_clone_path` — clone with scaffolded files in the working tree.
-- `scenario_slug` — used in branch name + PR title.
-- `validation_summary` — `ok: ...` or `failed: ...`.
-- `scaffold_summary` — file list + module list for the PR body.
-- `repository_full_name`, `issue_or_pr_number`, `repository_default_branch` — for `gh pr create` and `gh issue comment`.
-- `issue_details.title` — quoted in the PR body.
+Prerequisites (all from notes, populated upstream):
+- `repository_full_name`, `issue_or_pr_number` — for the `--repo` and target args.
+- `gate_result` — `pass` (continue) or `wrong_repo` / `missing_label` (skip; gate-fail comment was already posted in `analyze-issue` via Template F).
+- `cursor_verdict` — `match` | `pr` | `draft_pr` | `blocked`. Set by the cursor-author subagent after parsing the `cursor_agents_run_task` response (see orchestration SOP §3 for the canonical note keys).
+- `cursor_pr_url` — set when `cursor_verdict ∈ {pr, draft_pr}`.
+- `cursor_match_name` — set when `cursor_verdict == match`.
+- `cursor_summary` — one-paragraph excerpt from Cursor's conversation summary (the `## Verdict` block plus the surrounding rationale lines).
+- `stage_summary:*` — any stage that recorded `blocked: <reason>` or a budget exhaustion event.
 
-Tool boundary: every command here runs in the Ubuntu CLI sandbox via the `scaffold-pr` subagent (orchestration SOP Template D) followed by the `notify-issue-comment` subagent (Template E). GitHub auth is pre-provisioned (orchestration SOP §0a) — `gh` and `git` authenticate via the container's pre-bound `GH_TOKEN`/`GIT_TOKEN` env vars. No token threading.
-
-========================================================================
-0) Sandbox sanity (defensive)
-========================================================================
-
-a) `export PATH="$HOME/.local/bin:$PATH"`.
-b) `which gh && which git` — both must succeed (pre-installed via the Ubuntu integration's `install_tools`). If either is missing this is a sandbox-image regression; persist `bootstrap_blocker="gh_missing"` or `"git_missing"` and STOP (orchestration generic blocked path).
-c) `gh auth status` — must succeed (the integration's `secret_ref_ids` surfaces the PAT in env). If it fails, persist `stage_summary:<stage>="blocked: gh auth failed"` and route to orchestration §6(a).
+Tool boundary: every command here runs in the GitHub Guild integration sandbox via the `notify-issue-comment` subagent (orchestration SOP Template E). `gh issue comment` authenticates via the integration's pre-bound PAT (orchestration SOP §0a). NO token threading. NO Ubuntu CLI sandbox is provisioned by this module — the legacy `git push` / `gh pr create` flow has moved into Cursor.
 
 ========================================================================
-1) Create the working branch
+0) Sanity gate
 ========================================================================
 
-Inside `<repo_clone_path>` (run as a single `execute_series` so the env survives):
+a) `read_notes` for `gate_result`. If `gate_result != "pass"`, the gate-fail comment was already posted in `analyze-issue`; SKIP everything below and `note stage_summary:notify-issue-comment="skipped: gate-fail comment already posted"`.
 
-  `git fetch origin <repository_default_branch>`
-  `git switch <repository_default_branch>`
-  `BRANCH="scenario-bot/<scenario_slug>-$(date +%Y%m%d%H%M%S)" && git switch -c "$BRANCH"`
-  note key="working_branch", value="$BRANCH"
-
-If `git switch -c` fails (branch already exists from a prior failed run), append `-retry` and try once.
+b) Otherwise `read_notes` for `cursor_verdict`, `cursor_pr_url`, `cursor_match_name`, `cursor_summary`, and every `stage_summary:*` key.
 
 ========================================================================
-2) Commit the scaffold
+1) Pick exactly one comment body (first match wins)
 ========================================================================
 
-a) Read notes `scaffold_blocker:*` to learn which files the scaffold subagent ACTUALLY managed to write. Build the stage list dynamically — never blindly assume all three paths are present:
+Evaluate in order. The orchestration SOP's Template E enforces the same priority — keep the two in sync.
 
-      `STAGE_PATHS="examples/scenarios/<scenario_slug>/"`
-      `if [ -z "$scaffold_blocker_demo_sh" ]; then STAGE_PATHS="$STAGE_PATHS scripts/demo.sh"; fi`
-      `if [ -z "$scaffold_blocker_playbook" ]; then STAGE_PATHS="$STAGE_PATHS docs/se-playbook.md"; fi`
-
-   (Replace the boolean checks with whatever shape `scaffold_blocker:*` ended up as in your notes — the principle is: stage only the paths the scaffold subagent successfully wrote.)
-b) `git add $STAGE_PATHS`
-c) `git status --porcelain` → confirm ONLY the planned files are staged. Forbidden additions: anything outside the three stage paths above. If anything else is staged (e.g. accidental edits to other modules or root files), `git reset` those files and re-stage just the allowed set. NEVER push a commit that touches `modules/`, `examples/complete/`, root files, CI config, or pre-commit hooks.
-d) `git commit -m "scenario(<scenario_slug>): scaffold from issue #<issue_or_pr_number>"` — keep the subject line ≤ 72 chars.
-
-If `git commit` says "nothing to commit", the scaffold subagent did not write files. note `pr_blocker="empty_commit"`, STOP, and let the planner branch to §6 (blocked notification).
+a) ANY `stage_summary:*` value contains `budget` (case-insensitive) AND `cursor_pr_url` is empty → §2(a) "Budget exhausted".
+b) `cursor_verdict == "match"` → §2(b) "Existing scenario match".
+c) `cursor_verdict == "blocked"` OR ANY `stage_summary:*` begins with `blocked:` → §2(c) "Workflow blocked".
+d) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → §2(d) "Scaffolded a PR".
+e) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → §2(e) "Draft PR (validation failed)".
+f) Else → §2(f) "Triaged, no action taken".
 
 ========================================================================
-3) Push + open the PR
+2) Comment body templates
 ========================================================================
 
-  `git push -u origin "$BRANCH"`
-
-If push is rejected because the branch was force-pushed elsewhere, do NOT force-push back — branch to §6 and let humans investigate.
-
-PR title:
-  - Happy path: `scenario(<scenario_slug>): from #<issue_or_pr_number>`
-  - Validation failed: `[draft] scenario(<scenario_slug>): from #<issue_or_pr_number> — validation failed`
-
-PR body (heredoc so multi-line markdown survives — replace placeholders with values from notes; conditional sections are inserted only when the matching note is non-empty):
-
-```md
-## Summary
-
-Generated by the scenario-author bot from #<issue_or_pr_number>:
-"<issue_details.title>".
-
-Pitch (from the original issue):
-
-> <pitch_quote>
-
-## What this PR adds
-
-- `examples/scenarios/<scenario_slug>/` — new runnable scenario root (main.tf, variables.tf, outputs.tf, terraform.tfvars.example, README.md).
-<if scripts/demo.sh staged> - One new case in `scripts/demo.sh scenario_pitch()` so `make demo-list` picks up the new pitch.
-<if docs/se-playbook.md staged> - One new row in `docs/se-playbook.md` "Prospect-question → scenario" table.
-
-## Modules wired
-
-<bullet list extracted from scaffold_summary.modules_wired>
-
-## Integrations branched
-
-<scaffold_summary.integrations_branched formatted as `aws (required)`, `slack (optional)`, `grafana (skipped)`, etc.>
-
-## Validation
-
-`<scaffold_summary.iac_binary>`: `<validation_summary verbatim>`
-
-## Reviewer checklist
-
-- [ ] `make demo SCENARIO=<scenario_slug>` runs end-to-end against a real tenant
-- [ ] Talk track in the README matches the original issue
-- [ ] Assign the scenario to an owner in `CONTRIBUTORS-SE.md`
-<if unknown_modules non-empty> - [ ] Resolve unknown modules referenced in the issue: <comma-separated unknown_modules>. Bot left them out — please add them under `modules/` or correct the names in the issue body and re-run.
-<if scaffold_blocker:demo_sh_corrupted set> - [ ] Append the `<scenario_slug>` case to `scripts/demo.sh scenario_pitch()` manually (bot's splice attempts corrupted the file).
-<if scaffold_blocker:playbook_corrupted set> - [ ] Append a row to the `docs/se-playbook.md` "Prospect-question → scenario" table manually (bot's splice attempts corrupted the file).
-<if module_signatures.extra_required emitted any TODOs> - [ ] Fill in the per-module required vars marked `# TODO:` in `main.tf` and re-run `tofu validate`.
-
-Closes #<issue_or_pr_number> when merged.
-```
-
-Open the PR (heredoc-fed `--body-file -`):
-
-```
-gh pr create \
-  --repo <repository_full_name> \
-  --base <repository_default_branch> \
-  --head "$BRANCH" \
-  --title "<title from above>" \
-  --label ${scenario_request_label} \
-  --body-file - <<'EOF'
-<body from above>
-EOF
-```
-
-Add the `[draft]` flag (`--draft`) only when `validation_summary` starts with `failed:`. NEVER force a PR when push or `gh pr create` fails with a non-recoverable error — branch to §6 instead.
-
-Capture the URL:
-  `gh pr view --repo <repository_full_name> "$BRANCH" --json url -q .url`
-  note key="pr_url", value="<URL>"
-
-========================================================================
-4) Persist stage summary
-========================================================================
-
-note key="stage_summary:scaffold-validate-pr", value=<one paragraph: branch, PR URL, validation outcome, files touched>.
-
-This stage is now complete. The planner moves to `notify-issue-comment` (Template E) which posts the final issue comment.
-
-========================================================================
-5) Comment back on the originating issue (handled by Template E)
-========================================================================
-
-Template E branches on the captured notes to pick one of:
-
-a) Existing-match path — `existing_match` is non-null. Body:
-
-```md
-## Existing scenario match
-
-I think `<existing_match.name>` already covers this. Rationale:
-<existing_match.rationale>
-
-Run it now:
-\`\`\`bash
-<existing_match.run_command>
-\`\`\`
-
-README: <repo_url>/blob/<repository_default_branch>/<existing_match.readme_path>
-
-If this is wrong, comment with `not-a-match` and re-open / re-label — I will
-re-triage on the next event.
-```
-
-b) Happy-path PR — `pr_url` is non-empty, validation passed. Body:
-
-```md
-## Scaffolded a PR
-
-Branch: `<working_branch>`
-PR: <pr_url>
-Validation: <validation_summary>
-
-## What's in the PR
-
-- `examples/scenarios/<scenario_slug>/main.tf|variables.tf|outputs.tf|terraform.tfvars.example|README.md`
-- `scripts/demo.sh` — new `<scenario_slug>` entry so `make demo-list` shows the pitch.
-
-Reviewer: please run `make demo SCENARIO=<scenario_slug>` against a clean
-tenant once you wire your credentials in `terraform.tfvars`.
-```
-
-c) Draft-PR path — `pr_url` non-empty, validation failed. Body:
-
-```md
-## Scaffolded a draft PR (validation failed)
-
-Branch: `<working_branch>`
-PR (draft): <pr_url>
-Validation: `<validation_summary>`
-
-A scenario owner from `CONTRIBUTORS-SE.md` should review the validation
-error and fix the scaffold before un-drafting. The PR body has the full
-reviewer checklist. The bot does not have an ownership map, so it cannot
-@-mention the right person here — please assign manually.
-```
-
-d) Blocked path — any `stage_summary:*` begins with `blocked:`. Body:
-
-```md
-## Workflow blocked
-
-The scenario-author bot could not finish this request. Blocker:
-
-> <quoted stage_summary text>
-
-<if unknown_modules non-empty>Modules the bot did not recognize from the issue body: `<comma-separated unknown_modules>`. Either correct the names (see `modules/aios-*/` for valid names) or wait for the modules to land, then re-open this issue.
-
-Recovery: see `docs/se-feedback.md` and re-open this issue once the blocker
-is fixed. The bot will re-triage when the next `issue.created` /
-`issues.opened` / `issues.labeled` event fires (close + re-open with the
-`${scenario_request_label}` label is the simplest way).
-```
-
-e) Budget-exhausted path — any `stage_summary:*` value contains "budget" (case-insensitive) AND `pr_url` is empty. Body:
+a) Budget-exhausted body:
 
 ```md
 ## Budget exhausted
@@ -225,17 +55,99 @@ Recovery (any one of):
 3. Skip the bot — a scenario owner from `CONTRIBUTORS-SE.md` can scaffold
    manually using `examples/scenarios/aws-sre-demo/` as a template.
 
-Originating stage: `<stage_id quoted from stage_summary>`.
+Originating stage: `<stage_id quoted from the matching stage_summary>`.
 ```
 
-f) "Triaged, no action taken" — fallback when no other branch matched. Body:
+b) Existing-scenario match body:
+
+```md
+## Existing scenario match
+
+The Cursor agent thinks `<cursor_match_name>` already covers this request.
+Rationale (from Cursor's verdict block):
+
+> <one-line "Reason:" excerpt from cursor_summary>
+
+Run it now:
+\`\`\`bash
+make demo SCENARIO=<cursor_match_name>
+\`\`\`
+
+README: <https://github.com/${repository_full_name}/blob/<repository_default_branch>/examples/scenarios/<cursor_match_name>/README.md>
+
+If this is wrong, comment with `not-a-match` and re-open / re-label — the
+bot will re-triage on the next event.
+```
+
+c) Workflow-blocked body:
+
+```md
+## Workflow blocked
+
+The scenario-author bot could not finish this request. Blocker (verbatim
+from the Cursor agent's verdict block, or the upstream stage_summary):
+
+> <quoted blocker text — `cursor_summary` when verdict==blocked, otherwise the matching stage_summary value>
+
+<if cursor_summary mentions "Unknown modules:" — append:>
+Modules the bot did not recognize from the issue body: `<comma-separated unknown_modules>`.
+Either correct the names (see `modules/aios-*/` for valid names) or wait
+for the modules to land, then re-open this issue.
+
+Recovery: see `docs/se-feedback.md` and re-open this issue once the blocker
+is fixed. The bot will re-triage when the next `issue.created` /
+`issues.opened` / `issues.labeled` event fires (close + re-open with the
+`${scenario_request_label}` label is the simplest way).
+```
+
+d) Happy-path PR body:
+
+```md
+## Scaffolded a PR
+
+The Cursor agent opened a PR with the new scenario:
+
+PR: <cursor_pr_url>
+
+Validation: <Validation: line excerpt from cursor_summary>
+
+## What's in the PR
+
+<bullet list extracted from the "Files staged:" line of cursor_summary, grouped by directory>
+
+Reviewer: please run `make demo SCENARIO=<derived from PR title or cursor_summary>`
+against a clean tenant once you wire your credentials in
+`terraform.tfvars`. The full reviewer checklist lives in the PR body.
+
+<if cursor_summary mentions "Unknown modules:" — append:>
+TODO before merge: `<comma-separated unknown modules from cursor_summary>` referenced in the issue did not match any module in `modules/`; the bot left them out — please add or rename.
+```
+
+e) Draft-PR body:
+
+```md
+## Scaffolded a draft PR (validation failed)
+
+The Cursor agent opened a draft PR; `tofu validate` did not pass inside
+its sandbox.
+
+PR (draft): <cursor_pr_url>
+Validation: <Validation: line excerpt from cursor_summary>
+
+A scenario owner from `CONTRIBUTORS-SE.md` should review the validation
+error and fix the scaffold before un-drafting. The PR body has the full
+reviewer checklist. The bot does not have an ownership map, so it cannot
+@-mention the right person here — please assign manually.
+```
+
+f) "Triaged, no action taken" body:
 
 ```md
 ## Triaged, no action taken
 
 The scenario-author bot reached this issue but did not produce a PR, find
-an existing match, or report a clear blocker. This usually means the bot
-yielded mid-stage (transient model error or sandbox issue).
+an existing match, or report a clear blocker. This usually means the
+Cursor agent yielded mid-task (transient error or sandbox timeout).
 
 Recovery: close and re-open this issue (the bot re-triages on the next
 `issue.created` event) or wait — the workflow will fire again on any
@@ -243,11 +155,26 @@ future event. If this is the second consecutive "no action taken" reply,
 please ping the engineering lead in `#solutions-se`.
 ```
 
-Choose exactly ONE body and call `gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file - <<'EOF' ... EOF`. After the comment, note `stage_summary:notify` with the comment kind chosen and the issue URL.
+========================================================================
+3) Post the comment
+========================================================================
+
+ONE call via `${github_tool_prefix}_execute_command`:
+
+```
+gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file - <<'EOF'
+<body from §2>
+EOF
+```
+
+After the comment:
+- `note key="final_comment_url"`, value=`<best-effort URL>` (parse from `gh issue comment` output if available; otherwise emit `https://github.com/<repository_full_name>/issues/<issue_or_pr_number>`).
+- `note key="final_comment_kind"`, value=one of `wrong_repo` | `missing_label` | `existing_match` | `budget_exhausted` | `blocked` | `happy_pr` | `draft_pr` | `no_action`.
+- `note key="stage_summary:notify-issue-comment"`, value=one paragraph: chosen comment kind + the issue URL.
 
 Forbidden:
 - Posting any secret value in any comment.
 - Sending more than one comment per workflow run (Template E runs at most once).
-- Force-pushing the working branch or pushing to `<repository_default_branch>` directly.
-- Triggering yet another `gh pr create` after `pr_url` is already populated.
+- Re-running `${cursor_tool_prefix}_cursor_agents_run_task` from this stage — Cursor's task already finished upstream; this stage is comment-only.
 - Capturing or persisting a `gh_token` (auth is pre-provisioned — see orchestration SOP §0a).
+- Force-pushing or pushing branches — branch + push + PR is Cursor's GitHub App's job, not ours.
