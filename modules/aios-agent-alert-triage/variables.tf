@@ -63,3 +63,28 @@ variable "workflow_skill_refs" {
   type        = map(list(string))
   default     = {}
 }
+
+# ---------------------------------------------------------------------------
+# Optional webhook ingress URLs (`POST /api/v1/webhooks/trigger`)
+# ---------------------------------------------------------------------------
+variable "webhook_trigger_base_url" {
+  description = <<-EOT
+    Optional StackGen HTTP API origin (e.g. `https://main.dev.stackgen.com`). When set,
+    outputs include `webhook_trigger_endpoint` and, when the ingress webhook token exists,
+    `webhook_ingress_payload_url` — a full URL with `apiKey=` for Grafana contact points
+    and other senders that cannot set `Authorization: Bearer`. Leave empty (default) to
+    omit those computed outputs.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "webhook_trigger_org_id" {
+  description = <<-EOT
+    Optional `orgId` query parameter appended to `webhook_ingress_payload_url` when
+    `webhook_trigger_base_url` is set. Use the same StackGen organization / project id
+    you pass as the provider `project_id` for this Guild tenant.
+  EOT
+  type        = string
+  default     = ""
+}

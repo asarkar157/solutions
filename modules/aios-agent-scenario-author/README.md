@@ -126,16 +126,14 @@ module "scenario_author" {
 
 After `tofu apply`, wire the webhook in GitHub:
 
-1. `module.scenario_author.webhook_id` and `webhook_token` are emitted.
-2. In the target repo, add a webhook:
-   - **Payload URL**: copy from your Guild instance (the `sg_webhook`
-     resource details endpoint — see Guild docs).
+1. **Payload URL (easiest):** if you deploy via `stackgen-guild/terraform/guild`, read **`tofu output scenario_author_webhook`** — it includes **`ingress_payload_url`** (sensitive, includes `apiKey` and optional `orgId`) plus **`stackgen_webhook_trigger_url`** (non-secret base `POST …/api/v1/webhooks/trigger`). For a standalone `module "scenario_author"` root, pass **`webhook_trigger_base_url`** (StackGen API origin) and **`webhook_trigger_org_id`** (provider `project_id`) so the module emits **`webhook_ingress_payload_url`** the same way.
+2. `webhook_id` and **`webhook_token`** are always emitted when `enable_webhook = true`. If you do not use `ingress_payload_url`, set Payload URL to **`webhook_trigger_endpoint`** / `stackgen_webhook_trigger_url` and put **`webhook_token`** in GitHub **Secret**, or send `Authorization: Bearer <token>` per StackGen OpenAPI.
+3. In the target repo, add a webhook:
    - **Content type**: `application/json`.
-   - **Secret**: paste `module.scenario_author.webhook_token` (sensitive
-     output).
+   - **Secret**: optional when using `ingress_payload_url` with embedded `apiKey`; otherwise use **`webhook_token`** as above.
    - **Events**: select **Issues** (`issues.opened` + `issues.labeled`
      both map to StackGen's normalized `issue.created` trigger).
-3. File a `scenario-request` issue and watch the bot reply on the issue
+4. File a `scenario-request` issue and watch the bot reply on the issue
    within a few minutes (Cursor's cloud agent typically takes 5-10 min on
    a non-trivial scaffold).
 
@@ -156,6 +154,8 @@ After `tofu apply`, wire the webhook in GitHub:
 | `name_suffix`                       | `string`                                            | `""`                                             | Kebab-case suffix appended to every named Guild resource (agent, 3 SOPs, workflow, webhook, AND the two internal integrations).                              |
 | `trigger_event_types`               | `list(string)`                                      | `["issue.created","issues.opened","issues.labeled"]` | StackGen normalized event types that fire the workflow.                                                                                                      |
 | `workflow_skill_refs`               | `map(list(string))`                                 | `{}`                                             | Optional `skill_refs` appended per stage. Keys are `scenario-request-triage::<stage_id>`.                                                                    |
+| `webhook_trigger_base_url`          | `string`                                            | `""`                                             | When set (with a non-empty webhook token), enables **`webhook_ingress_payload_url`** output for GitHub Payload URL.                                          |
+| `webhook_trigger_org_id`            | `string`                                            | `""`                                             | Optional `orgId` query on `webhook_ingress_payload_url` (use provider `project_id`).                                                                         |
 
 ## Outputs
 
@@ -167,7 +167,9 @@ After `tofu apply`, wire the webhook in GitHub:
 | `github_integration_name`  | no        | Final Guild integration name (`scenario-author-github[-<suffix>]` or the consumer override).            |
 | `cursor_integration_name`  | no        | Final Guild integration name (`scenario-author-cursor[-<suffix>]` or the consumer override).            |
 | `webhook_id`               | no        | Empty when `enable_webhook = false`.                                                                    |
-| `webhook_token`            | yes       | The secret to paste in GitHub's webhook configuration.                                                  |
+| `webhook_token`            | yes       | StackGen ingress secret; use in GitHub **Secret** or rely on `webhook_ingress_payload_url` which embeds `apiKey`. |
+| `webhook_trigger_endpoint` | no        | `POST …/api/v1/webhooks/trigger` when `webhook_trigger_base_url` is set; empty otherwise.                |
+| `webhook_ingress_payload_url` | yes    | Full trigger URL with `apiKey` (+ optional `orgId`) when base URL + token are available; null otherwise. |
 
 ## Workflow stages
 
@@ -191,11 +193,12 @@ summary in a structured `## Verdict` block) to post one of:
 | Path                                | Comment kind                          |
 | ----------------------------------- | -------------------------------------- |
 | Repo or label gate failed           | "wrong repo" / "missing label" (posted in `analyze-issue`)            |
+| Cursor SaaS billing / quota / account budget | "## Cursor platform temporarily unavailable" (distinct from Guild `agent_budget`) |
+| Guild planner USD cap (`guild_spend_cap_reached` in notes) | "## Guild planner budget exhausted" (`agent_budget` / `sg_agent_budget`) |
 | `cursor_verdict == "match"`         | "Existing scenario match" with run command + README link              |
 | `cursor_verdict == "pr"`            | "Scaffolded a PR" with PR URL + validation summary                    |
 | `cursor_verdict == "draft_pr"`      | "Draft PR (validation failed)" with `cc @<contributors-se-owner>`     |
-| `cursor_verdict == "blocked"`       | "Workflow blocked" quoting Cursor's `Reason:` line                    |
-| Budget exhausted upstream           | "Budget exhausted" with retry guidance + the day's spend              |
+| `cursor_verdict == "blocked"` (generic) | "Workflow blocked" quoting Cursor's `Reason:` line                    |
 
 ## Hard rules (from the orchestration SOP)
 
@@ -233,9 +236,10 @@ See `docs/se-feedback.md` for the manual recovery path. Common cases:
 | Bot replies "missing label"                              | Add the `scenario-request` label, or re-file via the issue template (which sets the label automatically).                |
 | Bot replies "Existing scenario match"                    | Working as intended — run `make demo SCENARIO=<name>` per the comment.                                                  |
 | Bot opens a draft PR with `validation failed`            | A scenario owner from `CONTRIBUTORS-SE.md` reviews + fixes the scaffold + un-drafts. The PR body lists what to fix.       |
-| Bot replies "Budget exhausted"                           | Wait for the daily reset, or raise `agent_budget` on the planner side. (If Cursor's own quota is exhausted, the cursor task itself returns FAILED — surfaced as a "Workflow blocked" comment instead.) |
+| Bot posts "**Cursor platform temporarily unavailable**" | Cursor SaaS blocked the cloud agent (billing, account budget, quota). Retry after reset, fix Cursor org billing/API key, or scaffold manually per the comment body. |
+| Bot posts "**Guild planner budget exhausted**"        | StackGen `agent_budget` / `sg_agent_budget` cap hit. Wait for UTC reset or raise `agent_budget` on the module. |
 | Bot reports "blocked: gh auth failed"                    | Re-authenticate `aios-integration-github`; the bot retries on the next issue event.                                      |
-| Bot reports "blocked: cursor agent failed"               | Inspect the Cursor cloud agent run via `cursor_agents_get_conversation` against the agent ID logged in the planner notes. Common causes: invalid `cursor_api_key`, Cursor's GitHub App not installed on the target repo, or a Cursor sandbox image regression. |
+| Bot reports "blocked: cursor agent failed"               | Inspect the Cursor cloud agent run via `cursor_agents_get_conversation` against the agent ID logged in the planner notes. Common causes: invalid `cursor_api_key`, Cursor's GitHub App not installed on the target repo, **Cursor account billing / quota** (see **Cursor platform temporarily unavailable** comment), or a Cursor sandbox image regression. |
 | Bot replies "Triaged, no action taken"                   | Transient mid-task yield. Close + re-open the issue. If it happens twice, ping engineering.                              |
 | Bot does nothing for > 10 minutes                        | Check Guild → workflow runs for `scenario-request-triage`. Most common cause: webhook not wired, or Cursor's `run_task` is still polling (the cloud agent itself can take 5-10 min on non-trivial scaffolds — wait one more poll cycle before assuming a hang). |
 

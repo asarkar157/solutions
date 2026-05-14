@@ -1,6 +1,6 @@
 Skill: Comment back on the originating `${scenario_request_label}` issue with the Cursor agent's verdict. The PR itself is created upstream by the Cursor Cloud Agent's GitHub App (`OpenAsCursorGithubApp = true`, `autoCreatePr = true`) — this skill ONLY covers the final `gh issue comment` posted via the GitHub Guild integration.
 
-Keywords for skill discovery: gh issue comment, scenario-request, issue reply, cursor verdict, scaffolded a PR, draft PR, existing scenario match, workflow blocked, budget exhausted.
+Keywords for skill discovery: gh issue comment, scenario-request, issue reply, cursor verdict, scaffolded a PR, draft PR, existing scenario match, workflow blocked, guild spend cap, Cursor platform billing, cursor_platform_cap.
 
 Prerequisites (all from notes, populated upstream):
 - `repository_full_name`, `issue_or_pr_number` — for the `--repo` and target args.
@@ -9,7 +9,8 @@ Prerequisites (all from notes, populated upstream):
 - `cursor_pr_url` — set when `cursor_verdict ∈ {pr, draft_pr}`.
 - `cursor_match_name` — set when `cursor_verdict == match`.
 - `cursor_summary` — one-paragraph excerpt from Cursor's conversation summary (the `## Verdict` block plus the surrounding rationale lines).
-- `stage_summary:*` — any stage that recorded `blocked: <reason>` or a budget exhaustion event.
+- `cursor_platform_cap` — optional note key `"true"` when §6(c) detected **Cursor SaaS** billing / quota / account limits (distinct from StackGen `agent_budget`).
+- `stage_summary:*` — any stage that recorded `blocked: <reason>` or `guild_spend_cap_reached` (Guild planner USD cap — exact substring).
 
 Tool boundary: every command here runs in the GitHub Guild integration sandbox via the `notify-issue-comment` subagent (orchestration SOP Template E). `gh issue comment` authenticates via the integration's pre-bound PAT (orchestration SOP §0a). NO token threading. NO Ubuntu CLI sandbox is provisioned by this module — the legacy `git push` / `gh pr create` flow has moved into Cursor.
 
@@ -19,7 +20,7 @@ Tool boundary: every command here runs in the GitHub Guild integration sandbox v
 
 a) `read_notes` for `gate_result`. If `gate_result != "pass"`, the gate-fail comment was already posted in `analyze-issue`; SKIP everything below and `note stage_summary:notify-issue-comment="skipped: gate-fail comment already posted"`.
 
-b) Otherwise `read_notes` for `cursor_verdict`, `cursor_pr_url`, `cursor_match_name`, `cursor_summary`, and every `stage_summary:*` key.
+b) Otherwise `read_notes` for `cursor_verdict`, `cursor_pr_url`, `cursor_match_name`, `cursor_summary`, `cursor_platform_cap` (if present), and every `stage_summary:*` key.
 
 ========================================================================
 1) Pick exactly one comment body (first match wins)
@@ -27,35 +28,41 @@ b) Otherwise `read_notes` for `cursor_verdict`, `cursor_pr_url`, `cursor_match_n
 
 Evaluate in order. The orchestration SOP's Template E enforces the same priority — keep the two in sync.
 
-a) ANY `stage_summary:*` value contains `budget` (case-insensitive) AND `cursor_pr_url` is empty → §2(a) "Budget exhausted".
+a) `read_notes` shows `cursor_platform_cap == "true"` OR (`cursor_verdict == "blocked"` AND (`cursor_summary` OR any `stage_summary:*` contains case-insensitive `insufficient account budget`, `cursor platform`, `billing`, `payment required`, or `quota exceeded`) AND `cursor_pr_url` is empty) → §2(a) "**Cursor platform temporarily unavailable**" (Cursor account / billing / quota — **not** StackGen `agent_budget`).
 b) `cursor_verdict == "match"` → §2(b) "Existing scenario match".
-c) `cursor_verdict == "blocked"` OR ANY `stage_summary:*` begins with `blocked:` → §2(c) "Workflow blocked".
-d) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → §2(d) "Scaffolded a PR".
-e) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → §2(e) "Draft PR (validation failed)".
-f) Else → §2(f) "Triaged, no action taken".
+c) ANY `stage_summary:*` contains the exact substring `guild_spend_cap_reached` AND `cursor_pr_url` is empty → §2(c) "**Guild planner budget exhausted**" (StackGen daily USD cap on this agent — `agent_budget`).
+d) `cursor_verdict == "blocked"` OR ANY `stage_summary:*` begins with `blocked:` → §2(d) "Workflow blocked" (generic Cursor failure, gh auth, etc. — **only** if (a) did not already match).
+e) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → §2(e) "Scaffolded a PR".
+f) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → §2(f) "Draft PR (validation failed)".
+g) Else → §2(g) "Triaged, no action taken".
 
 ========================================================================
 2) Comment body templates
 ========================================================================
 
-a) Budget-exhausted body:
+a) Cursor platform / billing / quota (short-term Cursor SaaS limits):
 
 ```md
-## Budget exhausted
+## Cursor platform temporarily unavailable
 
-The scenario-author bot ran out of its daily budget cap before it could
-finish triaging this request. The cap resets at the next UTC day boundary.
+The automated scaffold step uses a **Cursor Cloud Agent** (separate from this
+Guild's StackGen `agent_budget`). Cursor refused to launch the cloud agent:
 
-Recovery (any one of):
+> <verbatim excerpt from `cursor_summary` — usually billing, account budget, quota, or rate limit>
 
-1. Wait for the daily reset, then re-open / re-label this issue (the bot
-   re-triages on the next `issue.created` / `issues.labeled` event).
-2. Ask the operator to raise `agent_budget` on the
-   `aios-agent-scenario-author` module instance if this happens repeatedly.
-3. Skip the bot — a scenario owner from `CONTRIBUTORS-SE.md` can scaffold
-   manually using `examples/scenarios/aws-sre-demo/` as a template.
+**What to do**
 
-Originating stage: `<stage_id quoted from the matching stage_summary>`.
+1. **Retry later** — Cursor account limits often reset hourly or daily; close
+   and re-open this issue (or remove and re-add the \`${scenario_request_label}\`
+   label) once credits/quota refresh.
+2. **Operator:** confirm the Cursor API key / org has spend headroom in the
+   Cursor dashboard (this is **not** fixed by raising \`agent_budget\` alone on
+   the Terraform module — that cap only covers Guild planner LLM/tool spend).
+3. **Manual fallback:** a scenario owner from \`CONTRIBUTORS-SE.md\` can scaffold
+   from \`examples/scenarios/aws-sre-demo/\` and open a normal PR; see
+   \`docs/se-feedback.md\`.
+
+The bot will pick this issue up again on the next qualifying webhook event.
 ```
 
 b) Existing-scenario match body:
@@ -79,7 +86,25 @@ If this is wrong, comment with `not-a-match` and re-open / re-label — the
 bot will re-triage on the next event.
 ```
 
-c) Workflow-blocked body:
+c) Guild planner budget exhausted (StackGen `sg_agent_budget` / `agent_budget`):
+
+```md
+## Guild planner budget exhausted
+
+This Guild agent hit its **StackGen daily USD cap** (\`agent_budget\` on the
+\`aios-agent-scenario-author\` module) before it could finish planner work.
+
+Recovery (any one of):
+
+1. Wait for the UTC day boundary reset, then re-open / re-label this issue.
+2. Ask the operator to raise \`agent_budget\` on the module instance if this
+   happens often.
+3. Manual scaffold: \`examples/scenarios/aws-sre-demo/\` + \`CONTRIBUTORS-SE.md\`.
+
+Originating stage: \`<stage_id from the stage_summary containing guild_spend_cap_reached>\`.
+```
+
+d) Workflow-blocked body:
 
 ```md
 ## Workflow blocked
@@ -100,7 +125,7 @@ is fixed. The bot will re-triage when the next `issue.created` /
 `${scenario_request_label}` label is the simplest way).
 ```
 
-d) Happy-path PR body:
+e) Happy-path PR body:
 
 ```md
 ## Scaffolded a PR
@@ -123,7 +148,7 @@ against a clean tenant once you wire your credentials in
 TODO before merge: `<comma-separated unknown modules from cursor_summary>` referenced in the issue did not match any module in `modules/`; the bot left them out — please add or rename.
 ```
 
-e) Draft-PR body:
+f) Draft-PR body:
 
 ```md
 ## Scaffolded a draft PR (validation failed)
@@ -140,7 +165,7 @@ reviewer checklist. The bot does not have an ownership map, so it cannot
 @-mention the right person here — please assign manually.
 ```
 
-f) "Triaged, no action taken" body:
+g) "Triaged, no action taken" body:
 
 ```md
 ## Triaged, no action taken
@@ -169,7 +194,7 @@ EOF
 
 After the comment:
 - `note key="final_comment_url"`, value=`<best-effort URL>` (parse from `gh issue comment` output if available; otherwise emit `https://github.com/<repository_full_name>/issues/<issue_or_pr_number>`).
-- `note key="final_comment_kind"`, value=one of `wrong_repo` | `missing_label` | `existing_match` | `budget_exhausted` | `blocked` | `happy_pr` | `draft_pr` | `no_action`.
+- `note key="final_comment_kind"`, value=one of `wrong_repo` | `missing_label` | `existing_match` | `cursor_platform_cap` | `guild_spend_cap` | `blocked` | `happy_pr` | `draft_pr` | `no_action`.
 - `note key="stage_summary:notify-issue-comment"`, value=one paragraph: chosen comment kind + the issue URL.
 
 Forbidden:

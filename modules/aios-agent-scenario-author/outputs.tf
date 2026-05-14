@@ -57,3 +57,25 @@ output "webhook_token" {
   value       = try(sg_webhook.github_scenario_request[0].token, "")
   sensitive   = true
 }
+
+output "webhook_trigger_endpoint" {
+  description = "Non-sensitive `POST …/api/v1/webhooks/trigger` URL when `webhook_trigger_base_url` is set; empty string otherwise."
+  value       = trimspace(var.webhook_trigger_base_url) == "" ? "" : "${trimsuffix(trimspace(var.webhook_trigger_base_url), "/")}/api/v1/webhooks/trigger"
+}
+
+output "webhook_ingress_payload_url" {
+  description = <<-EOT
+    Full StackGen trigger URL including `apiKey` (and optional `orgId`) when
+    `webhook_trigger_base_url` is set and the ingress webhook token is non-empty.
+    Otherwise null. Paste into GitHub Payload URL or Grafana when Bearer headers are not supported.
+  EOT
+  sensitive   = true
+  value = (
+    var.enable_webhook && trimspace(var.webhook_trigger_base_url) != "" && trimspace(try(sg_webhook.github_scenario_request[0].token, "")) != ""
+    ) ? format(
+    "%s/api/v1/webhooks/trigger?apiKey=%s%s",
+    trimsuffix(trimspace(var.webhook_trigger_base_url), "/"),
+    urlencode(sg_webhook.github_scenario_request[0].token),
+    trimspace(var.webhook_trigger_org_id) == "" ? "" : format("&orgId=%s", urlencode(trimspace(var.webhook_trigger_org_id)))
+  ) : null
+}

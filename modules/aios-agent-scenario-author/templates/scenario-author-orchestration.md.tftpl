@@ -136,7 +136,7 @@ e) Tight budgets:
    - GitHub integration subagents: `max_tool_iterations` ≤ 4, `max_llm_calls` ≤ 4, `timeout_seconds` ≤ 90.
    - Cursor integration subagent: `max_tool_iterations` ≤ 6 (allows for one `run_task` + a couple `get_status` polls if needed), `max_llm_calls` ≤ 6, `timeout_seconds` ≤ 720 (the cloud agent itself can take 5-10 min on a non-trivial scaffold; `run_task` blocks until it finishes).
 
-f) Always call `check_budget` before any `create_agent`. Cursor's `run_task` has a higher upfront cost than the GitHub-integration subagents — if remaining budget < $1.00, skip `cursor-author` and go straight to `notify-issue-comment` with `cursor_verdict="blocked"` + a "Budget exhausted" stage_summary.
+f) Always call `check_budget` before any `create_agent`. Cursor's `run_task` has a higher upfront cost than the GitHub-integration subagents — if remaining **Guild / planner** USD budget < $1.00, skip `cursor-author` and go straight to `notify-issue-comment` with `cursor_verdict="blocked"`, `cursor_summary="skipped cursor-author: guild spend cap"` and `stage_summary:cursor-author="guild_spend_cap_reached: <stage>; <remaining_usd> USD remaining"` (exact substring `guild_spend_cap_reached` — Template E uses this to distinguish **StackGen planner budget** from **Cursor's own account billing** errors, which often contain the word "budget" and must NOT trigger the Guild-cap comment).
 
 g) If a subagent fails or partially succeeds: extract useful output, `note` it, and DO NOT spawn a retry with a slightly different name. After 1 failure on the cursor-author task, accept the failure (verdict=`blocked`) and continue to `notify-issue-comment` with the failure summary.
 
@@ -161,20 +161,21 @@ b) BLOCKER: "wrong repo" or "missing label" (gate fails per §0c).
      → Spawn `analyze-issue-comment-gate-fail` once to post the gate-fail comment. STOP.
 
 c) BLOCKER: "cursor task FAILED" (`cursor_agents_run_task` returns FAILED status, or the response is unparseable).
-     → note `stage_summary:cursor-author="blocked: cursor agent failed: <first 300 chars of conversation summary>"`.
      → note `cursor_verdict="blocked"` and `cursor_summary=<the failure summary>`.
-     → Continue to `notify-issue-comment`; Template E case (c) will post the "Workflow blocked" comment. Do NOT re-run `cursor_agents_run_task`.
+     → If the conversation summary (case-insensitive) contains **any** of: `insufficient account budget`, `cursor platform`, `billing`, `payment required`, `quota exceeded`, `rate limit exceeded` — this is almost always **Cursor's** SaaS account / billing / quota, not the Guild `agent_budget`. Also `note key="cursor_platform_cap" value="true"` (exact key/value) so Template E routes to the **Cursor platform temporarily unavailable** comment (clear remediation: add Cursor credits / retry later / manual scaffold). Use `stage_summary:cursor-author="blocked: cursor agent failed: <first 300 chars>"` **without** inventing Guild budget wording.
+     → Else (generic Cursor failure): `stage_summary:cursor-author="blocked: cursor agent failed: <first 300 chars>"` and **omit** `cursor_platform_cap` (or set `cursor_platform_cap=false`).
+     → Continue to `notify-issue-comment`. Do NOT re-run `cursor_agents_run_task`.
 
 d) BLOCKER: "cursor task hits draft-PR path" (Cursor's internal `tofu validate` failed, but the cloud agent still pushed a branch and opened a draft PR via its GitHub App).
      → note `cursor_verdict="draft_pr"` and `cursor_pr_url=<URL>`.
-     → Continue to `notify-issue-comment`; Template E case (e) routes to the "Draft PR (validation failed)" comment that asks the SE to assign a scenario owner from `CONTRIBUTORS-SE.md`.
+     → Continue to `notify-issue-comment`; Template E case (f) routes to the "Draft PR (validation failed)" comment that asks the SE to assign a scenario owner from `CONTRIBUTORS-SE.md`.
 
-e) BLOCKER: "budget exhausted" (`check_budget` returns < required minimum before the cursor-author subagent, or the planner detects the cursor task ran past its budget).
-     → note `stage_summary:<stage>="blocked: budget exhausted at <stage>; <remaining_usd> remaining"`. (The substring "budget" is the trigger keyword for Template E case (b).)
-     → Skip the Cursor call. Continue to `notify-issue-comment` so the SE gets a "Budget exhausted" comment with retry guidance.
+e) BLOCKER: "Guild / planner spend cap reached" (`check_budget` returns less than the minimum **before** spawning the cursor-author subagent, or the planner aborts because Guild USD would exceed the daily cap).
+     → note `stage_summary:<stage>="guild_spend_cap_reached: <stage>; <remaining_usd> USD remaining"` (must include the exact token `guild_spend_cap_reached` so Template E does not confuse this with Cursor billing errors that mention "budget").
+     → Skip the Cursor call. Continue to `notify-issue-comment` for the Guild-cap comment path.
 
 f) UNKNOWN MODULES: Cursor's conversation summary lists modules that did not match any `modules/aios-*` directory.
-     → This is not a hard blocker. Cursor's own scaffold logic drops the unknowns and surfaces them in the PR body's "Reviewer checklist". The final issue comment (Template E case (d)) appends a "TODO before merge: <unknown modules>" line so the SE knows to either fix the names or wait for the modules to land.
+     → This is not a hard blocker. Cursor's own scaffold logic drops the unknowns and surfaces them in the PR body's "Reviewer checklist". The final issue comment (Template E case (e) — happy PR) appends a "TODO before merge: <unknown modules>" line so the SE knows to either fix the names or wait for the modules to land.
 
 Hard rule for §6: a single workflow run may invoke `ask_clarifying_question` AT MOST ONCE per stage. If you already asked once, commit to one of the responses above without re-asking.
 
@@ -225,7 +226,7 @@ Template C — "delegate to Cursor Cloud Agent" (cursor-author stage):
            - `cursor_summary` = the entire conversation summary text (capped at ~1500 chars for the final comment).
            - `cursor_artifacts` = the artifacts list (optional).
            - `cursor_agent_id` = parse from the artifacts URL, or call `${cursor_tool_prefix}_cursor_agents_list --prUrl <pr_url>` once if the PR URL is set.
-      4. note all five (or six) keys above. If the Final Status is FAILED or CANCELED, force `cursor_verdict="blocked"` and put the failure reason in `cursor_summary`.
+      4. note all five (or six) keys above. If the Final Status is FAILED or CANCELED, force `cursor_verdict="blocked"` and put the failure reason in `cursor_summary`. Then apply §6(c): if the summary matches Cursor platform / billing / quota signals, `note key="cursor_platform_cap" value="true"` so the final issue comment explains **Cursor account limits** (not StackGen `agent_budget`).
     Stop after step 4. Do NOT call `cursor_agents_add_followup` or re-run `cursor_agents_run_task` — orchestration §6(c) handles failures via `notify-issue-comment`.
 
 Template E — "comment back on the issue" (final stage, also used for blocked / budget-exhausted notifications):
@@ -233,21 +234,21 @@ Template E — "comment back on the issue" (final stage, also used for blocked /
   tool_names: ["${github_tool_prefix}_execute_command","note","read_notes"]
   max_tool_iterations: 3, max_llm_calls: 3, timeout_seconds: 60
   goal: |
-    Inputs from notes: repository_full_name, issue_or_pr_number, gate_result, cursor_verdict, cursor_pr_url, cursor_match_name, cursor_summary, stage_summary:* (any blocked / budget stages).
+    Inputs from notes: repository_full_name, issue_or_pr_number, gate_result, cursor_verdict, cursor_pr_url, cursor_match_name, cursor_summary, cursor_platform_cap (if set), stage_summary:*.
     Steps:
       1. Pick comment mode (first match wins, evaluate in order):
          a) `gate_result == "wrong_repo"` → short "wrong repo" comment (body: "This scenario-author bot only handles issues on `${repository_full_name}`. No action taken.").
          b) `gate_result == "missing_label"` → short "missing label" comment (body: "Add the `${scenario_request_label}` label to have this triaged automatically. See `docs/se-feedback.md` for details.").
          c) `cursor_verdict == "match"` → "## Existing scenario match" comment quoting `cursor_match_name`, the suggested run command (`make demo SCENARIO=<cursor_match_name>`), and the relevant excerpt from `cursor_summary`.
-         d) ANY `stage_summary:*` value contains "budget" (case-insensitive) AND `cursor_pr_url` is empty → "## Budget exhausted" comment with this body:
-              "The scenario-author bot ran out of its daily budget before it could finish triaging this request. The daily cap will reset; please re-open / re-label this issue tomorrow and the bot will pick it up automatically. If this happens repeatedly, raise `agent_budget` on the module instance. Originating stage: `<stage_id>`."
-         e) `cursor_verdict == "blocked"` OR ANY `stage_summary:*` begins with "blocked:" → "## Workflow blocked" comment quoting `cursor_summary` (when blocked by Cursor) or the `stage_summary` blocker text verbatim.
-         f) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → "## Scaffolded a PR" comment quoting the PR URL, summary excerpt from `cursor_summary`. If `cursor_summary` mentions "Unknown modules:", append a "TODO before merge: <list>" line.
-         g) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → "## Draft PR (validation failed)" comment quoting the PR URL, the failure summary from `cursor_summary`, and "Please assign a scenario owner from `CONTRIBUTORS-SE.md` to fix the scaffold."
-         h) Else (no PR, no match, no clear blocker — only happens when the cursor agent yielded mid-task with no notes) → generic "## Triaged, no action taken" comment that asks the SE to re-open the issue if the request is still relevant.
+         d) `read_notes` shows `cursor_platform_cap == "true"` OR (`cursor_verdict == "blocked"` AND (`cursor_summary` OR any `stage_summary:*` matches case-insensitive: `insufficient account budget`, `cursor platform`, `billing`, `payment required`, `quota exceeded`)) → "## Cursor platform temporarily unavailable" body (Template E §2 — explains this is **Cursor's** account/quota, not StackGen `agent_budget`; retry later / add credits / manual scaffold via `examples/scenarios/aws-sre-demo/` + `CONTRIBUTORS-SE.md`).
+         e) ANY `stage_summary:*` contains the exact substring `guild_spend_cap_reached` AND `cursor_pr_url` is empty → "## Guild planner budget exhausted" (StackGen daily USD cap on this agent — raise `agent_budget` on the `aios-agent-scenario-author` module or wait for UTC day reset).
+         f) `cursor_verdict == "blocked"` OR ANY `stage_summary:*` begins with `blocked:` → "## Workflow blocked" comment quoting `cursor_summary` (when blocked by Cursor) or the `stage_summary` blocker text verbatim — **skip** if step (d) already matched.
+         g) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → "## Scaffolded a PR" comment quoting the PR URL, summary excerpt from `cursor_summary`. If `cursor_summary` mentions "Unknown modules:", append a "TODO before merge: <list>" line.
+         h) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → "## Draft PR (validation failed)" comment quoting the PR URL, the failure summary from `cursor_summary`, and "Please assign a scenario owner from `CONTRIBUTORS-SE.md` to fix the scaffold."
+         i) Else (no PR, no match, no clear blocker — only happens when the cursor agent yielded mid-task with no notes) → generic "## Triaged, no action taken" comment that asks the SE to re-open the issue if the request is still relevant.
       2. ONE call: `gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file - <<'EOF'\n<body>\nEOF`
       3. note key="final_comment_url", value="<best-effort URL>"
-      4. note key="final_comment_kind", value=<"wrong_repo" | "missing_label" | "existing_match" | "budget_exhausted" | "blocked" | "happy_pr" | "draft_pr" | "no_action">
+      4. note key="final_comment_kind", value=<"wrong_repo" | "missing_label" | "existing_match" | "cursor_platform_cap" | "guild_spend_cap" | "blocked" | "happy_pr" | "draft_pr" | "no_action">
     Stop after the comment.
 
 Template F — "gate-fail comment" (used when §0c gate rejects the issue, before any Cursor call):

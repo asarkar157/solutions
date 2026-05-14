@@ -191,3 +191,28 @@ variable "trigger_event_types" {
     error_message = "trigger_event_types must contain at least one event type string."
   }
 }
+
+# ---------------------------------------------------------------------------
+# Optional webhook ingress URLs (`POST /api/v1/webhooks/trigger`)
+# ---------------------------------------------------------------------------
+variable "webhook_trigger_base_url" {
+  description = <<-EOT
+    Optional StackGen HTTP API origin (e.g. `https://main.dev.stackgen.com`). When set,
+    outputs include `webhook_trigger_endpoint` and, when an ingress webhook token exists,
+    `webhook_ingress_payload_url` — a full URL with `apiKey=` for GitHub "Payload URL"
+    and other senders that cannot set `Authorization: Bearer`. Leave empty (default) to
+    omit those computed outputs.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "webhook_trigger_org_id" {
+  description = <<-EOT
+    Optional `orgId` query parameter appended to `webhook_ingress_payload_url` when
+    `webhook_trigger_base_url` is set. Use the same StackGen organization / project id
+    you pass as the provider `project_id` for this Guild tenant.
+  EOT
+  type        = string
+  default     = ""
+}

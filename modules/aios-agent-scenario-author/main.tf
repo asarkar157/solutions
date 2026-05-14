@@ -298,6 +298,7 @@ resource "sg_workflow" "scenario_request_triage" {
                   * `cursor_match_name`    (when `verdict == match`)
                   * `cursor_summary`       (always — one paragraph from the Cursor conversation summary)
                   * `cursor_artifacts`     (optional — the raw artifacts list)
+                  * If FAILED/CANCELED and the summary matches Cursor **account** billing / quota signals (orchestration §6(c)), also `note key="cursor_platform_cap" value="true"` so `notify-issue-comment` posts the Cursor-platform template instead of mis-labeling Guild `agent_budget`.
 
         4. note `stage_summary:cursor-author` with: verdict, PR URL or match name, validation outcome (extracted from `cursor_summary`), and the Cursor agent ID for traceability.
 
@@ -327,17 +328,18 @@ resource "sg_workflow" "scenario_request_triage" {
 
         Plan:
 
-        1. `read_notes` for `repository_full_name`, `issue_or_pr_number`, `gate_result`, `cursor_verdict`, `cursor_pr_url`, `cursor_match_name`, `cursor_summary`, and ALL `stage_summary:*` keys.
+        1. `read_notes` for `repository_full_name`, `issue_or_pr_number`, `gate_result`, `cursor_verdict`, `cursor_pr_url`, `cursor_match_name`, `cursor_summary`, `cursor_platform_cap` (if present), and ALL `stage_summary:*` keys.
 
         2. Skip the comment entirely IF AND ONLY IF `gate_result != "pass"` (the gate-fail comment was already posted in `analyze-issue`). In that case, note `stage_summary:notify-issue-comment="skipped: gate-fail comment already posted"` and yield.
 
-        3. Otherwise, spawn EXACTLY one subagent `notify-issue-comment` per orchestration-sop Template E + scenario-pr-and-notify-sop. The subagent picks ONE body based on captured notes (first match wins, evaluate in order):
-             a) `cursor_verdict == "match"` → "Existing scenario match" comment quoting `cursor_match_name` and the run command.
-             b) Any `stage_summary:*` value contains `budget` (case-insensitive) AND `cursor_pr_url` is empty → "Budget exhausted" comment with retry guidance + the day's spend.
-             c) `cursor_verdict == "blocked"` OR any `stage_summary:*` starts with `blocked:` → "Workflow blocked" comment quoting the blocker text (use `cursor_summary` when the verdict is `blocked`).
-             d) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → "Scaffolded a PR" comment quoting the PR URL + summary.
-             e) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → "Draft PR (validation failed)" comment quoting the PR URL + summary.
-             f) Else (no PR, no match, no clear blocker — only happens when the cursor agent yielded mid-stage with no notes) → "Triaged, no action taken" comment that also asks the SE to re-open the issue.
+        3. Otherwise, spawn EXACTLY one subagent `notify-issue-comment` per orchestration-sop Template E + scenario-pr-and-notify-sop. The subagent picks ONE body based on captured notes (first match wins, evaluate in order — **must** match scenario-pr-and-notify-sop §1 so Cursor billing errors are never mis-classified as Guild `agent_budget`):
+             a) `read_notes` shows `cursor_platform_cap == "true"` OR (`cursor_verdict == "blocked"` AND (`cursor_summary` OR any `stage_summary:*` contains case-insensitive `insufficient account budget`, `cursor platform`, `billing`, `payment required`, or `quota exceeded`) AND `cursor_pr_url` is empty) → "## Cursor platform temporarily unavailable" (Cursor SaaS limits — retry / Cursor dashboard / manual scaffold per that SOP).
+             b) `cursor_verdict == "match"` → "Existing scenario match" comment quoting `cursor_match_name` and the run command.
+             c) ANY `stage_summary:*` contains the exact substring `guild_spend_cap_reached` AND `cursor_pr_url` is empty → "## Guild planner budget exhausted" (StackGen `agent_budget` / `sg_agent_budget`).
+             d) `cursor_verdict == "blocked"` OR any `stage_summary:*` starts with `blocked:` → "Workflow blocked" comment quoting the blocker text (use `cursor_summary` when the verdict is `blocked`) **only if** (a) did not apply.
+             e) `cursor_verdict == "pr"` AND `cursor_pr_url` non-empty → "Scaffolded a PR" comment quoting the PR URL + summary.
+             f) `cursor_verdict == "draft_pr"` AND `cursor_pr_url` non-empty → "Draft PR (validation failed)" comment quoting the PR URL + summary.
+             g) Else (no PR, no match, no clear blocker — only happens when the cursor agent yielded mid-stage with no notes) → "Triaged, no action taken" comment that also asks the SE to re-open the issue.
 
         4. note `stage_summary:notify-issue-comment` with: chosen comment kind + the issue URL.
       EOT
