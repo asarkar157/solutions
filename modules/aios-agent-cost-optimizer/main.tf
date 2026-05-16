@@ -171,6 +171,7 @@ resource "sg_workflow" "finops_review" {
     { stage_id = "rightsizing", description = "Analyze utilization and recommend instance changes.", required = true },
     { stage_id = "commitment-review", description = "Optimize reserved instance and savings plan coverage.", required = true },
     { stage_id = "anomaly-check", description = "Detect and explain spending anomalies.", required = true },
+    { stage_id = "evidence-review-gate", description = "LLM verifies that all four review areas produced documented findings before the executive summary.", required = true },
     { stage_id = "executive-summary", description = "Generate a prioritized savings report with total impact.", required = true },
   ]
 
@@ -179,6 +180,22 @@ resource "sg_workflow" "finops_review" {
     { stage_id = "rightsizing", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.rightsizing_analysis.name], skill_refs = concat(["finops-rightsizing-analysis"], try(var.workflow_skill_refs["finops-review::rightsizing"], [])) },
     { stage_id = "commitment-review", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.savings_plan_review.name], skill_refs = concat(["finops-commitment-coverage"], try(var.workflow_skill_refs["finops-review::commitment-review"], [])) },
     { stage_id = "anomaly-check", agent_ref = sg_agent.cost_optimizer.name, runbook_refs = [sg_runbook_sop.cost_anomaly_detection.name], skill_refs = concat(["finops-spend-anomaly"], try(var.workflow_skill_refs["finops-review::anomaly-check"], [])) },
-    { stage_id = "executive-summary", agent_ref = sg_agent.cost_optimizer.name, stage_depends_on = ["idle-scan", "rightsizing", "commitment-review", "anomaly-check"], skill_refs = concat(["finops-executive-savings-report"], try(var.workflow_skill_refs["finops-review::executive-summary"], [])) },
+    # evidence_gate: LLM verifies that all four review areas (idle resources,
+    # rightsizing, commitment coverage, anomaly explanations) have documented findings
+    # before generating the executive summary.
+    {
+      stage_id         = "evidence-review-gate"
+      action_type      = "evidence_gate"
+      stage_depends_on = ["idle-scan", "rightsizing", "commitment-review", "anomaly-check"]
+      action_config = {
+        confirmation_items = jsonencode([
+          "Idle resource findings are documented with resource IDs and estimated savings",
+          "Rightsizing recommendations include utilization metrics and target instance types",
+          "Commitment coverage or gap analysis is completed with coverage percentages",
+          "Spend anomaly hypotheses are documented with supporting query links",
+        ])
+      }
+    },
+    { stage_id = "executive-summary", agent_ref = sg_agent.cost_optimizer.name, stage_depends_on = ["evidence-review-gate"], skill_refs = concat(["finops-executive-savings-report"], try(var.workflow_skill_refs["finops-review::executive-summary"], [])) },
   ]
 }

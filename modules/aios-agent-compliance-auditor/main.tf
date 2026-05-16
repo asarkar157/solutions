@@ -165,6 +165,8 @@ resource "sg_workflow" "compliance_assessment" {
     { stage_id = "access-controls-review", description = "Audit IAM, MFA, and privilege management.", required = true },
     { stage_id = "change-management-review", description = "Verify change control and peer review processes.", required = true },
     { stage_id = "audit-log-review", description = "Analyze audit trails for anomalies.", required = true },
+    { stage_id = "evidence-quality-gate", description = "LLM evaluates whether collected evidence is sufficient for a passing audit report.", required = false },
+    { stage_id = "data-sensitivity-gate", description = "Inline Rego halts the workflow if evidence output contains unredacted PII markers (SSN, credit card, HIPAA identifiers).", required = true },
     { stage_id = "generate-report", description = "Consolidate findings into a structured compliance report.", required = true },
   ]
 
@@ -172,6 +174,54 @@ resource "sg_workflow" "compliance_assessment" {
     { stage_id = "access-controls-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_access_review.name], skill_refs = concat(["compliance-soc2-access-controls"], try(var.workflow_skill_refs["compliance-assessment::access-controls-review"], [])) },
     { stage_id = "change-management-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_change_management.name], skill_refs = concat(["compliance-change-management-evidence"], try(var.workflow_skill_refs["compliance-assessment::change-management-review"], [])) },
     { stage_id = "audit-log-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.audit_log_analysis.name], skill_refs = concat(["compliance-audit-log-review"], try(var.workflow_skill_refs["compliance-assessment::audit-log-review"], [])) },
-    { stage_id = "generate-report", agent_ref = sg_agent.compliance_auditor.name, stage_depends_on = ["access-controls-review", "change-management-review", "audit-log-review"], skill_refs = concat(["compliance-readiness-report"], try(var.workflow_skill_refs["compliance-assessment::generate-report"], [])) },
+    # conditional_skip (llm_eval): LLM evaluates whether the evidence collected from the
+    # 3 review stages meets SOC2/GDPR audit quality standards. If evidence is sufficient,
+    # skip forward to the data-sensitivity scan (never directly to report). If gaps exist,
+    # the gate does not match and the workflow continues linearly for human follow-up.
+    {
+      stage_id         = "evidence-quality-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["access-controls-review", "change-management-review", "audit-log-review"]
+      action_config = {
+        condition = "llm_eval"
+        match     = "All three review areas (access controls, change management, audit logs) have documented evidence with specific findings, timestamps, and remediation recommendations. No review area is missing or marked as incomplete."
+        skip_to   = "data-sensitivity-gate"
+        reason    = "LLM-verified: all compliance evidence meets audit quality threshold — continue to PII scan before report generation"
+      }
+    },
+    # policy_check with inline_rego: Deterministic data sensitivity scan.
+    # Halts the workflow if evidence output contains PII patterns that should
+    # have been redacted before report generation (SSN, credit card numbers,
+    # HIPAA patient identifiers).
+    {
+      stage_id         = "data-sensitivity-gate"
+      action_type      = "policy_check"
+      stage_depends_on = ["evidence-quality-gate"]
+      action_config = {
+        inline_rego = <<-REGO
+          package stage_gate
+
+          import rego.v1
+
+          default allow = true
+
+          # Halt if SSN patterns appear in evidence.
+          allow = false if { contains_ssn }
+          # Halt if credit card patterns appear.
+          allow = false if { contains_cc }
+          # Halt if HIPAA patient identifiers appear.
+          allow = false if { contains_hipaa }
+
+          contains_ssn if { regex.match(`(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)`, input.stage_input) }
+          contains_cc if { regex.match(`(^|[^0-9])(?:\d{4}[- ]?){3}\d{4}([^0-9]|$)`, input.stage_input) }
+          contains_hipaa if { regex.match(`(?i)\b(medical[\s_-]?record|patient[\s_-]?id|mrn)\b`, input.stage_input) }
+
+          deny contains "Evidence contains unredacted SSN pattern — redact before report generation" if { contains_ssn }
+          deny contains "Evidence contains unredacted credit card number — redact before report generation" if { contains_cc }
+          deny contains "Evidence contains HIPAA patient identifiers — redact before report generation" if { contains_hipaa }
+        REGO
+      }
+    },
+    { stage_id = "generate-report", agent_ref = sg_agent.compliance_auditor.name, stage_depends_on = ["data-sensitivity-gate"], skill_refs = concat(["compliance-readiness-report"], try(var.workflow_skill_refs["compliance-assessment::generate-report"], [])) },
   ]
 }

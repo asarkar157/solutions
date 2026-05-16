@@ -27,6 +27,8 @@ locals {
   provision_slack   = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
   provision_linear  = trimspace(var.linear_credential_provider_id) != "" && trimspace(var.existing_linear_integration_name) == ""
 
+  incident_notification_webhook_enabled = trimspace(var.incident_notification_webhook_url) != ""
+
   resolved_grafana_integration_name = trimspace(var.existing_grafana_integration_name) != "" ? var.existing_grafana_integration_name : (
     local.provision_grafana ? module.grafana_integration[0].integration_name : ""
   )
@@ -545,21 +547,91 @@ resource "sg_workflow" "incident_response" {
     "Error rates jumped after the last deploy, help us roll back",
   ]
 
-  stages = [
-    { stage_id = "collect-signals", description = "Pull real-time metrics, logs, traces, and active alerts", note = "Query monitors, fetch K8s events, capture anomalies.", required = true },
-    { stage_id = "correlate-changes", description = "Cross-reference anomaly timeline against recent deploys and config changes", note = "Pull ArgoCD sync history, GitHub merge events, Terraform diffs.", required = true },
-    { stage_id = "assess-blast-radius", description = "Map failure impact across service dependency graph", note = "Walk service catalog, estimate affected user requests.", required = true },
-    { stage_id = "determine-severity", description = "Classify incident severity and escalate accordingly", note = "Combine correlation and blast-radius data against severity matrix.", required = true },
-    { stage_id = "recommend-action", description = "Propose ranked remediation actions and execute safe ones automatically", note = "Auto-execute low-risk. Queue high-risk for HITL approval.", required = true },
-  ]
+  stages = concat(
+    [
+      { stage_id = "collect-signals", description = "Pull real-time metrics, logs, traces, and active alerts", note = "Query monitors, fetch K8s events, capture anomalies.", required = true },
+      { stage_id = "correlate-changes", description = "Cross-reference anomaly timeline against recent deploys and config changes", note = "Pull ArgoCD sync history, GitHub merge events, Terraform diffs.", required = true },
+      { stage_id = "assess-blast-radius", description = "Map failure impact across service dependency graph", note = "Walk service catalog, estimate affected user requests.", required = true },
+      { stage_id = "determine-severity", description = "Classify incident severity and escalate accordingly", note = "Combine correlation and blast-radius data against severity matrix.", required = true },
+      { stage_id = "triage-navigation-gate", description = "LLM may send execution back to change correlation for another pass when classification is uncertain, or proceed to the remediation safety gate (and stakeholder webhook, when configured, after that gate).", required = true },
+      { stage_id = "remediation-safety-gate", description = "Inline Rego blocks auto-remediation when combined triage output still reflects P1/SEV1-class severity (severity text is carried inside the navigation_gate JSON).", required = true },
+    ],
+    local.incident_notification_webhook_enabled ? [{ stage_id = "notify-stakeholders", description = "POST a structured severity + blast-radius JSON summary to the configured webhook endpoint for instant stakeholder visibility — zero LLM cost.", required = false }] : [],
+    [
+      { stage_id = "recommend-action", description = "Propose ranked remediation actions and execute safe ones automatically", note = "Auto-execute low-risk. Queue high-risk for HITL approval.", required = true },
+    ],
+  )
 
-  stage_bindings = [
-    { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name, sg_runbook_sop.memory_pressure_mitigation.name, sg_runbook_sop.grafana_metrics_triage.name], skill_refs = concat(["sre-observability-triage", "sre-signal-dossier"], try(var.workflow_skill_refs["incident-response::collect-signals"], [])), note = "Triage agent gathers initial signal dossier." },
-    { stage_id = "correlate-changes", agent_ref = sg_agent.sre_change_correlation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-change-correlation", "sre-deploy-history"], try(var.workflow_skill_refs["incident-response::correlate-changes"], [])), note = "Change-correlation agent finds recent mutations." },
-    { stage_id = "assess-blast-radius", agent_ref = sg_agent.sre_risk_posture.name, stage_depends_on = ["collect-signals"], skill_refs = concat(["sre-blast-radius", "sre-dependency-walk"], try(var.workflow_skill_refs["incident-response::assess-blast-radius"], [])), note = "Risk-posture agent sizes impact." },
-    { stage_id = "determine-severity", agent_ref = sg_agent.sre_incident.name, stage_depends_on = ["correlate-changes", "assess-blast-radius"], runbook_refs = [sg_runbook_sop.incident_communications.name], skill_refs = concat(["sre-severity-matrix", "sre-incident-comms"], try(var.workflow_skill_refs["incident-response::determine-severity"], [])), note = "Incident commander classifies severity." },
-    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["determine-severity"], runbook_refs = [sg_runbook_sop.db_failover.name, sg_runbook_sop.dns_failover.name, sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-safe-remediation", "sre-rollback-playbook"], try(var.workflow_skill_refs["incident-response::recommend-action"], [])), note = "Auto-remediation agent executes safe fixes." },
-  ]
+  stage_bindings = concat(
+    [
+      { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name, sg_runbook_sop.memory_pressure_mitigation.name, sg_runbook_sop.grafana_metrics_triage.name], skill_refs = concat(["sre-observability-triage", "sre-signal-dossier"], try(var.workflow_skill_refs["incident-response::collect-signals"], [])), note = "Triage agent gathers initial signal dossier." },
+      { stage_id = "correlate-changes", agent_ref = sg_agent.sre_change_correlation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-change-correlation", "sre-deploy-history"], try(var.workflow_skill_refs["incident-response::correlate-changes"], [])), note = "Change-correlation agent finds recent mutations." },
+      { stage_id = "assess-blast-radius", agent_ref = sg_agent.sre_risk_posture.name, stage_depends_on = ["collect-signals"], skill_refs = concat(["sre-blast-radius", "sre-dependency-walk"], try(var.workflow_skill_refs["incident-response::assess-blast-radius"], [])), note = "Risk-posture agent sizes impact." },
+      { stage_id = "determine-severity", agent_ref = sg_agent.sre_incident.name, stage_depends_on = ["correlate-changes", "assess-blast-radius"], runbook_refs = [sg_runbook_sop.incident_communications.name], skill_refs = concat(["sre-severity-matrix", "sre-incident-comms"], try(var.workflow_skill_refs["incident-response::determine-severity"], [])), note = "Incident commander classifies severity." },
+      # navigation_gate: Optional GO_BACK to correlate-changes; proceed to optional webhook or remediation planning.
+      {
+        stage_id         = "triage-navigation-gate"
+        action_type      = "navigation_gate"
+        stage_depends_on = ["determine-severity"]
+        action_config = merge(
+          {
+            max_goback_count = 2
+            navigation_prompt = join("", [
+              "Review the severity classification and evidence. If deploy history or change correlation should be re-checked (uncertain root cause, missing commits, conflicting timelines), go back to correlate-changes. ",
+              "If the classification is solid, proceed to remediation-safety-gate (inline policy blocks auto-remediation on P1/SEV1-class severity). ",
+              local.incident_notification_webhook_enabled ? "After that gate passes, notify-stakeholders runs, then auto-remediation planning." : "Then auto-remediation planning runs.",
+            ])
+          },
+          { allowed_transitions = jsonencode(["correlate-changes", "remediation-safety-gate"]) },
+        )
+      },
+    ],
+    [
+      # policy_check runs immediately after triage-navigation-gate so inline_rego still sees the
+      # prior severity text (navigation_gate output JSON embeds determine-severity in previous_stage_input).
+      # Do not insert webhook stages between triage and this gate — webhook responses would not contain severity.
+      {
+        stage_id         = "remediation-safety-gate"
+        action_type      = "policy_check"
+        stage_depends_on = ["triage-navigation-gate"]
+        action_config = {
+          inline_rego = <<-REGO
+          package stage_gate
+
+          import rego.v1
+
+          default allow = true
+
+          # Block auto-remediation for P1/SEV1. Match word-boundary severity tokens (avoid p10, sev10, etc.).
+          allow = false if { is_critical_severity }
+
+          _text := lower(input.stage_input)
+
+          is_critical_severity if { regex.match(`\bp1\b`, _text) }
+          is_critical_severity if { regex.match(`\bsev[- ]?1\b`, _text) }
+          is_critical_severity if { contains(_text, "severity: 1") }
+
+          deny contains "P1/SEV1 incident requires human-in-the-loop approval for remediation" if {
+              is_critical_severity
+          }
+        REGO
+        }
+      },
+    ],
+    local.incident_notification_webhook_enabled ? [{
+      stage_id         = "notify-stakeholders"
+      action_type      = "webhook"
+      stage_depends_on = ["remediation-safety-gate"]
+      action_config = {
+        url             = var.incident_notification_webhook_url
+        method          = "POST"
+        timeout_seconds = 10
+      }
+    }] : [],
+    [
+      { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = concat(["triage-navigation-gate", "remediation-safety-gate"], local.incident_notification_webhook_enabled ? ["notify-stakeholders"] : []), runbook_refs = [sg_runbook_sop.db_failover.name, sg_runbook_sop.dns_failover.name, sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-safe-remediation", "sre-rollback-playbook"], try(var.workflow_skill_refs["incident-response::recommend-action"], [])), note = "Auto-remediation agent executes safe fixes." },
+    ],
+  )
 }
 
 resource "sg_workflow" "incident_quick_triage" {
@@ -589,11 +661,22 @@ resource "sg_workflow" "incident_quick_triage" {
 
   stages = [
     { stage_id = "collect-signals", description = "Rapid diagnostic sweep for the affected service", note = "Focus on the impacted service namespace only.", required = true },
+    { stage_id = "quick-triage-navigation-gate", description = "Optional GO_BACK for another signal pass when diagnostics are inconclusive; otherwise proceed to remediation.", required = true },
     { stage_id = "recommend-action", description = "Propose a targeted fix or escalate to full incident-response", note = "Auto-execute safe fixes. Escalate broader impact.", required = true },
   ]
 
   stage_bindings = [
     { stage_id = "collect-signals", agent_ref = sg_agent.sre_triage.name, runbook_refs = [sg_runbook_sop.pod_crashloop_recovery.name], skill_refs = concat(["sre-quick-signal-scan"], try(var.workflow_skill_refs["incident-triage::collect-signals"], [])), note = "Focused diagnostic pass." },
-    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["collect-signals"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-targeted-remediation"], try(var.workflow_skill_refs["incident-triage::recommend-action"], [])), note = "Recommend and execute safe fixes." },
+    {
+      stage_id         = "quick-triage-navigation-gate"
+      action_type      = "navigation_gate"
+      stage_depends_on = ["collect-signals"]
+      action_config = {
+        allowed_transitions = jsonencode(["collect-signals", "recommend-action"])
+        max_goback_count    = 2
+        navigation_prompt   = "If the signal sweep is inconclusive or more metrics/logs are needed before taking action, go back to collect-signals. If there is enough signal to recommend a safe fix, proceed to recommend-action."
+      }
+    },
+    { stage_id = "recommend-action", agent_ref = sg_agent.sre_auto_remediation.name, stage_depends_on = ["quick-triage-navigation-gate"], runbook_refs = [sg_runbook_sop.deployment_rollback.name], skill_refs = concat(["sre-targeted-remediation"], try(var.workflow_skill_refs["incident-triage::recommend-action"], [])), note = "Recommend and execute safe fixes." },
   ]
 }

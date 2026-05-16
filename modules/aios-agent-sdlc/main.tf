@@ -48,6 +48,8 @@ locals {
   )
   resolved_stackgen_mcp_integration_name = trimspace(var.stackgen_mcp_integration_name)
   resolved_linear_mcp_integration_name   = trimspace(var.linear_mcp_integration_name)
+
+  release_notification_webhook_enabled = trimspace(var.release_notification_webhook_url) != ""
 }
 
 module "github_integration" {
@@ -378,90 +380,149 @@ resource "sg_workflow" "release_pipeline" {
     "Start a canary deployment for the new search-service version",
   ]
 
-  stages = [
-    {
-      stage_id    = "build"
-      description = "Build the container image from the specified Git ref using Kaniko in-cluster and push to the ECR registry"
-      note        = "K8s-ops agent triggers a Kaniko build pod in the CI namespace, tags the image with the Git SHA and semver, and pushes to the ECR repo."
-      required    = true
-    },
-    {
-      stage_id    = "security-scan"
-      description = "Scan the built container image for OS and library vulnerabilities using Trivy and Snyk"
-      note        = "Fail the pipeline if any CVE with CVSS ≥ 9.0 (critical) is detected. Runs in parallel with integration-tests."
-      required    = true
-    },
-    {
-      stage_id    = "integration-tests"
-      description = "Spin up an ephemeral preview environment with the new image and run the integration test suite"
-      note        = "Create a temporary Kubernetes namespace, deploy the service with its dependencies via Helm, execute the integration test suite. Runs in parallel with security-scan."
-      required    = true
-    },
-    {
-      stage_id    = "deploy-staging"
-      description = "Deploy the validated image to the staging environment via ArgoCD and verify rollout health"
-      note        = "Sync the ArgoCD application with the new image tag, wait for rollout completion, and verify all pods pass readiness and liveness probes."
-      required    = true
-    },
-    {
-      stage_id    = "smoke-tests"
-      description = "Run critical-path smoke tests against staging — covering authentication, checkout, and API health endpoints"
-      note        = "Execute the smoke test suite hitting the staging ingress. Fail if any critical user journey returns a non-2xx response or latency exceeds the SLO threshold."
-      required    = true
-    },
-    {
-      stage_id    = "deploy-production"
-      description = "Promote the staging-validated image to production with a 10% canary rollout, then full promotion after human approval"
-      note        = "Route 10% of production traffic to the canary pods for 15 minutes while monitoring error rate and latency. Auto-rollback if error rate exceeds baseline during the canary window."
-      required    = true
-    },
-  ]
-
-  stage_bindings = [
-    {
-      stage_id   = "build"
-      agent_ref  = sg_agent.k8s_ops.name
-      note       = "K8s-ops agent manages Kaniko build pods, ECR image tagging, and registry authentication."
-      skill_refs = concat(["sdlc-kaniko-ecr-build"], try(var.workflow_skill_refs["release-pipeline::build"], []))
-    },
-    {
-      stage_id         = "security-scan"
-      agent_ref        = var.sre_agent_names.sre_risk_posture
-      stage_depends_on = ["build"]
-      note             = "SRE risk-posture agent runs Trivy and Snyk scans against the newly built image."
-      skill_refs       = concat(["sdlc-container-security-scan"], try(var.workflow_skill_refs["release-pipeline::security-scan"], []))
-    },
-    {
-      stage_id         = "integration-tests"
-      agent_ref        = sg_agent.qa_testing.name
-      stage_depends_on = ["build"]
-      note             = "QA agent provisions an ephemeral Kubernetes namespace and runs the integration suite."
-      skill_refs       = concat(["sdlc-ephemeral-integration-tests"], try(var.workflow_skill_refs["release-pipeline::integration-tests"], []))
-    },
-    {
-      stage_id         = "deploy-staging"
-      agent_ref        = sg_agent.k8s_ops.name
-      stage_depends_on = ["security-scan", "integration-tests"]
-      runbook_refs     = [var.sre_runbook_names.deployment_rollback]
-      note             = "K8s-ops agent syncs ArgoCD and triggers rollback runbook if health checks fail."
-      skill_refs       = concat(["sdlc-argocd-staging-rollout"], try(var.workflow_skill_refs["release-pipeline::deploy-staging"], []))
-    },
-    {
-      stage_id         = "smoke-tests"
-      agent_ref        = sg_agent.qa_testing.name
-      stage_depends_on = ["deploy-staging"]
-      note             = "QA agent runs the smoke test suite against the staging environment."
-      skill_refs       = concat(["sdlc-staging-smoke-tests"], try(var.workflow_skill_refs["release-pipeline::smoke-tests"], []))
-    },
-    {
-      stage_id         = "deploy-production"
-      agent_ref        = sg_agent.k8s_ops.name
-      stage_depends_on = ["smoke-tests"]
-      runbook_refs     = [var.sre_runbook_names.deployment_rollback, var.sre_runbook_names.ssl_cert_renewal]
-      note             = "K8s-ops agent performs canary deployment. Rollback and TLS renewal runbooks attached."
-      skill_refs       = concat(["sdlc-canary-production-promote"], try(var.workflow_skill_refs["release-pipeline::deploy-production"], []))
-    },
-  ]
+  stages = concat(
+    [
+      {
+        stage_id    = "build"
+        description = "Build the container image from the specified Git ref using Kaniko in-cluster and push to the ECR registry"
+        note        = "K8s-ops agent triggers a Kaniko build pod in the CI namespace, tags the image with the Git SHA and semver, and pushes to the ECR repo."
+        required    = true
+      },
+      {
+        stage_id    = "security-scan"
+        description = "Scan the built container image for OS and library vulnerabilities using Trivy and Snyk"
+        note        = "Fail the pipeline if any CVE with CVSS ≥ 9.0 (critical) is detected. Runs in parallel with integration-tests."
+        required    = true
+      },
+      {
+        stage_id    = "integration-tests"
+        description = "Spin up an ephemeral preview environment with the new image and run the integration test suite"
+        note        = "Create a temporary Kubernetes namespace, deploy the service with its dependencies via Helm, execute the integration test suite. Runs in parallel with security-scan."
+        required    = true
+      },
+      {
+        stage_id    = "deploy-staging"
+        description = "Deploy the validated image to the staging environment via ArgoCD and verify rollout health"
+        note        = "Sync the ArgoCD application with the new image tag, wait for rollout completion, and verify all pods pass readiness and liveness probes."
+        required    = true
+      },
+      {
+        stage_id    = "smoke-tests"
+        description = "Run critical-path smoke tests against staging — covering authentication, checkout, and API health endpoints"
+        note        = "Execute the smoke test suite hitting the staging ingress. Fail if any critical user journey returns a non-2xx response or latency exceeds the SLO threshold. On success, include a line exactly `smoke_test_summary: PASS_ALL` (with optional short commentary on other lines) so the smoke-test gate can match deterministically."
+        required    = true
+      },
+      {
+        stage_id    = "smoke-test-gate"
+        description = "Evaluate smoke test results — if output includes the PASS_ALL sentinel or other anchored success patterns, skip manual staging verification."
+        required    = false
+      },
+      {
+        stage_id    = "deploy-production"
+        description = "Promote the staging-validated image to production with a 10% canary rollout, then full promotion after human approval"
+        note        = "Route 10% of production traffic to the canary pods for 15 minutes while monitoring error rate and latency. Auto-rollback if error rate exceeds baseline during the canary window."
+        required    = true
+      },
+      {
+        stage_id    = "canary-gate"
+        description = "LLM evaluates canary metrics and decides: promote to full rollout, or rollback and re-deploy staging."
+        required    = false
+      },
+    ],
+    local.release_notification_webhook_enabled ? [{
+      stage_id    = "notify-release-status"
+      description = "POST the final deployment outcome (success / rollback) to the configured webhook endpoint \u2014 zero LLM cost, sub-second delivery."
+      required    = false
+    }] : [],
+  )
+  stage_bindings = concat(
+    [
+      {
+        stage_id   = "build"
+        agent_ref  = sg_agent.k8s_ops.name
+        note       = "K8s-ops agent manages Kaniko build pods, ECR image tagging, and registry authentication."
+        skill_refs = concat(["sdlc-kaniko-ecr-build"], try(var.workflow_skill_refs["release-pipeline::build"], []))
+      },
+      {
+        stage_id         = "security-scan"
+        agent_ref        = var.sre_agent_names.sre_risk_posture
+        stage_depends_on = ["build"]
+        note             = "SRE risk-posture agent runs Trivy and Snyk scans against the newly built image."
+        skill_refs       = concat(["sdlc-container-security-scan"], try(var.workflow_skill_refs["release-pipeline::security-scan"], []))
+      },
+      {
+        stage_id         = "integration-tests"
+        agent_ref        = sg_agent.qa_testing.name
+        stage_depends_on = ["build"]
+        note             = "QA agent provisions an ephemeral Kubernetes namespace and runs the integration suite."
+        skill_refs       = concat(["sdlc-ephemeral-integration-tests"], try(var.workflow_skill_refs["release-pipeline::integration-tests"], []))
+      },
+      {
+        stage_id         = "deploy-staging"
+        agent_ref        = sg_agent.k8s_ops.name
+        stage_depends_on = ["security-scan", "integration-tests"]
+        runbook_refs     = [var.sre_runbook_names.deployment_rollback]
+        note             = "K8s-ops agent syncs ArgoCD and triggers rollback runbook if health checks fail."
+        skill_refs       = concat(["sdlc-argocd-staging-rollout"], try(var.workflow_skill_refs["release-pipeline::deploy-staging"], []))
+      },
+      {
+        stage_id         = "smoke-tests"
+        agent_ref        = sg_agent.qa_testing.name
+        stage_depends_on = ["deploy-staging"]
+        note             = "QA agent runs the smoke test suite against the staging environment. On full success, include `smoke_test_summary: PASS_ALL` on its own line for deterministic fast-path matching."
+        skill_refs       = concat(["sdlc-staging-smoke-tests"], try(var.workflow_skill_refs["release-pipeline::smoke-tests"], []))
+      },
+      # conditional_skip: Regex match on smoke test pass rate.
+      # If 100% critical paths pass, skip manual staging verification and go straight to deploy-production.
+      {
+        stage_id         = "smoke-test-gate"
+        action_type      = "conditional_skip"
+        stage_depends_on = ["smoke-tests"]
+        action_config = {
+          condition = "output_matches_regex"
+          match     = "(?m)^\\s*smoke_test_summary:\\s*PASS_ALL\\s*$|(?i)(?:^|[^0-9])100%\\s+(?:pass|passed)\\b|(?i)\\bpass\\s*rate\\s*:\\s*100%\\b|(?i)(?:^|\\n)\\s*critical[- ]path(?:es)?\\s*:\\s*(?:all\\s+passed|0\\s+failed)\\b|(?i)(?:^|\\n)\\s*0\\s+failures?\\b"
+          skip_to   = "deploy-production"
+          reason    = "All critical-path smoke tests passed — skipping manual staging verification"
+        }
+      },
+      {
+        stage_id         = "deploy-production"
+        agent_ref        = sg_agent.k8s_ops.name
+        stage_depends_on = ["smoke-test-gate"]
+        runbook_refs     = [var.sre_runbook_names.deployment_rollback, var.sre_runbook_names.ssl_cert_renewal]
+        note             = "K8s-ops agent performs canary deployment. Rollback and TLS renewal runbooks attached."
+        skill_refs       = concat(["sdlc-canary-production-promote"], try(var.workflow_skill_refs["release-pipeline::deploy-production"], []))
+      },
+      # navigation_gate: LLM evaluates canary health metrics after production deploy.
+      # Roll back to deploy-staging when unhealthy; when healthy, proceed to notify-release-status (if configured) or finish.
+      {
+        stage_id         = "canary-gate"
+        action_type      = "navigation_gate"
+        stage_depends_on = ["deploy-production"]
+        action_config = merge(
+          {
+            max_goback_count = 1
+            navigation_prompt = local.release_notification_webhook_enabled ? (
+              "Evaluate canary metrics from the deploy-production output. If error rate exceeds 1% or p99 latency exceeds SLO, go back to deploy-staging for rollback. If metrics are healthy, choose target_stage notify-release-status so stakeholders receive the final status webhook."
+              ) : (
+              "Evaluate canary metrics from the deploy-production output. If error rate exceeds 1% or p99 latency exceeds SLO, go back to deploy-staging for rollback. If metrics are healthy and there is no release notification stage, choose action FINISH with an empty target_stage to complete the workflow successfully. Do not target notify-release-status when it is not part of this workflow."
+            )
+          },
+          local.release_notification_webhook_enabled ? { allowed_transitions = jsonencode(["deploy-staging", "notify-release-status"]) } : { allowed_transitions = jsonencode(["deploy-staging"]) },
+        )
+      },
+    ],
+    local.release_notification_webhook_enabled ? [{
+      stage_id         = "notify-release-status"
+      action_type      = "webhook"
+      stage_depends_on = ["canary-gate"]
+      action_config = {
+        url             = var.release_notification_webhook_url
+        method          = "POST"
+        timeout_seconds = 10
+      }
+    }] : [],
+  )
 }
 
 # ============================================================================
@@ -538,14 +599,24 @@ resource "sg_workflow" "developer_request_intake" {
     {
       stage_id    = "check-policy"
       description = "Evaluate the request against Rego governance policies stored in the GitHub policy repository"
-      note        = "Pull applicable Rego policies and evaluate request parameters. Check environment access, resource quotas, naming conventions."
+      note        = "Pull applicable Rego policies and evaluate request parameters. On final denial, include a line exactly `policy_outcome: DENIED` in the summary; on approval use `policy_outcome: APPROVED` so downstream gates can branch safely."
       required    = true
+    },
+    {
+      stage_id    = "policy-enforcement-gate"
+      description = "Evaluate check-policy output: when the summary contains the whole-line sentinel `policy_outcome: DENIED`, skip provisioning and close the tracking issue with denial context; otherwise continue to process-request."
+      required    = false
     },
     {
       stage_id    = "process-request"
       description = "Execute the approved request: provision infrastructure, grant access, configure services, or set up environments"
       note        = "Prefer StackGen MCP tools on the integration: follow **`stackgen-mcp-iac`** and **`stackgen-mcp-consumer-tool-catalog-sop`** (user MCP: AppStacks, TF blocks on stacks, env profiles, action runs + logs, snapshots, `get_current_violations`). Use `stackgen-mcp_create_appstack`, `add_resource_to_appstack`, `connect_resources`, `update_resource`, `create_appstack_action_run`, `get_action_run_logs`, `create_snapshot` as needed. Use run_shell + AWS CLI where MCP does not cover the operation; follow **`stackgen-mcp-iac`** and SRE rollback runbook when applicable."
       required    = true
+    },
+    {
+      stage_id    = "evidence-collection-gate"
+      description = "Verify that sufficient evidence has been collected from process-request before closing the ticket."
+      required    = false
     },
     {
       stage_id    = "close-tracking-issue"
@@ -576,10 +647,25 @@ resource "sg_workflow" "developer_request_intake" {
       note             = "GitHub SCM agent pulls Rego policies and evaluates request parameters."
       skill_refs       = concat(["sdlc-rego-policy-evaluation"], try(var.workflow_skill_refs["developer-request-intake::check-policy"], []))
     },
+    # conditional_skip: Structured policy outcome from check-policy (see stage note).
+    # When `policy_outcome: DENIED` is present, skip destructive work and close the tracking issue with the denial context.
+    # Otherwise continue to process-request. Uses a whole-line sentinel to avoid accidental substring matches.
+    {
+      stage_id         = "policy-enforcement-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["check-policy"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = "(?m)^\\s*policy_outcome:\\s*DENIED\\s*$"
+        skip_to   = "close-tracking-issue"
+        else_to   = "process-request"
+        reason    = "Policy evaluation denied the request — skipping provisioning and closing with denial reason"
+      }
+    },
     {
       stage_id         = "process-request"
       agent_ref        = sg_agent.cloud_infra.name
-      stage_depends_on = ["check-policy"]
+      stage_depends_on = ["policy-enforcement-gate"]
       runbook_refs = compact([
         sg_runbook_sop.stackgen_mcp_iac.name,
         var.sre_runbook_names.deployment_rollback,
@@ -587,10 +673,18 @@ resource "sg_workflow" "developer_request_intake" {
       note       = "Cloud-infra agent: StackGen MCP IaC runbook (stackgen-mcp_*) plus AWS integration; SRE rollback runbook if deployment rollback applies."
       skill_refs = concat(["sdlc-stackgen-mcp-iac"], try(var.workflow_skill_refs["developer-request-intake::process-request"], []))
     },
+    # evidence_gate: Verifies that the process-request stage produced sufficient
+    # evidence (MCP action logs, shell output, resource IDs) before the ticket
+    # can be closed. Uses the attached evidence_checklist to score completeness.
+    {
+      stage_id         = "evidence-collection-gate"
+      action_type      = "evidence_gate"
+      stage_depends_on = ["process-request"]
+    },
     {
       stage_id         = "close-tracking-issue"
       agent_ref        = sg_agent.linear_pm.name
-      stage_depends_on = ["process-request"]
+      stage_depends_on = ["evidence-collection-gate"]
       note             = "Linear/PM agent updates Jira, attaches evidence, transitions to Done."
       skill_refs       = concat(["sdlc-jira-closeout"], try(var.workflow_skill_refs["developer-request-intake::close-tracking-issue"], []))
     },

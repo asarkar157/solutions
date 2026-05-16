@@ -271,8 +271,11 @@ resource "sg_workflow" "unused_resource_cleanup" {
     { stage_id = "load-detection-batch", description = "Load the referenced detection run and re-validate freshness (≤ 7 days).", required = true },
     { stage_id = "preflight-gate", description = "Drop resources missing owner tags, exempt-tagged, or referenced by active workloads.", required = true },
     { stage_id = "quarantine", description = "Tag and quarantine eligible resources; notify owners. Bounded by max_resources_per_run + cleanup_dollar_cap.", required = true },
+    { stage_id = "quarantine-outcome-gate", description = "Deterministic branch: exit early with abort summary when quarantine reports partial failure or cap exceeded; otherwise continue to evidence and delete.", required = true },
+    { stage_id = "evidence-cleanup-gate", description = "LLM verifies that all required evidence items (owner notification, quarantine tags, operator approval) are present before deletion.", required = true },
     { stage_id = "delete", description = "After dwell window, delete previously quarantined resources via dangerous-ops with operator approval.", required = true },
     { stage_id = "report", description = "Post final cleanup summary (resources, owners, savings realized) to Slack.", required = true },
+    { stage_id = "abort-cleanup-summary", description = "Post a short Slack summary when quarantine did not fully succeed — no destructive delete.", required = true },
   ]
 
   stage_bindings = [
@@ -296,10 +299,39 @@ resource "sg_workflow" "unused_resource_cleanup" {
       note             = format("Cap %d resources per run; stop early when accumulated estimated savings exceed $%d.", var.max_resources_per_run, var.cleanup_dollar_cap)
       skill_refs       = concat(["finops-cleanup-quarantine"], try(var.workflow_skill_refs["unused-resource-cleanup::quarantine"], []))
     },
+    # conditional_skip: Non-success quarantine outcomes jump to abort summary (no delete).
+    # Success path continues to evidence_gate then delete.
+    {
+      stage_id         = "quarantine-outcome-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["quarantine"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = "(?i)(PARTIAL_FAILURE|CAP_EXCEEDED|resource cap exceeded|quarantine failed)"
+        skip_to   = "abort-cleanup-summary"
+        else_to   = "evidence-cleanup-gate"
+        reason    = "Quarantine incomplete or capped — skipping destructive delete; publish abort summary only"
+      }
+    },
+    # evidence_gate: LLM verifies that the quarantine stage produced all required evidence
+    # (owner notification, quarantine tags, operator approval) before deletion proceeds.
+    {
+      stage_id         = "evidence-cleanup-gate"
+      action_type      = "evidence_gate"
+      stage_depends_on = ["quarantine-outcome-gate"]
+      action_config = {
+        confirmation_items = jsonencode([
+          "Detection batch ID is referenced and validated",
+          "Owner notification was sent for all quarantined resources",
+          "Quarantine tags were applied to all targeted resources",
+          "Operator approval was recorded for the deletion batch",
+        ])
+      }
+    },
     {
       stage_id         = "delete"
       agent_ref        = sg_agent.resource_janitor.name
-      stage_depends_on = ["quarantine"]
+      stage_depends_on = ["evidence-cleanup-gate"]
       runbook_refs     = [sg_runbook_sop.safe_cleanup_procedure.name]
       note             = format("Only delete resources whose `aios:cleanup:scheduled-deletion` date has passed (dwell %d days). Requires HITL approval via dangerous-ops.", var.cleanup_dwell_days)
       skill_refs       = concat(["finops-cleanup-delete"], try(var.workflow_skill_refs["unused-resource-cleanup::delete"], []))
@@ -309,6 +341,13 @@ resource "sg_workflow" "unused_resource_cleanup" {
       agent_ref        = sg_agent.resource_janitor.name
       stage_depends_on = ["delete"]
       skill_refs       = concat(["finops-cleanup-report"], try(var.workflow_skill_refs["unused-resource-cleanup::report"], []))
+    },
+    {
+      stage_id         = "abort-cleanup-summary"
+      agent_ref        = sg_agent.resource_janitor.name
+      stage_depends_on = ["quarantine-outcome-gate"]
+      note             = "Summarize quarantine failure or cap hit for Slack — destructive phases were skipped."
+      skill_refs       = concat(["finops-cleanup-report"], try(var.workflow_skill_refs["unused-resource-cleanup::abort-cleanup-summary"], []))
     },
   ]
 }

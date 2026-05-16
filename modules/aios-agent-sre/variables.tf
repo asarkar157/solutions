@@ -99,6 +99,21 @@ variable "agent_budgets" {
   default = {}
 }
 
+variable "incident_notification_webhook_url" {
+  description = <<-EOT
+    Optional HTTP(S) URL for deterministic stakeholder notifications.
+    When non-empty, the incident-response workflow includes `notify-stakeholders`
+    and exposes it in `triage-navigation-gate` allowed transitions. When empty, that
+    webhook stage is omitted and the gate only routes back to correlate-changes or forward
+    to remediation planning.
+    The stage POSTs the severity and blast-radius summary as JSON — zero LLM cost,
+    sub-second latency. Typical targets: Slack incoming webhook, OpsGenie, PagerDuty
+    Events API v2, or any HTTP endpoint that accepts JSON.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).

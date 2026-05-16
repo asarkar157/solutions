@@ -17,15 +17,17 @@ locals {
   agent_name    = "supply-chain-security-analyst${local.suffix}"
   workflow_name = "supply-chain-security-analyst${local.suffix}"
 
-  sop_npm_integrity_name      = "npm-integrity-check${local.suffix}"
-  sop_npm_sandbox_name        = "npm-behavioral-sandbox${local.suffix}"
-  sop_npm_manifest_name       = "npm-manifest-anomaly-scan${local.suffix}"
-  policy_npm_integrity_name   = "npm-integrity-check${local.suffix}"
-  policy_npm_sandbox_name     = "npm-sandbox-network${local.suffix}"
-  policy_phantom_name         = "phantom-dependency-detection${local.suffix}"
-  remediation_block_name      = "block-unverified-package${local.suffix}"
-  remediation_quarantine_name = "quarantine-phantom-dependency${local.suffix}"
-  evidence_name               = "supply-chain-incident-evidence${local.suffix}"
+  sop_npm_integrity_name        = "npm-integrity-check${local.suffix}"
+  sop_npm_sandbox_name          = "npm-behavioral-sandbox${local.suffix}"
+  sop_npm_manifest_name         = "npm-manifest-anomaly-scan${local.suffix}"
+  sop_correlation_name          = "supply-chain-correlation${local.suffix}"
+  sop_remediation_guidance_name = "supply-chain-remediation-guidance${local.suffix}"
+  policy_npm_integrity_name     = "npm-integrity-check${local.suffix}"
+  policy_npm_sandbox_name       = "npm-sandbox-network${local.suffix}"
+  policy_phantom_name           = "phantom-dependency-detection${local.suffix}"
+  remediation_block_name        = "block-unverified-package${local.suffix}"
+  remediation_quarantine_name   = "quarantine-phantom-dependency${local.suffix}"
+  evidence_name                 = "supply-chain-incident-evidence${local.suffix}"
 
   github_integration_name = "${local.module_prefix}-github${local.suffix}"
 
@@ -141,6 +143,18 @@ resource "sg_runbook_sop" "npm_manifest_anomaly" {
   description = trimspace(templatefile("${path.module}/templates/runbook-npm-manifest-anomaly-scan.md", {}))
 }
 
+resource "sg_runbook_sop" "supply_chain_correlation" {
+  name        = local.sop_correlation_name
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/runbook-supply-chain-correlation.md", {}))
+}
+
+resource "sg_runbook_sop" "supply_chain_remediation_guidance" {
+  name        = local.sop_remediation_guidance_name
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/runbook-supply-chain-remediation-guidance.md", {}))
+}
+
 resource "sg_remediation_pattern" "block_unverified_package" {
   name              = local.remediation_block_name
   description       = trimspace(templatefile("${path.module}/templates/remediation-block-unverified-package.md", {}))
@@ -201,14 +215,30 @@ resource "sg_workflow" "supply_chain_scan" {
     { stage_id = "behavioral-sandbox", description = "Sandbox install flagged packages and monitor.", required = true },
     { stage_id = "manifest-anomaly", description = "Compare declared vs actual imports.", required = true },
     { stage_id = "correlate", description = "Cross-reference all findings.", required = true },
+    { stage_id = "evidence-quality-gate", description = "LLM verifies that all three analysis stages produced sufficient evidence before recommending remediation.", required = true },
     { stage_id = "recommend", description = "Recommend remediation.", required = true },
   ]
 
   stage_bindings = [
-    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name], skill_refs = concat(["supply-chain-npm-integrity"], try(var.workflow_skill_refs["${local.workflow_name}::integrity-check"], [])) },
-    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat(["supply-chain-npm-sandbox"], try(var.workflow_skill_refs["${local.workflow_name}::behavioral-sandbox"], [])) },
-    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat(["supply-chain-manifest-anomaly"], try(var.workflow_skill_refs["${local.workflow_name}::manifest-anomaly"], [])) },
-    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat(["supply-chain-correlation"], try(var.workflow_skill_refs["${local.workflow_name}::correlate"], [])) },
-    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, stage_depends_on = ["correlate"], skill_refs = concat(["supply-chain-remediation-guidance"], try(var.workflow_skill_refs["${local.workflow_name}::recommend"], [])) },
+    { stage_id = "integrity-check", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_integrity_check.name], skill_refs = concat([sg_runbook_sop.npm_integrity_check.name], try(var.workflow_skill_refs["${local.workflow_name}::integrity-check"], [])) },
+    { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat([sg_runbook_sop.npm_behavioral_sandbox.name], try(var.workflow_skill_refs["${local.workflow_name}::behavioral-sandbox"], [])) },
+    { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat([sg_runbook_sop.npm_manifest_anomaly.name], try(var.workflow_skill_refs["${local.workflow_name}::manifest-anomaly"], [])) },
+    { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.supply_chain_correlation.name], stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat([sg_runbook_sop.supply_chain_correlation.name], try(var.workflow_skill_refs["${local.workflow_name}::correlate"], [])) },
+    # evidence_gate: LLM verifies that the three analysis stages produced all required
+    # evidence items (npm audit report, sandbox log, dependency graph delta) before
+    # recommending remediation. Halts the workflow if evidence is insufficient.
+    {
+      stage_id         = "evidence-quality-gate"
+      action_type      = "evidence_gate"
+      stage_depends_on = ["correlate"]
+      action_config = {
+        confirmation_items = jsonencode([
+          "npm audit or provenance report is linked or summarized",
+          "Sandbox run log or behavioral summary is documented",
+          "Dependency graph delta (declared vs actual imports) is captured",
+        ])
+      }
+    },
+    { stage_id = "recommend", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.supply_chain_remediation_guidance.name], stage_depends_on = ["evidence-quality-gate"], skill_refs = concat([sg_runbook_sop.supply_chain_remediation_guidance.name], try(var.workflow_skill_refs["${local.workflow_name}::recommend"], [])) },
   ]
 }

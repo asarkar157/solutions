@@ -130,6 +130,21 @@ variable "linear_mcp_integration_name" {
   default     = ""
 }
 
+variable "release_notification_webhook_url" {
+  description = <<-EOT
+    Optional HTTP(S) URL for deterministic release-status notifications.
+    When non-empty, the release-pipeline workflow includes `notify-release-status`
+    after the canary gate (and `canary-gate` may PROCEED to that stage). When empty,
+    that webhook stage is omitted and `canary-gate` only rolls back to `deploy-staging`
+    or finishes without a notification hop.
+    The stage POSTs the final deployment outcome (success / rollback) as JSON —
+    zero LLM cost, sub-second latency. Typical targets: Slack channel webhook,
+    deployment dashboard, or ServiceNow CMDB API.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
