@@ -79,6 +79,18 @@ jobs:
           chmod +x ./scripts/verify-persona-length.sh
           ./scripts/verify-persona-length.sh
 
+  workflow-stage-bindings:
+    name: Workflow stage bindings (webhook readiness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify sg_workflow stage_bindings match Guild readiness
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/verify-workflow-stage-bindings.py
+          python3 ./scripts/verify-workflow-stage-bindings.py --self-test
+          python3 ./scripts/verify-workflow-stage-bindings.py
+
   opentofu-validate:
     name: OpenTofu validate
     runs-on: ubuntu-latest

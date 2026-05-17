@@ -1,7 +1,7 @@
 # Local verification and CI entrypoints. Full context: README.md
 # ("Local verification", "Continuous integration").
 
-.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates verify-persona-length check clean demo demo-list demo-doctor demo-reset
+.PHONY: help fmt fix-fmt fmt-check opa-fmt opa-fmt-check opa-check validate validate-db-state-split-templates verify-persona-length verify-workflow-stage-bindings check clean demo demo-list demo-doctor demo-reset
 
 SHELL := /bin/bash
 
@@ -29,7 +29,8 @@ help:
 	@echo "    make opa-check      opa check --v1-compatible on each .rego file (standalone policies)"
 	@echo "    make validate       $(TF) init -backend=false && validate per module/example + db-state-split tftpl smoke"
 	@echo "    make verify-persona-length  Fail if (a) any modules/*/personas/**/*.md exceeds 15000 bytes (Guild's hard cap), or (b) any aios-agent-* module is missing _persona_guard.tf"
-	@echo "    make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, validate"
+	@echo "    make verify-workflow-stage-bindings  Fail if sg_workflow stage_bindings would trip WORKFLOW_HAS_UNBOUND_STAGE (webhook/schedule readiness)"
+	@echo "    make check          fmt-check, opa-fmt-check, opa-check, verify-persona-length, verify-workflow-stage-bindings, validate"
 	@echo "    make clean          remove .terraform caches under modules/ and examples/"
 	@echo ""
 	@echo "validate needs network; see README if dev_overrides force a minimal CLI config (then set TF_TOKEN_releases_stackgen_com)."
@@ -75,7 +76,11 @@ verify-persona-length:
 	@chmod +x "$(CURDIR)/scripts/verify-persona-length.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/verify-persona-length.sh"
 
-check: fmt-check opa-fmt-check opa-check verify-persona-length validate
+verify-workflow-stage-bindings:
+	@chmod +x "$(CURDIR)/scripts/verify-workflow-stage-bindings.py" 2>/dev/null || true
+	@python3 "$(CURDIR)/scripts/verify-workflow-stage-bindings.py"
+
+check: fmt-check opa-fmt-check opa-check verify-persona-length verify-workflow-stage-bindings validate
 
 clean:
 	@find modules examples -type d -name .terraform -prune 2>/dev/null | while read -r d; do \

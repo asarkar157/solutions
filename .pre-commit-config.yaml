@@ -26,6 +26,12 @@ repos:
         entry: make opa-check
         pass_filenames: false
 
+      - id: make-verify-workflow-stage-bindings
+        name: make verify-workflow-stage-bindings (Guild WORKFLOW_HAS_UNBOUND_STAGE)
+        language: system
+        entry: make verify-workflow-stage-bindings
+        pass_filenames: false
+
       - id: make-validate
         name: make validate (init + validate all module/example roots)
         language: system

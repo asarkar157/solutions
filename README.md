@@ -195,11 +195,12 @@ make opa-fmt          # format all .rego
 make opa-fmt-check    # CI-style Rego format check
 make opa-check        # parse/typecheck each .rego with opa check --v1-compatible
 make validate         # init -backend=false && validate per directory (tofu or terraform)
-make check            # fmt-check + opa-fmt-check + opa-check + validate
+make verify-workflow-stage-bindings  # catch WORKFLOW_HAS_UNBOUND_STAGE before apply
+make check            # fmt-check + opa-fmt-check + opa-check + verify-persona-length + verify-workflow-stage-bindings + validate
 make clean            # remove .terraform caches under modules/ and examples/
 ```
 
-**Git pre-commit (optional, same checks as CI):** install [pre-commit](https://pre-commit.com/) (`pip install pre-commit` or `brew install pre-commit`), then run `pre-commit install` in this repository. Each commit runs `make fmt-check`, `make opa-fmt-check`, `make opa-check`, and `make validate`. To skip validation only (for example offline without registry credentials): `SKIP=make-validate git commit`. To bypass hooks entirely: `git commit --no-verify`.
+**Git pre-commit (optional, same checks as CI):** install [pre-commit](https://pre-commit.com/) (`pip install pre-commit` or `brew install pre-commit`), then run `pre-commit install` in this repository. Each commit runs `make fmt-check`, `make opa-fmt-check`, `make opa-check`, `make verify-workflow-stage-bindings`, and `make validate`. To skip validation only (for example offline without registry credentials): `SKIP=make-validate git commit`. To bypass hooks entirely: `git commit --no-verify`.
 
 **Registry authentication (for local `make validate` if your environment requires it):** modules download the StackGen provider from `releases.stackgen.com`. CI does not set a GitHub Actions secret for the registry. Locally, if `init` cannot reach the provider, set credentials for that hostname, for example:
 
@@ -216,6 +217,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 |-----|----------------|
 | **OpenTofu fmt** | `tofu fmt -check -recursive` (version from [`.opentofu-version`](.opentofu-version)) |
 | **OPA** | Install OPA; fail if any `.rego` needs `opa fmt`; run [`scripts/opa-check-all.sh`](scripts/opa-check-all.sh) (`opa check --v1-compatible` per file — policies are not one combined bundle). |
+| **Workflow stage bindings** | [`scripts/verify-workflow-stage-bindings.py`](scripts/verify-workflow-stage-bindings.py) — every `sg_workflow` `stage_bindings` entry must set `agent_ref`, `parallel_agents`, or `action_type` (same rule as Guild `WORKFLOW_HAS_UNBOUND_STAGE` on webhooks/schedules). |
 | **OpenTofu validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) runs **`tofu`** (or **`terraform`** if only that is installed) in every Terraform root under `modules/` and `examples/`. |
 | **DB state split tftpl** | [`scripts/verify-db-state-split-templates.sh`](scripts/verify-db-state-split-templates.sh) renders `modules/aios-agent-db-state-splitter/templates/db-state-split-orchestration.md.tftpl` with dummy inputs (catches template errors without StackGen credentials). |
 

@@ -136,6 +136,7 @@ resource "sg_workflow" "alert_triage_pipeline" {
     },
     {
       stage_id         = "cloud-triage"
+      agent_ref        = sg_agent.alert_triage_coordinator.name
       stage_depends_on = ["alert-extraction"]
       skill_refs       = concat(["sre-multi-cloud-triage", "sre-dynamic-agent-routing"], try(var.workflow_skill_refs["cross-platform-alert-triage::cloud-triage"], []))
       note             = "The runtime will automatically resolve the best-fit agent (e.g., AWS SRE for AWS issues, Azure DevOps for Azure issues, or Ubuntu CLI) based on skill and integration matching."
