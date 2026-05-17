@@ -23,7 +23,7 @@ variable "policy_ids" {
 }
 
 variable "policy_create_flags" {
-  description = "Must align with module.policies policy_create_flags (same semantics as create_policies). Used only for Terraform count on optional attachments — avoids unknown counts when policy IDs are (known after apply). An attachment is created only when the matching flag is true and the corresponding policy_ids field is non-empty."
+  description = "Must align with module.policies policy_create_flags (same semantics as create_policies). Drives Terraform count on optional attachments so counts stay plan-time known. Pass through from module.policies.policy_create_flags; when a flag is false the matching policy is omitted from policy_ids and the attachment is skipped."
   type = object({
     sre_remediation          = optional(bool, true)
     prod_write_gate          = optional(bool, true)

@@ -13,6 +13,14 @@ variable "policy_ids" {
     google_tool_governance = optional(string, "")
   })
 }
+
+variable "policy_create_flags" {
+  description = "Plan-time flags aligned with module.policies.policy_create_flags. Drives count on optional google_tool_governance attachment (policy ID is often unknown until apply)."
+  type = object({
+    google_tool_governance = optional(bool, true)
+  })
+  default = {}
+}
 # =============================================================================
 # Self-contained integration wiring.
 #

@@ -73,7 +73,7 @@ resource "sg_agent_policy_attachment" "stackgen_safety" {
 }
 
 resource "sg_agent_policy_attachment" "dangerous_ops" {
-  count      = lookup(var.policy_ids, "dangerous_ops", "") != "" ? 1 : 0
+  count      = try(var.policy_create_flags.dangerous_ops, true) ? 1 : 0
   agent_name = sg_agent.stackgen_expert.name
   policy_id  = lookup(var.policy_ids, "dangerous_ops", "")
   enabled    = true

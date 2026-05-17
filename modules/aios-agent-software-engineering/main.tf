@@ -116,7 +116,7 @@ resource "sg_agent_policy_attachment" "developer_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "developer_shell_hitl" {
-  count      = var.policy_ids.container_shell_hitl != "" ? 1 : 0
+  count      = try(var.policy_create_flags.container_shell_hitl, true) ? 1 : 0
   agent_name = sg_agent.cursor_developer.name
   policy_id  = var.policy_ids.container_shell_hitl
   enabled    = true

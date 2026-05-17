@@ -25,6 +25,14 @@ variable "policy_ids" {
   default = {}
 }
 
+variable "policy_create_flags" {
+  description = "Plan-time flags aligned with module.policies.policy_create_flags. Drives count on optional dangerous_ops attachment (policy ID is often unknown until apply)."
+  type = object({
+    dangerous_ops = optional(bool, true)
+  })
+  default = {}
+}
+
 variable "integration_names" {
   type    = map(string)
   default = {}

@@ -89,21 +89,21 @@ resource "sg_agent_policy_attachment" "dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "prod_write_gate" {
-  count      = var.policy_ids.prod_write_gate != "" ? 1 : 0
+  count      = try(var.policy_create_flags.prod_write_gate, true) ? 1 : 0
   agent_name = sg_agent.azure_devops_sre.name
   policy_id  = var.policy_ids.prod_write_gate
   enabled    = true
 }
 
 resource "sg_agent_policy_attachment" "sre_remediation" {
-  count      = var.policy_ids.sre_remediation != "" ? 1 : 0
+  count      = try(var.policy_create_flags.sre_remediation, true) ? 1 : 0
   agent_name = sg_agent.azure_devops_sre.name
   policy_id  = var.policy_ids.sre_remediation
   enabled    = true
 }
 
 resource "sg_agent_policy_attachment" "container_shell_hitl" {
-  count      = var.policy_ids.container_shell_hitl != "" ? 1 : 0
+  count      = try(var.policy_create_flags.container_shell_hitl, true) ? 1 : 0
   agent_name = sg_agent.azure_devops_sre.name
   policy_id  = var.policy_ids.container_shell_hitl
   enabled    = true

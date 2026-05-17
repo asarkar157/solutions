@@ -190,6 +190,9 @@ module "software_engineering" {
   source = "../../modules/aios-agent-software-engineering"
 
   model_names = module.foundation.model_names
+  policy_create_flags = {
+    container_shell_hitl = module.policies.policy_create_flags.container_shell_hitl
+  }
   policy_ids = {
     dangerous_ops        = module.policies.policy_ids.dangerous_ops
     container_shell_hitl = module.policies.policy_ids.container_shell_hitl

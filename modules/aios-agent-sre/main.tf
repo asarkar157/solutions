@@ -156,14 +156,16 @@ resource "sg_agent_budget" "sre_risk_posture" {
 }
 
 locals {
+  # Count must depend only on policy_create_flags (plan-time known). Do not AND with
+  # policy_ids != "" — those IDs are often (known after apply) from module.policies.
   attach_policy = {
-    sre_remediation          = try(var.policy_create_flags.sre_remediation, true) && try(var.policy_ids.sre_remediation, "") != ""
-    prod_write_gate          = try(var.policy_create_flags.prod_write_gate, true) && try(var.policy_ids.prod_write_gate, "") != ""
-    tier0_service_protection = try(var.policy_create_flags.tier0_service_protection, true) && try(var.policy_ids.tier0_service_protection, "") != ""
-    blast_radius_limit       = try(var.policy_create_flags.blast_radius_limit, true) && try(var.policy_ids.blast_radius_limit, "") != ""
-    freeze_window            = try(var.policy_create_flags.freeze_window, true) && try(var.policy_ids.freeze_window, "") != ""
-    data_risk_pii            = try(var.policy_create_flags.data_risk_pii, true) && try(var.policy_ids.data_risk_pii, "") != ""
-    post_action_verification = try(var.policy_create_flags.post_action_verification, true) && try(var.policy_ids.post_action_verification, "") != ""
+    sre_remediation          = try(var.policy_create_flags.sre_remediation, true)
+    prod_write_gate          = try(var.policy_create_flags.prod_write_gate, true)
+    tier0_service_protection = try(var.policy_create_flags.tier0_service_protection, true)
+    blast_radius_limit       = try(var.policy_create_flags.blast_radius_limit, true)
+    freeze_window            = try(var.policy_create_flags.freeze_window, true)
+    data_risk_pii            = try(var.policy_create_flags.data_risk_pii, true)
+    post_action_verification = try(var.policy_create_flags.post_action_verification, true)
   }
 }
 

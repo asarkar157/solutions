@@ -74,7 +74,7 @@ resource "sg_agent" "workspace_assistant" {
 }
 
 resource "sg_agent_policy_attachment" "google_tool_governance" {
-  count      = var.policy_ids.google_tool_governance != "" ? 1 : 0
+  count      = try(var.policy_create_flags.google_tool_governance, true) ? 1 : 0
   agent_name = sg_agent.workspace_assistant.name
   policy_id  = var.policy_ids.google_tool_governance
   enabled    = true

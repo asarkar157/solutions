@@ -10,6 +10,14 @@ variable "model_names" {
 variable "policy_ids" {
   type = object({ dangerous_ops = string, container_shell_hitl = optional(string, "") })
 }
+
+variable "policy_create_flags" {
+  description = "Plan-time flags aligned with module.policies.policy_create_flags. Drives count on optional container_shell_hitl attachment (policy ID is often unknown until apply)."
+  type = object({
+    container_shell_hitl = optional(bool, true)
+  })
+  default = {}
+}
 # =============================================================================
 # Self-contained integration wiring.
 # =============================================================================

@@ -20,6 +20,16 @@ variable "policy_ids" {
     azure_tool_governance    = optional(string, "")
   })
 }
+
+variable "policy_create_flags" {
+  description = "Plan-time flags aligned with module.policies.policy_create_flags. Drives count on optional sg_agent_policy_attachment resources (policy_ids values are often unknown until apply)."
+  type = object({
+    prod_write_gate      = optional(bool, true)
+    sre_remediation      = optional(bool, true)
+    container_shell_hitl = optional(bool, true)
+  })
+  default = {}
+}
 # =============================================================================
 # Self-contained integration wiring.
 # =============================================================================
