@@ -331,6 +331,9 @@ module "compliance_auditor" {
     dangerous_ops = module.policies.policy_ids.dangerous_ops
     data_risk_pii = module.policies.policy_ids.data_risk_pii
   }
+  policy_create_flags = {
+    data_risk_pii = module.policies.policy_create_flags.data_risk_pii
+  }
 
   existing_aws_integration_name    = module.aws_integration.integration_name
   existing_github_integration_name = module.github_integration.integration_name

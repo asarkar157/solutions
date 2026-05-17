@@ -38,6 +38,17 @@ variable "policy_ids" {
   default = {}
 }
 
+variable "policy_create_flags" {
+  description = <<-EOT
+    Align with module.policies.policy_create_flags when using module.policies. Drives Terraform count
+    on the optional dangerous_ops attachment so count does not depend on unknown policy_ids.
+  EOT
+  type = object({
+    dangerous_ops = optional(bool, true)
+  })
+  default = {}
+}
+
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
@@ -75,7 +86,7 @@ locals {
 }
 
 resource "sg_agent_policy_attachment" "dangerous_ops" {
-  count      = lookup(var.policy_ids, "dangerous_ops", "") != "" ? 1 : 0
+  count      = try(var.policy_create_flags.dangerous_ops, true) ? 1 : 0
   agent_name = sg_agent.incident_commander.name
   policy_id  = var.policy_ids.dangerous_ops
   enabled    = true

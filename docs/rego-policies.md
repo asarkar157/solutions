@@ -22,23 +22,25 @@ The factsheet is assembled in **stackgen-aios** from the tool call and related m
 | Piece | Plain meaning |
 |--------|-----------------|
 | **`agent`** | Which agent is acting: internal id, display name, and optional **tags** you configured (for example “production” or team name). |
-| **`timestamp`** | When the check ran (UTC, in a standard date-time string). Useful for time-based rules or auditing. |
+| **`timestamp`** | When the check ran (UTC, RFC3339 string). Bundled policies parse it with **`time.parse_rfc3339_ns`** plus **`time.weekday`** / **`time.clock`** for business-hours and off-hours rules; **`data-risk-pii`** also compares it to **`time.now_ns()`** for stale-input and clock-skew checks. |
 | **`tool`** | The **name** of the tool the agent wants to use, plus **`arguments`**: the structured parameters for that call (always present as an object, even if empty). |
 | **`reason`** | When the agent supplied a short justification for the action, it appears here so policies can insist on explanations for sensitive tools. |
 | **`environment`** | Present when the request is tied to a specific **owner** in the platform (shown as `owner_id`). Lets you scope rules to a customer or workload boundary. |
 | **`skill`** | Present when the call is associated with a **loaded skill** the agent is using. Includes identity and **trust** metadata so you can treat approved skills differently from experimental ones. |
 | **`policy_data`** | Optional JSON **you** store on the policy in the platform. Same content every time that policy runs—ideal for allowlists, tier names, or any stable configuration your Rego should read. |
+| **`context`** | **Not** emitted by the default **`buildOPAInput`** factsheet in current stackgen-aios builds. If you need situational metadata (data classification, freeze flags, blast-radius hints), put it under **`policy_data`** or derive it from **`tool`**, **`agent`**, and **`reason`**. |
 
-Nothing else is added automatically by `buildOPAInput`. If you need extra situational fields (freeze windows, environment names, approver identity, and so on), put them under **`policy_data`** when you configure the policy, or derive them in Rego from **`tool`**, **`agent`**, and **`reason`** using what the platform already sends.
+Beyond the rows above, **`buildOPAInput`** may omit optional blocks entirely. If you need fields the evaluator does not send yet, add them under **`policy_data`** or derive them in Rego from **`tool`**, **`agent`**, and **`reason`**.
 
-**Note on some `.rego` examples in this repo:** Files that reference top-level `input.context`, `input.approver`, or `input.principal` are illustrating **patterns**; the default factsheet from **stackgen-aios** does not populate those paths unless you mirror them inside **`input.policy_data`** (or adjust the policy to use the fields above).
+**Note on some `.rego` examples in this repo:** Rules that reference **`input.approver`** or **`input.principal`** are **patterns** for human-in-the-loop flows; wire those paths only if your stack populates them. Bundled policies in this repository use the default factsheet fields **`tool`**, **`agent`**, **`reason`**, and **`timestamp`** (where time-based logic applies); use **`policy_data`** for customer-specific extensions.
 
 ## Example JSON (copy into the OPA Playground)
 
 These match the **`input`** document OPA receives (same structure as `buildOPAInput` produces).
 
 - **[Typical tool call]({{ site.github.repository_url }}/blob/main/docs/samples/policy-evaluation-input.json)** — agent, time, tool + arguments, reason, and owner scope.
-- **[With skill and `policy_data`]({{ site.github.repository_url }}/blob/main/docs/samples/policy-evaluation-input-extended.json)** — adds optional **skill** block and **`policy_data`** (here including a nested `context` object as an example of storing situational facts yourself).
+- **[With skill and `policy_data`]({{ site.github.repository_url }}/blob/main/docs/samples/policy-evaluation-input-extended.json)** — adds optional **skill** block and **`policy_data`** (example nested `context` under `policy_data` for allowlist-style config; use **`input.policy_data.context`** in Rego if you choose that shape).
+- **[Top-level `context`]({{ site.github.repository_url }}/blob/main/docs/samples/policy-evaluation-input-context.json)** — **legacy / illustrative** sample only; current default evaluation input does not include a top-level **`context`** key. Prefer **`policy_data`** for custom metadata your Rego can read as **`input.policy_data.…`**.
 
 ## Try policies in the browser
 

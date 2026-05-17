@@ -2,6 +2,27 @@ package policy
 
 default approval_required := false
 
+# Nanoseconds since epoch for input.timestamp (RFC3339). Undefined when missing/invalid.
+factsheet_ts_ns := time.parse_rfc3339_ns(ts) if {
+	ts := object.get(input, "timestamp", "")
+	ts != ""
+}
+
+# Weekend or 22:00–07:59 UTC.
+off_staff_hours if {
+	ns := factsheet_ts_ns
+	time.weekday(ns) in {"Saturday", "Sunday"}
+}
+
+off_staff_hours if {
+	ns := factsheet_ts_ns
+	hour := time.clock(ns)[0]
+	utc_low_traffic_hour(hour)
+}
+
+utc_low_traffic_hour(h) if h < 8
+utc_low_traffic_hour(h) if h >= 22
+
 prod_namespaces := {"production", "prod"}
 
 # Shell commands targeting production environments require approval.
@@ -112,19 +133,19 @@ approval_required if {
 	input.tool.arguments.environment in prod_namespaces
 }
 
+# Terraform destroy is high impact — require approval off-hours even for non-prod workspaces.
+approval_required if {
+	input.tool.name == "terraform"
+	input.tool.arguments.command == "destroy"
+	off_staff_hours
+}
+
 # PagerDuty escalation always requires owner/on-call acknowledgement.
 approval_required if {
 	input.tool.name == "pagerduty"
 	input.tool.arguments.action in {"escalate", "reassign"}
 }
 
-# Context-graph enhanced: fires when context graph provides environment metadata.
-# When the context graph is not yet integrated, this rule simply does not fire.
-approval_required if {
-	input.context.environment in prod_namespaces
-	input.tool.arguments.action in {"apply", "deploy", "scale", "restart", "delete", "update", "patch", "create"}
-}
-
-approval_reason := "Production write action requires service-owner or on-call acknowledgement" if {
+approval_reason := "Production write or off-hours Terraform destroy requires service-owner or on-call acknowledgement" if {
 	approval_required
 }

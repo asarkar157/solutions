@@ -9,11 +9,22 @@ approval_required if {
 	pii_access_pattern(cmd)
 }
 
-pii_access_pattern(cmd) if contains(cmd, "select * from users")
-pii_access_pattern(cmd) if contains(cmd, "select * from patients")
-pii_access_pattern(cmd) if contains(cmd, "select * from customers")
+pii_access_pattern(cmd) if {
+	contains(cmd, "select * from users")
+}
+
+pii_access_pattern(cmd) if {
+	contains(cmd, "select * from patients")
+}
+
+pii_access_pattern(cmd) if {
+	contains(cmd, "select * from customers")
+}
+
 pii_access_pattern(cmd) if contains(cmd, "pg_dump")
+
 pii_access_pattern(cmd) if contains(cmd, "mysqldump")
+
 pii_access_pattern(cmd) if contains(cmd, "mongodump")
 
 approval_reason := "Accessing potential PII/PHI data requires human approval" if {

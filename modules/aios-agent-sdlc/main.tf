@@ -257,7 +257,7 @@ resource "sg_agent_policy_attachment" "cloud_infra_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "cloud_infra_mutations" {
-  count      = var.policy_ids.infra_mutations != "" ? 1 : 0
+  count      = var.policy_attach_flags.infra_mutations ? 1 : 0
   agent_name = sg_agent.cloud_infra.name
   policy_id  = var.policy_ids.infra_mutations
   enabled    = true
@@ -271,7 +271,7 @@ resource "sg_agent_policy_attachment" "k8s_ops_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "k8s_ops_production" {
-  count      = var.policy_ids.k8s_production != "" ? 1 : 0
+  count      = var.policy_attach_flags.k8s_production ? 1 : 0
   agent_name = sg_agent.k8s_ops.name
   policy_id  = var.policy_ids.k8s_production
   enabled    = true
@@ -285,7 +285,7 @@ resource "sg_agent_policy_attachment" "github_scm_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "github_scm_protected" {
-  count      = var.policy_ids.github_protected != "" ? 1 : 0
+  count      = var.policy_attach_flags.github_protected ? 1 : 0
   agent_name = sg_agent.github_scm.name
   policy_id  = var.policy_ids.github_protected
   enabled    = true
@@ -327,7 +327,7 @@ resource "sg_agent_policy_attachment" "datadog_alert_triage_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "datadog_alert_triage_policy" {
-  count      = var.policy_ids.datadog_alert_triage != "" ? 1 : 0
+  count      = var.policy_attach_flags.datadog_alert_triage ? 1 : 0
   agent_name = sg_agent.datadog_alert_triage.name
   policy_id  = var.policy_ids.datadog_alert_triage
   enabled    = true
@@ -341,7 +341,7 @@ resource "sg_agent_policy_attachment" "github_pr_reminder_dangerous_ops" {
 }
 
 resource "sg_agent_policy_attachment" "github_pr_reminder_org_restriction" {
-  count      = var.policy_ids.github_org_restriction != "" ? 1 : 0
+  count      = var.policy_attach_flags.github_org_restriction ? 1 : 0
   agent_name = sg_agent.github_pr_reminder.name
   policy_id  = var.policy_ids.github_org_restriction
   enabled    = true
@@ -472,15 +472,14 @@ resource "sg_workflow" "release_pipeline" {
         note             = "QA agent runs the smoke test suite against the staging environment. On full success, include `smoke_test_summary: PASS_ALL` on its own line for deterministic fast-path matching."
         skill_refs       = concat(["sdlc-staging-smoke-tests"], try(var.workflow_skill_refs["release-pipeline::smoke-tests"], []))
       },
-      # conditional_skip: Regex match on smoke test pass rate.
-      # If 100% critical paths pass, skip manual staging verification and go straight to deploy-production.
+      # conditional_skip: Prefer the PASS_ALL whole-line sentinel; alternate patterns are anchored to reduce accidental matches.
       {
         stage_id         = "smoke-test-gate"
         action_type      = "conditional_skip"
         stage_depends_on = ["smoke-tests"]
         action_config = {
           condition = "output_matches_regex"
-          match     = "(?m)^\\s*smoke_test_summary:\\s*PASS_ALL\\s*$|(?i)(?:^|[^0-9])100%\\s+(?:pass|passed)\\b|(?i)\\bpass\\s*rate\\s*:\\s*100%\\b|(?i)(?:^|\\n)\\s*critical[- ]path(?:es)?\\s*:\\s*(?:all\\s+passed|0\\s+failed)\\b|(?i)(?:^|\\n)\\s*0\\s+failures?\\b"
+          match     = "(?m)^\\s*smoke_test_summary:\\s*PASS_ALL\\s*$|(?i)(?:^|[^0-9])100%\\s+(?:pass|passed)\\b|(?i)\\bpass\\s*rate\\s*:\\s*100%\\b|(?i)(?:^|\\n)\\s*critical[- ]path(?:es)?\\s*:\\s*(?:all\\s+passed|0\\s+failed)\\b"
           skip_to   = "deploy-production"
           reason    = "All critical-path smoke tests passed — skipping manual staging verification"
         }

@@ -2,14 +2,34 @@ package policy
 
 default approval_required := false
 
+# Nanoseconds since epoch for input.timestamp (RFC3339). Undefined when missing/invalid.
+factsheet_ts_ns := time.parse_rfc3339_ns(ts) if {
+	ts := object.get(input, "timestamp", "")
+	ts != ""
+}
+
+# Weekend or 22:00–07:59 UTC.
+off_staff_hours if {
+	ns := factsheet_ts_ns
+	time.weekday(ns) in {"Saturday", "Sunday"}
+}
+
+off_staff_hours if {
+	ns := factsheet_ts_ns
+	hour := time.clock(ns)[0]
+	utc_low_traffic_hour(hour)
+}
+
+utc_low_traffic_hour(h) if h < 8
+utc_low_traffic_hour(h) if h >= 22
+
 rollout_actions := {"rollout_proceed", "canary_promote", "traffic_shift_expand", "scale_up_global"}
 
-# Shell commands that promote or expand a rollout require post-action verification.
+# Shell commands that promote or expand a rollout require approval.
 approval_required if {
 	endswith(input.tool.name, "_execute_command")
 	cmd := lower(input.tool.arguments.command)
 	rollout_shell_pattern(cmd)
-	not post_action_checks_passed
 }
 
 rollout_shell_pattern(cmd) if {
@@ -28,30 +48,26 @@ rollout_shell_pattern(cmd) if {
 	contains(cmd, "prod")
 }
 
-# Structured tool calls for broader rollout require post-action checks.
+# Off-hours: any Argo CD sync via shell needs explicit approval (not only prod).
 approval_required if {
-	input.tool.arguments.action in rollout_actions
-	not post_action_checks_passed
+	off_staff_hours
+	endswith(input.tool.name, "_execute_command")
+	cmd := lower(input.tool.arguments.command)
+	contains(cmd, "argocd app sync")
 }
 
-# Helm upgrade in production after initial canary requires verification.
+# Structured tool calls for broader rollout require approval.
+approval_required if {
+	input.tool.arguments.action in rollout_actions
+}
+
+# Helm upgrade in production after initial canary requires approval.
 approval_required if {
 	input.tool.name == "helm"
 	input.tool.arguments.action in {"upgrade", "rollback"}
 	input.tool.arguments.namespace in {"production", "prod"}
-	not post_action_checks_passed
 }
 
-# Post-action checks pass when the context graph confirms SLI health.
-# When the context graph is not integrated, this rule is undefined,
-# meaning post_action_checks_passed is false and approval IS required.
-# This is intentional: fail closed for rollout expansion.
-post_action_checks_passed if {
-	input.context.sli_status == "healthy"
-	input.context.new_alerts_count == 0
-	input.context.observation_minutes >= 10
-}
-
-approval_reason := "Post-action verification required: SLI must be healthy with zero new alerts for ≥ 10 minutes before proceeding to broader rollout" if {
+approval_reason := "Broader rollout, production Helm change, or off-hours GitOps sync requires owner approval before proceeding" if {
 	approval_required
 }

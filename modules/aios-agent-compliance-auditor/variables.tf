@@ -15,6 +15,18 @@ variable "policy_ids" {
   })
 }
 
+variable "policy_create_flags" {
+  description = <<-EOT
+    Align with module.policies.policy_create_flags for optional attachments. Drives Terraform count
+    on the data_risk_pii attachment so count does not depend on unknown policy_ids. Set data_risk_pii
+    to true when you pass module.policies.policy_ids.data_risk_pii from the same stack.
+  EOT
+  type = object({
+    data_risk_pii = optional(bool, false)
+  })
+  default = {}
+}
+
 # =============================================================================
 # Self-contained integration wiring.
 # =============================================================================

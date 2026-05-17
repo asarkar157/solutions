@@ -92,7 +92,7 @@ resource "sg_agent_policy_attachment" "data_access" {
 }
 
 resource "sg_agent_policy_attachment" "data_risk_pii" {
-  count      = var.policy_ids.data_risk_pii != "" ? 1 : 0
+  count      = var.policy_create_flags.data_risk_pii ? 1 : 0
   agent_name = sg_agent.compliance_auditor.name
   policy_id  = var.policy_ids.data_risk_pii
   enabled    = true
@@ -166,7 +166,7 @@ resource "sg_workflow" "compliance_assessment" {
     { stage_id = "change-management-review", description = "Verify change control and peer review processes.", required = true },
     { stage_id = "audit-log-review", description = "Analyze audit trails for anomalies.", required = true },
     { stage_id = "evidence-quality-gate", description = "LLM evaluates whether collected evidence is sufficient for a passing audit report.", required = false },
-    { stage_id = "data-sensitivity-gate", description = "Inline Rego halts the workflow if evidence output contains unredacted PII markers (SSN, credit card, HIPAA identifiers).", required = true },
+    { stage_id = "data-sensitivity-gate", description = "Inline Rego halts the workflow if evidence output contains unredacted PII or high-risk secret material (SSN, payment card, HIPAA identifiers, live API keys, long-lived cloud access key prefixes).", required = true },
     { stage_id = "generate-report", description = "Consolidate findings into a structured compliance report.", required = true },
   ]
 
@@ -190,9 +190,8 @@ resource "sg_workflow" "compliance_assessment" {
       }
     },
     # policy_check with inline_rego: Deterministic data sensitivity scan.
-    # Halts the workflow if evidence output contains PII patterns that should
-    # have been redacted before report generation (SSN, credit card numbers,
-    # HIPAA patient identifiers).
+    # Halts the workflow if evidence output contains PII patterns or common secret material that should
+    # have been redacted before report generation (SSN, payment card, HIPAA identifiers, Stripe live keys, AWS access key IDs).
     {
       stage_id         = "data-sensitivity-gate"
       action_type      = "policy_check"
@@ -211,14 +210,22 @@ resource "sg_workflow" "compliance_assessment" {
           allow = false if { contains_cc }
           # Halt if HIPAA patient identifiers appear.
           allow = false if { contains_hipaa }
+          # Halt if Stripe live secret key material appears.
+          allow = false if { contains_stripe_live }
+          # Halt if AWS access key ID prefix appears (20-char AKIA… identifiers).
+          allow = false if { contains_aws_access_key_id }
 
           contains_ssn if { regex.match(`(^|[^0-9])\d{3}-\d{2}-\d{4}([^0-9]|$)`, input.stage_input) }
           contains_cc if { regex.match(`(^|[^0-9])(?:\d{4}[- ]?){3}\d{4}([^0-9]|$)`, input.stage_input) }
           contains_hipaa if { regex.match(`(?i)\b(medical[\s_-]?record|patient[\s_-]?id|mrn)\b`, input.stage_input) }
+          contains_stripe_live if { regex.match(`(?i)\bsk_live_[0-9a-zA-Z]{20,}\b`, input.stage_input) }
+          contains_aws_access_key_id if { regex.match(`\bAKIA[0-9A-Z]{16}\b`, input.stage_input) }
 
           deny contains "Evidence contains unredacted SSN pattern — redact before report generation" if { contains_ssn }
           deny contains "Evidence contains unredacted credit card number — redact before report generation" if { contains_cc }
           deny contains "Evidence contains HIPAA patient identifiers — redact before report generation" if { contains_hipaa }
+          deny contains "Evidence contains Stripe live secret key material — redact before report generation" if { contains_stripe_live }
+          deny contains "Evidence contains AWS access key ID — redact before report generation" if { contains_aws_access_key_id }
         REGO
       }
     },

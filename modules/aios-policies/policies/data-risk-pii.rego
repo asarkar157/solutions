@@ -2,7 +2,43 @@ package policy
 
 default allow := true
 
-sensitive_classifications := {"PII", "PCI", "PHI", "HIPAA", "GDPR"}
+# Nanoseconds since epoch for input.timestamp (RFC3339). Undefined when missing/invalid.
+factsheet_ts_ns := time.parse_rfc3339_ns(ts) if {
+	ts := object.get(input, "timestamp", "")
+	ts != ""
+}
+
+# Signed age: policy evaluation clock minus factsheet instant (negative if timestamp is in the future).
+factsheet_age_ns := time.now_ns() - ns if {
+	ns := factsheet_ts_ns
+}
+
+thirty_min_ns := 30 * 60 * 1000000000
+five_min_ns := 5 * 60 * 1000000000
+
+# Sensitive shell access when factsheet timestamp is stale vs. policy evaluation clock (replay guard).
+stale_sensitive_blocked if {
+	factsheet_age_ns > thirty_min_ns
+	endswith(input.tool.name, "_execute_command")
+	cmd := lower(input.tool.arguments.command)
+	data_access_shell(cmd)
+}
+
+allow := false if {
+	stale_sensitive_blocked
+}
+
+# Large clock skew ahead — likely bad client clock or tampered input.timestamp.
+skew_sensitive_blocked if {
+	factsheet_age_ns < (0 - five_min_ns)
+	endswith(input.tool.name, "_execute_command")
+	cmd := lower(input.tool.arguments.command)
+	data_access_shell(cmd)
+}
+
+allow := false if {
+	skew_sensitive_blocked
+}
 
 # Shell commands that export or query sensitive data without redaction are denied.
 allow := false if {
@@ -10,6 +46,8 @@ allow := false if {
 	cmd := lower(input.tool.arguments.command)
 	data_access_shell(cmd)
 	not redaction_in_cmd(cmd)
+	not stale_sensitive_blocked
+	not skew_sensitive_blocked
 }
 
 data_access_shell(cmd) if {
@@ -19,6 +57,12 @@ data_access_shell(cmd) if {
 
 data_access_shell(cmd) if {
 	contains(cmd, "mysqldump")
+}
+
+data_access_shell(cmd) if {
+	contains(cmd, "mysql")
+	contains(cmd, "select")
+	not contains(cmd, "mysqldump")
 }
 
 data_access_shell(cmd) if {
@@ -55,29 +99,22 @@ redaction_in_cmd(cmd) if contains(cmd, "--redact")
 redaction_in_cmd(cmd) if contains(cmd, "| redact")
 redaction_in_cmd(cmd) if contains(cmd, "redaction")
 
-# Context-graph enhanced: deny log/data exports when the context graph
-# classifies the target as containing sensitive data.
-allow := false if {
-	input.context.data_classification in sensitive_classifications
-	input.tool.name in {"log_export", "log_download", "data_export", "database", "data_query"}
-	not object.get(input.tool.arguments, "redaction_enabled", false)
+deny_reason := "Data risk: input.timestamp is more than 30 minutes behind server evaluation time; retry to prevent replayed sensitive access." if {
+	not allow
+	stale_sensitive_blocked
 }
 
-# Context-graph enhanced: deny raw data queries against classified data stores.
-allow := false if {
-	input.context.data_classification in sensitive_classifications
-	endswith(input.tool.name, "_execute_command")
-	cmd := lower(input.tool.arguments.command)
-	any_db_client(cmd)
-	not redaction_in_cmd(cmd)
+deny_reason := "Data risk: input.timestamp is more than 5 minutes ahead of server clock; fix client time or retry." if {
+	not allow
+	skew_sensitive_blocked
 }
-
-any_db_client(cmd) if contains(cmd, "psql")
-any_db_client(cmd) if contains(cmd, "mysql")
-any_db_client(cmd) if contains(cmd, "mongo")
-any_db_client(cmd) if contains(cmd, "redis-cli")
-any_db_client(cmd) if contains(cmd, "bq query")
 
 deny_reason := "Data risk: target contains sensitive data (PII/PCI/PHI). Enable the redaction pipeline before exporting or querying." if {
 	not allow
+	endswith(input.tool.name, "_execute_command")
+	cmd := lower(input.tool.arguments.command)
+	data_access_shell(cmd)
+	not redaction_in_cmd(cmd)
+	not stale_sensitive_blocked
+	not skew_sensitive_blocked
 }

@@ -4,13 +4,34 @@ default allow := true
 
 change_actions := {"deploy", "apply", "release", "config_update", "feature_flag_toggle", "helm_upgrade", "rollout"}
 
-# Shell commands that perform deployments or config changes during a freeze are denied.
+# Nanoseconds since epoch for input.timestamp (RFC3339). Undefined when missing/invalid.
+factsheet_ts_ns := time.parse_rfc3339_ns(ts) if {
+	ts := object.get(input, "timestamp", "")
+	ts != ""
+}
+
+# Monday–Friday, 09:00–17:59 UTC (from input.timestamp). Adjust here or move
+# bounds to policy_data when your stack wires configurable windows.
+during_business_hours if {
+	ns := factsheet_ts_ns
+	time.weekday(ns) in {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}
+	hour := time.clock(ns)[0]
+	hour >= 9
+	hour < 18
+}
+
+# Change actions during business hours are denied.
 allow := false if {
-	input.context.freeze_window_active == true
+	during_business_hours
+	input.tool.arguments.action in change_actions
+}
+
+# Shell commands that perform deployments or config changes during business hours are denied.
+allow := false if {
+	during_business_hours
 	endswith(input.tool.name, "_execute_command")
 	cmd := lower(input.tool.arguments.command)
 	deploy_shell_pattern(cmd)
-	not freeze_exception_valid
 }
 
 deploy_shell_pattern(cmd) if contains(cmd, "terraform apply")
@@ -23,37 +44,20 @@ deploy_shell_pattern(cmd) if contains(cmd, "helm upgrade")
 deploy_shell_pattern(cmd) if contains(cmd, "argocd app sync")
 deploy_shell_pattern(cmd) if contains(cmd, "git push")
 
-# Structured tool calls for change actions during a freeze are denied.
+# Terraform apply/destroy during business hours is denied.
 allow := false if {
-	input.context.freeze_window_active == true
-	input.tool.arguments.action in change_actions
-	not freeze_exception_valid
-}
-
-# Terraform apply/destroy during freeze is denied.
-allow := false if {
-	input.context.freeze_window_active == true
+	during_business_hours
 	input.tool.name == "terraform"
 	input.tool.arguments.command in {"apply", "destroy"}
-	not freeze_exception_valid
 }
 
-# Helm install/upgrade during freeze is denied.
+# Helm install/upgrade/rollback during business hours is denied.
 allow := false if {
-	input.context.freeze_window_active == true
+	during_business_hours
 	input.tool.name == "helm"
 	input.tool.arguments.action in {"install", "upgrade", "rollback"}
-	not freeze_exception_valid
 }
 
-# A freeze exception is valid only if it has been approved AND has not expired.
-freeze_exception_valid if {
-	input.context.freeze_exception == true
-	input.context.freeze_exception_approver != ""
-	input.context.freeze_exception_expires_at != ""
-	time.parse_rfc3339_ns(input.context.freeze_exception_expires_at) > time.now_ns()
-}
-
-deny_reason := "Change freeze is active — deploy and config changes are blocked. Request a time-bound exception from your change advisory board." if {
+deny_reason := "Change freeze: production-impacting changes are blocked during business hours (Mon–Fri, 09:00–17:59 UTC per input.timestamp). Retry outside that window or route through your CAB process." if {
 	not allow
 }

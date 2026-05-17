@@ -20,6 +20,22 @@ variable "policy_ids" {
   })
 }
 
+variable "policy_attach_flags" {
+  description = <<-EOT
+    Plan-time booleans for optional sg_agent_policy_attachment resources whose policy_ids may be
+    (known after apply). Defaults are false so omitted optional policies do not create attachments.
+    Set a key to true when you supply the corresponding policy_ids value (for example from module.policies).
+  EOT
+  type = object({
+    infra_mutations        = optional(bool, false)
+    k8s_production         = optional(bool, false)
+    github_protected       = optional(bool, false)
+    datadog_alert_triage   = optional(bool, false)
+    github_org_restriction = optional(bool, false)
+  })
+  default = {}
+}
+
 variable "secret_names" {
   description = "Secret names from the root module"
   type = object({

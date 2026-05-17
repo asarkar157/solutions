@@ -12,6 +12,7 @@ is_shell_tool if {
 }
 
 is_shell_tool if endswith(input.tool.name, ":execute_command")
+
 is_shell_tool if input.tool.name == "run_shell"
 
 allow if not is_shell_tool
@@ -98,11 +99,17 @@ approval_reason := sprintf("Destructive command requires SRE approval: '%s'", [i
 
 # Destructive command patterns
 destructive(cmd) if contains(cmd, "delete")
+
 destructive(cmd) if contains(cmd, "purge")
+
 destructive(cmd) if contains(cmd, "stop")
+
 destructive(cmd) if contains(cmd, "restart")
+
 destructive(cmd) if contains(cmd, "DROP")
+
 destructive(cmd) if contains(cmd, "TRUNCATE")
+
 destructive(cmd) if contains(cmd, "rm -rf")
 
 # Only produce a denial reason for shell tools that are not allowed
