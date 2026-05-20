@@ -5,7 +5,7 @@ variable "integration_name" {
 
 variable "integration_image" {
   type    = string
-  default = "ghcr.io/appcd-dev/stackgen-guild-integration-ubuntu:main"
+  default = "ghcr.io/appcd-dev/stackgen-guild-integration-ubuntu-cli:main"
 }
 
 variable "secret_ref_ids" {
