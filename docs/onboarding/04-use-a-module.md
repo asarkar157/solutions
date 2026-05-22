@@ -61,7 +61,7 @@ provider "sg" {
 }
 ```
 
-Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.18, < 0.2.0`** from `releases.stackgen.com` (patch upgrades within **v0.1.x** until **v0.2**).
+Each module’s `required_providers` pins the StackGen provider at **`>= 0.1.19, < 0.2.0`** from `releases.stackgen.com` (patch upgrades within **v0.1.x** until **v0.2**).
 
 **Read-only data sources** (e.g. `sg_workflow`, `sg_agents`, `sg_agent_diaries`) and the full resource list are documented in the provider repo: [`terraform-provider-stackgen` docs index](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md). For machine-readable attribute descriptions, run `tofu providers schema -json` after `init` and inspect `provider_schemas["releases.stackgen.com/stackgen/stackgen"]`.
 

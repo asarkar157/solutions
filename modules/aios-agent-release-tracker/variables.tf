@@ -104,6 +104,18 @@ variable "service_catalog" {
   default     = {}
 }
 
+variable "enable_stackgen_deployment_catalog" {
+  description = <<-EOT
+    When true, loads configured Guild deployment-catalog applications at plan
+    time via `data.sg_apps` (`installation = "configured"`) and surfaces app
+    names in the deployed-version runbook for optional cross-check against
+    GitHub deployments. Requires StackGen provider >= 0.1.19 and provider
+    `project_id` / `org_id` when the catalog is org-scoped.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).

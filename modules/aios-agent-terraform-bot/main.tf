@@ -3,7 +3,7 @@ terraform {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
       # sg_agent.remote_runners + sg_remote_runner lookup; 0.1.17 secret_ref reuse.
-      version = ">= 0.1.18, < 0.2.0"
+      version = ">= 0.1.19, < 0.2.0"
     }
   }
 }

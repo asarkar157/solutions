@@ -1,6 +1,14 @@
 Correlate "what version is deployed in `<env>`?" by combining GitHub deployments
 and (optionally) Kubernetes manifest references.
 
+%{ if stackgen_catalog_enabled ~}
+**StackGen deployment catalog (plan-time):** configured apps in this org:
+`${stackgen_catalog_app_names}`. When the operator names a catalog `app_name`,
+you may use `data.sg_app` (or Guild Apps API) to read `app_version`,
+`integration_map`, and installation status — then correlate with GitHub
+deployments for the linked repository. Do not mutate catalog apps.
+%{ endif ~}
+
 ## Steps
 
 1. Resolve the target — `service_name` (mapped via the catalog) or

@@ -12,7 +12,7 @@ terraform {
       # Align with AIOS modules: 0.1.17 adds integration `env` (consumed by aios-integration-ubuntu and exposed
       # as optional input on other containerized integrations) and adopt-on-conflict for sg_policy_bundle,
       # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow.
-      version = ">= 0.1.18, < 0.2.0"
+      version = ">= 0.1.19, < 0.2.0"
     }
   }
 }

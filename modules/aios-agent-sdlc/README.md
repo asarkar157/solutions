@@ -6,7 +6,7 @@ Complete SDLC domain module with 9 specialized agents and 2 multi-stage workflow
 
 | Agent | Role | Budget |
 |-------|------|--------|
-| `cloud-infrastructure-engineer` | AWS CLI (`run_shell`) + optional StackGen Consumer MCP (`stackgen-mcp_*` tools), optional GCP + Slack Guild integrations | $20/day |
+| `cloud-infrastructure-engineer` | AWS CLI (`run_shell`) + optional StackGen Consumer MCP (`stackgen-mcp_*` tools via `auto_approve_tools` when `stackgen_mcp_integration_name` is set), optional GCP + Slack Guild integrations | $20/day |
 | `kubernetes-operator` | K8s cluster operations | $15/day |
 | `github-scm-manager` | SCM + policy evaluation | $10/day |
 | `qa-test-engineer` | Integration test orchestration | $10/day |

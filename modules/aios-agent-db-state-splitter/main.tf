@@ -4,7 +4,7 @@ terraform {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
       # remote_runners on sg_agent + sg_remote_runner lookup (attach); pin matches repo-wide minimum
-      version = ">= 0.1.18, < 0.2.0"
+      version = ">= 0.1.19, < 0.2.0"
     }
   }
 }
@@ -158,7 +158,7 @@ module "aws_integration" {
 
 resource "sg_policy" "db_state_split_stackgen_mcp_auto_approve" {
   name        = local.policy_auto_approve_name
-  description = "Companion intervention policy for db-state-split-architect; when stackgen_mcp_integration_name is set, hitl.always_allowed includes <integration>_* so Consumer MCP tools skip HITL."
+  description = "Companion intervention policy for db-state-split-architect; Consumer MCP tools are auto-approved via sg_agent.auto_approve_tools (<integration>_* rules) and this intervention policy."
   type        = "intervention"
   rego_source = file("${path.module}/policies/stackgen-mcp-auto-approve.rego")
 }
@@ -173,10 +173,15 @@ resource "sg_agent" "db_state_split_architect" {
   model_names = compact(var.model_names)
 
   hitl = {
-    # Provider: tool names or patterns — e.g. stackgen-mcp_* matches every tool with prefix stackgen-mcp_
-    # when `stackgen_mcp_integration_name` is `stackgen-mcp`.
-    always_allowed = concat(["web_search", "note", "read_notes"], local.stackgen_mcp_hitl_patterns)
+    always_allowed = ["web_search", "note", "read_notes"]
   }
+
+  # Guild-native HITL bypass rules (replaces MCP wildcards in hitl.always_allowed).
+  auto_approve_tools = [
+    for pattern in local.stackgen_mcp_hitl_patterns : {
+      tool = pattern
+    }
+  ]
 
   remote_runners = length(data.sg_remote_runner.db_state_split_architect) > 0 ? toset([data.sg_remote_runner.db_state_split_architect[0].name]) : null
 

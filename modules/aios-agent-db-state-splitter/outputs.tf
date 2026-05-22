@@ -6,7 +6,7 @@ output "agent_names" {
 }
 
 output "stackgen_mcp_auto_approve_policy_id" {
-  description = "Intervention policy id for stackgen-mcp_* HITL waiver (db-state-split-stackgen-mcp-auto-approve)."
+  description = "Intervention policy id for stackgen-mcp_* companion policy (db-state-split-stackgen-mcp-auto-approve); MCP tools are auto-approved via sg_agent.auto_approve_tools."
   value       = sg_policy.db_state_split_stackgen_mcp_auto_approve.id
 }
 

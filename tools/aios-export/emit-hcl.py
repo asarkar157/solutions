@@ -74,6 +74,36 @@ def hcl_map(d: dict[str, Any]) -> str:
     return "{\n" + "\n".join(lines) + "\n  }"
 
 
+def hcl_attr_value(v: Any) -> str:
+    """Render a Python JSON-like value as an HCL expression (for jsonencode)."""
+    if isinstance(v, dict):
+        return hcl_attr_object(v)
+    if isinstance(v, list):
+        inner = ", ".join(hcl_attr_value(x) for x in v)
+        return f"[{inner}]"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return str(v)
+    return hcl_str(v)
+
+
+def hcl_attr_object(d: dict[str, Any]) -> str:
+    if not d:
+        return "{}"
+    lines = []
+    for k, v in d.items():
+        if v is None:
+            continue
+        key = re.sub(r"[^a-zA-Z0-9_]", "_", str(k))
+        if not key or key[0].isdigit():
+            key = f"_{key}"
+        lines.append(f"    {key} = {hcl_attr_value(v)}")
+    if not lines:
+        return "{}"
+    return "{\n" + "\n".join(lines) + "\n  }"
+
+
 def safe_tf_id(name: str) -> str:
     """Sanitize a Guild name into a Terraform-legal resource address suffix.
 
@@ -151,7 +181,7 @@ def emit_header(snapshot: dict) -> str:
         "  required_providers {\n"
         "    sg = {\n"
         "      source  = \"releases.stackgen.com/stackgen/stackgen\"\n"
-        "      version = \">= 0.1.18, < 0.2.0\"\n"
+        "      version = \">= 0.1.19, < 0.2.0\"\n"
         "    }\n"
         "  }\n"
         "}\n\n"
@@ -174,11 +204,38 @@ AGENT_LIST_ATTRS = [
     "integrations",
     "skills",
     "tools",
-    "auto_approve_tools",
     "auto_deny_tools",
     "tags",
     "remote_runners",
 ]
+
+
+def hcl_auto_approve_tools(rules: Any) -> str:
+    """Emit sg_agent.auto_approve_tools blocks from Guild AutoApproveToolRule objects."""
+    if not rules:
+        return ""
+    if isinstance(rules, list) and rules and isinstance(rules[0], str):
+        rules = [{"tool": t} for t in rules]
+    blocks = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        tool = rule.get("tool")
+        if not tool:
+            continue
+        when = rule.get("when_args_contain") or {}
+        if when:
+            blocks.append(
+                "  {\n"
+                f"    tool = {hcl_str(tool)}\n"
+                f"    when_args_contain = jsonencode({hcl_attr_object(when)})\n"
+                "  }"
+            )
+        else:
+            blocks.append(f"  {{ tool = {hcl_str(tool)} }}")
+    if not blocks:
+        return ""
+    return "[\n" + ",\n".join(blocks) + ",\n]"
 
 
 def emit_agent(agent: dict, resolver: CollisionResolver | None = None) -> str:
@@ -202,6 +259,9 @@ def emit_agent(agent: dict, resolver: CollisionResolver | None = None) -> str:
         val = agent.get(attr) or []
         if val:
             out.append(f"  {attr} = {hcl_list(val)}")
+    auto_rules = hcl_auto_approve_tools(agent.get("auto_approve_tools"))
+    if auto_rules:
+        out.append(f"  auto_approve_tools = {auto_rules}")
     out.append("}")
     out.append("")
     return "\n".join(out)

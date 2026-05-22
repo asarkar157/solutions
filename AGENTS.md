@@ -19,13 +19,10 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      # Use >= 0.1.18 for current AIOS modules. The functional floor remains 0.1.17:
-      # integration `env` map (used by aios-integration-ubuntu and exposed as an optional input on the other
-      # containerized integrations) plus adopt-on-conflict for sg_policy_bundle, sg_guild_model_provider,
-      # sg_guild_model, and already-approved sg_workflow (re-applies after a Guild DB re-seed stop failing
-      # 409/500). Pre-0.1.17 floors (evidence checklists, remediation approve, remote runner attach from
-      # 0.1.13) are still required and implied. 0.1.18 is a spec-sync patch release on top of 0.1.17.
-      version = ">= 0.1.18, < 0.2.0"
+      # Use >= 0.1.19 for current AIOS modules. Floors: 0.1.13 (evidence/remediation/remote runners),
+      # 0.1.17 (integration env, adopt-on-conflict for bundles/models/workflows). 0.1.19 adds
+      # sg_agent.auto_approve_tools and data.sg_app / data.sg_apps (deployment catalog).
+      version = ">= 0.1.19, < 0.2.0"
     }
   }
 }
@@ -52,7 +49,7 @@ This repo consumes the **`sg`** provider from `releases.stackgen.com`; it does *
 | [`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md) | Schema tag conventions (`sg:"..."`) and implementation patterns |
 | `tofu providers schema -json` / `terraform providers schema -json` | Full machine-readable schema (key = your `required_providers.sg.source`) |
 
-**Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`. From provider **v0.1.12**, `sg_agent` accepts **`remote_runners`** (set of runner names/IDs) so Terraform can **attach** allowed runners to an agent; **v0.1.13** adds the evidence-checklist and remediation patterns this repo’s modules expect; **v0.1.17** adds an `env` map on `sg_guild_integration` (consumed by `aios-integration-ubuntu` and surfaced as an optional `env` input on the other containerized integrations) and extends adopt-on-conflict to `sg_policy_bundle`, `sg_guild_model_provider`, `sg_guild_model`, and already-approved `sg_workflow` so re-applies after a Guild DB re-seed no longer require manual `terraform import`. Modules such as `aios-agent-db-state-splitter`, `aios-agent-terraform-bot`, and `aios-agent-iac-drift-detective` expose optional `remote_runner_attach_to_agent` + `remote_runner_name` wiring that uses `data.sg_remote_runner` at plan time. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
+**Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`, **`sg_app`**, **`sg_apps`** (deployment catalog, **v0.1.19+**). From **v0.1.12**, `sg_agent` accepts **`remote_runners`**; **v0.1.13** evidence/remediation patterns; **v0.1.17** `env` on `sg_guild_integration` and adopt-on-conflict for bundles/models/workflows; **v0.1.19** **`auto_approve_tools`** on `sg_agent` (MCP wildcards — used by `aios-agent-repo-to-iac`, `aios-agent-db-state-splitter`, `aios-agent-sdlc` cloud-infra). Optional **`enable_stackgen_deployment_catalog`** on `aios-agent-release-tracker` loads `data.sg_apps` at plan time. Modules with `remote_runner_attach_to_agent` use `data.sg_remote_runner`. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
 
 ## Module source (how customers reference this repo)
 

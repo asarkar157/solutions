@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.18, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.19, < 0.2.0" }
   }
 }
 
@@ -104,6 +104,11 @@ resource "sg_agent" "cloud_infra" {
   hitl = {
     always_allowed = ["run_shell"]
   }
+
+  # Consumer MCP tools (stackgen-mcp_*, etc.) bypass HITL via auto_approve_tools when MCP is attached.
+  auto_approve_tools = trimspace(local.resolved_stackgen_mcp_integration_name) != "" ? [
+    { tool = "${local.resolved_stackgen_mcp_integration_name}_*" },
+  ] : null
 
   integrations = compact([
     local.resolved_aws_integration_name,

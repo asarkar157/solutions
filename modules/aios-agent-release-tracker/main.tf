@@ -3,7 +3,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.18, < 0.2.0"
+      version = ">= 0.1.19, < 0.2.0"
     }
   }
 }
@@ -39,6 +39,17 @@ locals {
   resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
     local.provision_slack ? module.slack_integration[0].integration_name : ""
   )
+
+  stackgen_catalog_enabled = var.enable_stackgen_deployment_catalog
+  stackgen_catalog_app_names = local.stackgen_catalog_enabled ? [
+    for a in data.sg_apps.configured[0].apps : a.app_name
+  ] : []
+}
+
+data "sg_apps" "configured" {
+  count = var.enable_stackgen_deployment_catalog ? 1 : 0
+
+  installation = "configured"
 }
 
 resource "terraform_data" "github_integration_required" {
@@ -121,9 +132,12 @@ resource "sg_runbook_sop" "container_image_tag_discovery" {
 }
 
 resource "sg_runbook_sop" "deployed_version_correlation" {
-  name        = local.sop_deployed_version_name
-  approve     = true
-  description = trimspace(templatefile("${path.module}/templates/deployed-version-correlation.md", {}))
+  name    = local.sop_deployed_version_name
+  approve = true
+  description = trimspace(templatefile("${path.module}/templates/deployed-version-correlation.md", {
+    stackgen_catalog_enabled   = local.stackgen_catalog_enabled
+    stackgen_catalog_app_names = join(", ", local.stackgen_catalog_app_names)
+  }))
 }
 
 resource "sg_runbook_sop" "release_diff" {
@@ -176,9 +190,13 @@ resource "sg_workflow" "release_tracking" {
 
   stage_bindings = [
     {
-      stage_id   = "resolve-target"
-      agent_ref  = sg_agent.release_tracker.name
-      note       = format("Service catalog is %s.", length(var.service_catalog) > 0 ? "configured" : "empty — operator must supply repository directly")
+      stage_id  = "resolve-target"
+      agent_ref = sg_agent.release_tracker.name
+      note = format(
+        "Service catalog is %s.%s",
+        length(var.service_catalog) > 0 ? "configured" : "empty — operator must supply repository directly",
+        local.stackgen_catalog_enabled ? format(" StackGen deployment-catalog apps (configured): %s.", join(", ", local.stackgen_catalog_app_names)) : "",
+      )
       skill_refs = concat(["release-tracker-resolve-target"], try(var.workflow_skill_refs["${local.workflow_name}::resolve-target"], []))
     },
     {

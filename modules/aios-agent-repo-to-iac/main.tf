@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.18, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.19, < 0.2.0" }
   }
 }
 
@@ -75,6 +75,11 @@ resource "sg_agent" "repo_iac_architect" {
   hitl = {
     always_allowed = ["web_search", "note", "read_notes"]
   }
+
+  # Consumer MCP tools (stackgen-mcp_*, etc.) bypass HITL via auto_approve_tools (not hitl.always_allowed wildcards).
+  auto_approve_tools = trimspace(var.stackgen_mcp_integration_name) != "" ? [
+    { tool = "${trimspace(var.stackgen_mcp_integration_name)}_*" },
+  ] : null
 }
 
 resource "sg_agent_budget" "repo_iac_architect" {
