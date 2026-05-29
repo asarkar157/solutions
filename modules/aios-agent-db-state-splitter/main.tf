@@ -4,7 +4,7 @@ terraform {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
       # remote_runners on sg_agent + sg_remote_runner lookup (attach); pin matches repo-wide minimum
-      version = ">= 0.1.19, < 0.2.0"
+      version = ">= 0.1.20, < 0.2.0"
     }
   }
 }

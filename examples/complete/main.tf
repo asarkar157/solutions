@@ -12,7 +12,7 @@ terraform {
       # Align with AIOS modules: 0.1.17 adds integration `env` (consumed by aios-integration-ubuntu and exposed
       # as optional input on other containerized integrations) and adopt-on-conflict for sg_policy_bundle,
       # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow.
-      version = ">= 0.1.19, < 0.2.0"
+      version = ">= 0.1.20, < 0.2.0"
     }
   }
 }
@@ -380,6 +380,15 @@ module "terraform_bot" {
   # Optional remote runner: set name + remote_runner_attach_to_agent = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true
+
+  # StackGen discovery-modules (https://github.com/stackgenhq/discovery-modules):
+  # discovery_modules_repository_full_names = ["stackgenhq/discovery-modules"]
+  # discovery_modules_issue_label         = "discovery-module-request"
+  # stackgen_upload_url                   = "https://main.dev.stackgen.com"
+  # stackgen_upload_project_id            = "<stackgen-project-id>"
+  # stackgen_token_secret_id              = "<sg_secret id with STACKGEN_TOKEN metadata>"
+  # defer_pr_until_quality_pass           = true
+  # module_quality_max_iterations       = 3
 }
 
 # Use case: SE feedback loop automation.

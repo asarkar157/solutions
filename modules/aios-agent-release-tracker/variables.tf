@@ -109,7 +109,8 @@ variable "enable_stackgen_deployment_catalog" {
     When true, loads configured Guild deployment-catalog applications at plan
     time via `data.sg_apps` (`installation = "configured"`) and surfaces app
     names in the deployed-version runbook for optional cross-check against
-    GitHub deployments. Requires StackGen provider >= 0.1.19 and provider
+    GitHub deployments. Each catalog app exposes `integrations` (list of bound
+    Guild integration names). Requires StackGen provider >= 0.1.20 and provider
     `project_id` / `org_id` when the catalog is org-scoped.
   EOT
   type        = bool

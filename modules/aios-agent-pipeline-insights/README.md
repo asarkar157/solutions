@@ -41,7 +41,7 @@ Always includes the GitHub `html_url` so the operator can click through.
 
 ## StackGen deployment catalog (future)
 
-This module is GitHub-centric today. Provider **v0.1.19+** adds read-only `data.sg_app` / `data.sg_apps` for Guild deployment-catalog apps (`integration_map`, installed versions). A follow-up could optionally cross-check GitHub deployment refs against catalog `app_version` — see `aios-agent-release-tracker` (`enable_stackgen_deployment_catalog`) for the first wiring pattern.
+This module is GitHub-centric today. Provider **v0.1.20+** adds read-only `data.sg_app` / `data.sg_apps` for Guild deployment-catalog apps (`integrations`, installed versions). A follow-up could optionally cross-check GitHub deployment refs against catalog `app_version` — see `aios-agent-release-tracker` (`enable_stackgen_deployment_catalog`) for the first wiring pattern.
 
 ## Why this is read-only
 

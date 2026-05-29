@@ -1,0 +1,88 @@
+Skill: Senior DevOps quality bar for Terraform modules produced by the Terraform Module Manager. Used by `module-quality-assess` and `module-quality-iterate` stages.
+
+Keywords: module quality, fmt, validate, tftest, tfsec, checkov, stackgen.yaml, module_quality_summary, quality_check_fmt, quality_check_validate, quality_check_test, PASS, NEEDS_REVISION.
+
+========================================================================
+1) Required sentinels (machine-readable)
+========================================================================
+
+Every assess/iterate stage MUST end its stage output with these lines (each on its own line, exact tokens):
+
+  quality_check_fmt: PASS|FAIL
+  quality_check_validate: PASS|FAIL
+  quality_check_test: PASS|FAIL
+  module_quality_summary: PASS|NEEDS_REVISION
+
+Optional when not PASS:
+
+  module_quality_gaps:
+  - <specific gap 1>
+  - <specific gap 2>
+
+Also persist the same keys via `note` (`quality_check_*`, `module_quality_summary`). When NEEDS_REVISION, also `note` `module_quality_rework=true`.
+
+**Iteration budget:** Only `module-quality-loop-gate` (`loop_stage`) counts rework cycles (max ${module_quality_max_iterations}). Do NOT maintain a separate `module_quality_iteration` counter or emit `GIVE_UP` from agent stages — loop exhaustion is detected from loop gate JSON (`Reason` contains `max iterations reached`).
+
+========================================================================
+2) Deterministic shell checks (mandatory before PASS)
+========================================================================
+
+`module-quality-assess` MUST spawn ONE Ubuntu subagent `module-quality-assess-recheck` that runs, for every path in `module_paths`:
+
+  - `${sop_install_validate_test}` steps 1, 2, 2b (fmt -check, init -backend=false, validate)
+  - step 4 (tofu test / terraform test) when tests exist or are required
+
+Map exit codes to sentinels (never guess from prose):
+
+  - fmt exit 0  → `quality_check_fmt: PASS` else FAIL
+  - validate exit 0 → `quality_check_validate: PASS` else FAIL
+  - test exit 0 or documented approved skip → `quality_check_test: PASS` else FAIL
+
+`module_quality_summary: PASS` is allowed ONLY when all three `quality_check_*` lines are `PASS` AND §3 criteria hold.
+
+========================================================================
+3) PASS criteria (all must hold)
+========================================================================
+
+- All three `quality_check_*` notes are exactly `PASS`.
+- `module_paths` is non-empty and each path contains at least one `*.tf`.
+- `static_security_findings` has no unresolved **critical** findings (high/critical tfsec/checkov); medium/low may PASS if documented in gaps as accepted risk.
+- If `discovery_repo=true`: `stackgen_yaml_summary` contains `stackgen_yaml_valid=true` and `.stackgen/stackgen.yaml` exists under each new module path.
+- `working_branch` is set OR `repo_clone_path` is populated (commits may exist before PR is opened when `pr_deferred=true`).
+
+========================================================================
+4) NEEDS_REVISION triggers (non-exhaustive)
+========================================================================
+
+- Any `quality_check_*: FAIL`
+- Missing `basic.tftest.hcl` (discovery) or `tests/*.tftest.hcl` (generic) for a greenfield module
+- Missing or invalid `.stackgen/stackgen.yaml` on discovery repos
+- Empty `module_paths` after merge when greenfield was requested
+- Critical security findings without remediation plan
+
+========================================================================
+5) Iterate stage rules (single remediation pass per visit)
+========================================================================
+
+1. `read_notes` for `module_quality_gaps`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
+2. Spawn ONE Ubuntu subagent `module-quality-iterate-remediate` that:
+     - Fixes ONLY the listed gaps (and discovery layout SOP if `discovery_repo=true`).
+     - Re-runs `${sop_install_validate_test}` steps 1, 2, 2b, 4 inside each `module_paths` entry.
+     - Re-validates stackgen.yaml on discovery repos when applicable.
+     - Commits to the existing `working_branch` when set (do NOT open a PR when `pr_deferred=true`).
+3. Re-run the same shell checks as §2 and re-emit all four sentinel lines in stage output and notes.
+
+========================================================================
+6) Merge stage rework (when loop returns)
+========================================================================
+
+When `module_quality_rework=true` or `module_quality_gaps` is non-empty in notes, `merge-findings-and-test-loop` MUST:
+- Treat gap list as the authoritative fix list (do not re-scaffold from scratch unless paths are empty).
+- Clear stale `test_summary`, `validation_summary`, and all `quality_check_*` notes before re-validating.
+- Append to `stage_summary:merge-findings-and-test-loop` that this is a quality-loop rework (budget enforced by `module-quality-loop-gate`).
+
+========================================================================
+7) Deferred PR (when enabled)
+========================================================================
+
+When `pr_deferred=true`, merge stage pushes commits only (Template D-push). Registration stage opens the PR via Template D-open-pr after quality PASS.

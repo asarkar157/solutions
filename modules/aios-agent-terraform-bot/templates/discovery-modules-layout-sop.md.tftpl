@@ -1,0 +1,119 @@
+Skill: StackGen **discovery-modules** repository layout, existence checks, scaffolding, and validation. Load this SOP whenever `repository_full_name` is one of: ${discovery_repositories_list}.
+
+Keywords for skill discovery: discovery-modules, stackgenhq, aws_s3, google_storage, azurerm, stackgen.yaml, custom-modules, discovery template, data source, resource template, tftest, mock_provider.
+
+========================================================================
+0) Repository shape (authoritative)
+========================================================================
+
+Discovery modules are **one Terraform template per cloud resource**, not generic `modules/<name>/` wrappers.
+
+Top-level provider roots (ONLY these — never scaffold under `modules/`):
+  - `aws/<module_dir>/`
+  - `gcp/<module_dir>/`
+  - `azurerm/<module_dir>/`
+
+A valid module directory MUST contain:
+  - `<resource_type>.tf` — single primary `resource` or `data` block named `this` (match sibling modules).
+  - `versions.tf` — Terraform `>= 1.0.0, < 2.0.0` and provider pins:
+      * AWS: `hashicorp/aws` `~> 5.0`
+      * GCP: `hashicorp/google` `~> 6.0`
+      * Azure RM: `hashicorp/azurerm` `~> 3.9` (add `hashicorp/azuread` `~> 3.1.0` only when the resource is Entra ID)
+  - `variables.tf.json` and `outputs.tf.json` — JSON schema describing inputs/outputs (copy structure from the nearest sibling module under the same provider root).
+  - `provider.tf` — minimal provider block when siblings use it (often just `provider "aws" {}`).
+  - `basic.tftest.hcl` at the **module root** (NOT under `tests/`) — `command = plan`, real `provider` block with a safe region, `assert` on key attributes.
+  - `.stackgen/stackgen.yaml` — UI + discovery metadata (see §3).
+
+Optional: `README.md` one paragraph citing the originating GitHub issue number.
+
+========================================================================
+1) Issue label gate (when configured)
+========================================================================
+
+%{ if discovery_issue_label != "" ~}
+On discovery repos, `analyze-request` MUST verify `issue_labels` (from the webhook payload) contains `${discovery_issue_label}` before cloning. If missing:
+  - note `gate_result="missing_label"`
+  - note `stage_summary:analyze-request="blocked: missing ${discovery_issue_label} label"`
+  - spawn `register-and-notify-comment` (Template E) explaining how to add the label, then STOP.
+%{ else ~}
+No label gate — any issue/PR on a discovery repo may trigger the workflow.
+%{ endif ~}
+
+========================================================================
+2) Module existence check (run inside ONE Ubuntu subagent)
+========================================================================
+
+Inputs: `repo_clone_path`, `issue_details`, `target_module_hints`.
+
+Provider inference (first match wins in title/body/hints):
+  - `aws` — ECS, EKS, VPC, RDS, S3, Lambda, IAM, etc.
+  - `gcp` / `google` — GKE, GCS, `google_*`
+  - `azurerm` / `azure` — `azurerm_*`, Azure RM resources
+
+Module directory name:
+  - Prefer Terraform resource type: `aws_s3_bucket`, `google_storage_bucket`, `azurerm_kubernetes_cluster`.
+  - Normalize hints: strip `terraform-`, convert slashes to `_`, lowercase.
+
+Existence algorithm:
+  1. `CANDIDATE="<provider_root>/<module_dir>"` (e.g. `aws/aws_s3_bucket`).
+  2. `test -d "$CANDIDATE" && test -n "$(find "$CANDIDATE" -maxdepth 1 -name '*.tf' -print -quit)"`.
+  3. If exists → `module_paths=["$REPO_CLONE/$CANDIDATE"]`, `module_resolution_confidence=exact`.
+  4. If missing → also scan `find <repo_clone_path>/{aws,gcp,azurerm} -type d -name '<module_dir>'` for typos; if multiple → `ambiguous`; if none → `not_found`.
+
+Persist: `discovery_provider`, `discovery_module_dir`, `discovery_stackgen_provider` (`aws`|`gcp`|`azure` — map `azurerm` → `azure` for StackGen CLI upload).
+
+========================================================================
+3) `.stackgen/stackgen.yaml` (required for new modules)
+========================================================================
+
+Before opening a PR for a **new** module:
+  1. Copy the closest sibling's `.stackgen/stackgen.yaml` under the same provider root and adapt:
+     - `representation.side_panel.label` / `node.label.static` — human label
+     - `discovery.type` — Terraform resource or data source type (e.g. `aws_s3_bucket`)
+     - `discovery.data_source` — matching `data_*` when applicable
+     - `variables` — keys aligned with `variables.tf.json`
+  2. Validate against the repo schema when `tools/stackgen_yaml_schema.json` exists:
+     `python3 -m pip install -q pyyaml jsonschema`
+     `python3 -c 'import json,yaml,sys; from jsonschema import validate; s=json.load(open(sys.argv[1])); d=yaml.safe_load(open(sys.argv[2])); validate(d,s); print("stackgen_yaml_valid=true")' \
+       "<repo_clone_path>/tools/stackgen_yaml_schema.json" "<module>/.stackgen/stackgen.yaml"`
+  3. note `stackgen_yaml_summary` with pass/fail; block PR if validation fails after one fix attempt.
+
+========================================================================
+4) Template I — discovery module scaffold (preferred over Template G/H)
+========================================================================
+
+Subagent name: `merge-findings-and-test-loop-discovery-scaffold`
+
+When `module_resolution_confidence=not_found` AND greenfield intent AND `repository_full_name` is a discovery repo:
+
+  1. Infer `discovery_provider`, `discovery_module_dir`, `discovery_stackgen_provider` (§2).
+  2. Scaffold under `<repo_clone_path>/<discovery_provider>/<discovery_module_dir>/` per §0.
+  3. Author HCL from the issue body + Terraform provider docs (use `curl` provider registry docs if needed — Ubuntu CLI only). Keep the resource block minimal and faithful to the official argument schema.
+  4. Mirror `variables.tf.json` / `outputs.tf.json` from a sibling module; only declare variables the resource uses.
+  5. Write `basic.tftest.hcl` with `command = plan` and safe dummy inputs (see `aws/aws_s3_bucket/basic.tftest.hcl`).
+  6. Run `${sop_install_validate_test}` steps 1, 2, 2b, 4 **inside this module directory** (`cd` into the module path first).
+  7. Run §3 stackgen.yaml validation.
+  8. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `validation_summary`, `test_summary`, `stackgen_yaml_summary`.
+
+DO NOT use Template H (Terraform Registry wrapper) on discovery repos — discovery modules are first-class resource templates, not registry wrappers.
+
+DO NOT commit/push here — `merge-findings-and-test-loop-pr` handles that.
+
+========================================================================
+5) StackGen catalog upload (register-and-notify stage)
+========================================================================
+
+When `module_paths` is populated and tests passed, prefer:
+
+  `stackgen upload custom-modules \
+    --provider <discovery_stackgen_provider> \
+    --name <discovery_module_dir> \
+    --repo-url https://github.com/<owner>/<repo> \
+    --branch <repository_default_branch> \
+%{ if stackgen_upload_url != "" ~}    --url ${stackgen_upload_url} \
+%{ endif ~}%{ if stackgen_upload_project_id != "" ~}    --project ${stackgen_upload_project_id} \
+%{ endif ~}    <path-to-module-dir>`
+
+If the CLI reports the version already exists, note it and continue (idempotent). Capture output in `registered_versions`.
+
+Requires `STACKGEN_TOKEN` in the Ubuntu sandbox (tenant secret). If missing, note `registration_skipped=missing_stackgen_token` and still post the PR comment.

@@ -26,7 +26,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.19, < 0.2.0"
+      version = ">= 0.1.20, < 0.2.0"
     }
   }
 }
@@ -64,7 +64,9 @@ module "foundation" {
 }
 ```
 
-**HTTP webhooks (Guild):** Newer StackGen provider versions support `sg_webhook` (incoming HTTP triggers) and optional `project_id` / model `scope` on the provider and foundation resources; pin a provider version that includes those features when you need them.
+**HTTP webhooks (Guild):** Newer StackGen provider versions support `sg_webhook` (incoming HTTP triggers) with in-place updates to `action`, `endpoint_path`, and `allowed_cidrs`. Set provider `project_id` / model `scope` on the provider and foundation resources when org-scoped; pin **>= 0.1.20** when you need those features.
+
+**Deployment catalog (`data.sg_app` / `data.sg_apps`):** Catalog installations expose **`integrations`** (list). The older **`integration_map`** attribute was removed upstream.
 
 **Read-only lookups:** The provider also ships Guild data sources such as `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, and `sg_agent_diaries` (Insights), plus `sg_remote_runner` / `sg_remote_runners`. Use them in root modules for discovery, outputs, or tooling; set provider `project_id` when the API is org-scoped. See the provider repo [`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md) and `tofu providers schema -json` for the authoritative schema.
 

@@ -3,7 +3,7 @@ terraform {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
       # sg_agent.remote_runners + sg_remote_runner lookup; 0.1.17 secret_ref reuse.
-      version = ">= 0.1.19, < 0.2.0"
+      version = ">= 0.1.20, < 0.2.0"
     }
   }
 }
@@ -16,11 +16,28 @@ locals {
   workflow_name = "terraform-module-update${local.suffix}"
   webhook_name  = "${local.module_prefix}-github-receiver${local.suffix}"
 
-  sop_orchestration_name    = "${local.module_prefix}-orchestration-sop${local.suffix}"
-  sop_install_validate_test = "${local.module_prefix}-install-validate-test-sop${local.suffix}"
-  sop_github_content_change = "${local.module_prefix}-github-content-change-sop${local.suffix}"
-  sop_module_compliance     = "${local.module_prefix}-module-compliance-sop${local.suffix}"
-  sop_stackgen_registration = "${local.module_prefix}-stackgen-registration-sop${local.suffix}"
+  sop_orchestration_name       = "${local.module_prefix}-orchestration-sop${local.suffix}"
+  sop_install_validate_test    = "${local.module_prefix}-install-validate-test-sop${local.suffix}"
+  sop_github_content_change    = "${local.module_prefix}-github-content-change-sop${local.suffix}"
+  sop_module_compliance        = "${local.module_prefix}-module-compliance-sop${local.suffix}"
+  sop_stackgen_registration    = "${local.module_prefix}-stackgen-registration-sop${local.suffix}"
+  sop_discovery_modules_layout = "${local.module_prefix}-discovery-modules-layout-sop${local.suffix}"
+  discovery_modules_enabled    = length(var.discovery_modules_repository_full_names) > 0
+  discovery_modules_template_vars = {
+    discovery_repositories_list = join(", ", [for r in var.discovery_modules_repository_full_names : "\"${r}\""])
+    discovery_issue_label       = trimspace(var.discovery_modules_issue_label)
+    sop_discovery_layout_name   = local.sop_discovery_modules_layout
+    sop_install_validate_test   = local.sop_install_validate_test
+    stackgen_upload_url         = trimspace(var.stackgen_upload_url)
+    stackgen_upload_project_id  = trimspace(var.stackgen_upload_project_id)
+  }
+  discovery_modules_orchestration_addon = local.discovery_modules_enabled ? trimspace(templatefile("${path.module}/templates/discovery-modules-orchestration-addon.md.tftpl", local.discovery_modules_template_vars)) : ""
+  discovery_modules_layout_sop_body     = local.discovery_modules_enabled ? trimspace(templatefile("${path.module}/templates/discovery-modules-layout-sop.md.tftpl", local.discovery_modules_template_vars)) : ""
+  sop_module_quality                    = "${local.module_prefix}-module-quality-sop${local.suffix}"
+  module_quality_sop_body = trimspace(templatefile("${path.module}/templates/module-quality-sop.md.tftpl", {
+    module_quality_max_iterations = var.module_quality_max_iterations
+    sop_install_validate_test     = local.sop_install_validate_test
+  }))
 
   github_integration_name = "${local.module_prefix}-github${local.suffix}"
   ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
@@ -40,11 +57,16 @@ locals {
   ubuntu_tool_prefix = local.resolved_ubuntu_integration_name
 
   persona = templatefile("${path.module}/personas/terraform-module-manager.md.tftpl", {
-    module_prefix           = local.module_prefix
-    github_integration_name = local.resolved_github_integration_name
-    ubuntu_integration_name = local.resolved_ubuntu_integration_name
-    github_tool_prefix      = local.github_tool_prefix
-    ubuntu_tool_prefix      = local.ubuntu_tool_prefix
+    module_prefix                 = local.module_prefix
+    github_integration_name       = local.resolved_github_integration_name
+    ubuntu_integration_name       = local.resolved_ubuntu_integration_name
+    github_tool_prefix            = local.github_tool_prefix
+    ubuntu_tool_prefix            = local.ubuntu_tool_prefix
+    discovery_modules_enabled     = local.discovery_modules_enabled
+    sop_discovery_modules_layout  = local.sop_discovery_modules_layout
+    discovery_repositories_list   = join(", ", var.discovery_modules_repository_full_names)
+    discovery_modules_issue_label = trimspace(var.discovery_modules_issue_label)
+    module_quality_max_iterations = var.module_quality_max_iterations
   })
 }
 
@@ -67,8 +89,11 @@ module "ubuntu_integration" {
   source = "../aios-integration-ubuntu"
 
   integration_name = local.ubuntu_integration_name
-  secret_ref_ids   = [var.github_secret_id]
-  install_tools    = ["tofu", "terraform", "gh", "git", "curl"]
+  secret_ref_ids = compact([
+    var.github_secret_id,
+    trimspace(var.stackgen_token_secret_id) != "" ? var.stackgen_token_secret_id : "",
+  ])
+  install_tools = ["tofu", "terraform", "gh", "git", "curl"]
 }
 
 data "sg_remote_runner" "terraform_module_manager" {
@@ -320,10 +345,25 @@ resource "sg_runbook_sop" "github_content_change" {
 # duplicate refetches after auto-summarization, subagents spawned without the
 # Ubuntu CLI toolset).
 
-resource "sg_runbook_sop" "terraform_bot_orchestration" {
-  name        = local.sop_orchestration_name
+resource "sg_runbook_sop" "discovery_modules_layout" {
+  count       = local.discovery_modules_enabled ? 1 : 0
+  name        = local.sop_discovery_modules_layout
   approve     = true
-  description = <<-EOT
+  description = local.discovery_modules_layout_sop_body
+}
+
+resource "sg_runbook_sop" "module_quality" {
+  name        = local.sop_module_quality
+  approve     = true
+  description = local.module_quality_sop_body
+}
+
+resource "sg_runbook_sop" "terraform_bot_orchestration" {
+  name    = local.sop_orchestration_name
+  approve = true
+  description = join("\n\n", compact([
+    local.discovery_modules_orchestration_addon,
+    trimspace(<<-EOT
     Skill: Operating manual for the Terraform Module Manager. Read this BEFORE doing anything else in any stage. It encodes the planner/executor split, integration boundaries, subagent budget rules, and context hygiene that every other skill depends on.
 
     Keywords for skill discovery: terraform, opentofu, module, workflow, orchestration, planner, subagent, create_agent, integration boundaries, ubuntu cli, github cli, gh api, jq, note, plan, validate, security scan, AWS, GCP, Azure, infrastructure-as-code, sagemaker, s3, rds, eks.
@@ -587,7 +627,7 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
         <PASTE STEPS 1 + 2 + 2b FROM terraform-install-validate-test-sop HERE>
         Persist: `validation_summary` (per-module fmt/init/validate result) and `static_security_findings` (combined tfsec+checkov findings).
 
-    Template D — "open the PR" (merge-findings-and-test-loop stage):
+    Template D — "open the PR" (merge-findings-and-test-loop stage, or register-and-notify when `pr_deferred=true`):
       agent_name: "merge-findings-and-test-loop-pr"
       tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","note","read_notes"]
       max_tool_iterations: 8, max_llm_calls: 5, timeout_seconds: 180
@@ -596,7 +636,17 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
         Read notes first: `repo_clone_path`, `issue_details`, `validation_summary`, `test_summary`.
         Follow `github-content-change-sop` steps 3-6 verbatim:
         <PASTE STEPS 3-6 FROM github-content-change-sop HERE>
-        Persist: `working_branch`, `pr_url`.
+        Persist: `working_branch`, `pr_url`. Clear `pr_deferred` (note `pr_deferred=false`) after a successful `gh pr create`.
+
+    Template D-push — "branch + commit + push only" (merge-findings when defer_pr_until_quality_pass is enabled):
+      agent_name: "merge-findings-and-test-loop-push"
+      tool_names: ["${local.ubuntu_tool_prefix}_execute_command","${local.ubuntu_tool_prefix}_execute_series","note","read_notes"]
+      max_tool_iterations: 8, max_llm_calls: 5, timeout_seconds: 180
+      goal: |
+        Commit prepared changes and push to a working branch WITHOUT opening a PR yet.
+        Read notes first: `repo_clone_path`, `issue_details`, `validation_summary`, `test_summary`.
+        Follow `github-content-change-sop` steps 3-5 only (skip step 6 — no `gh pr create`).
+        Persist: `working_branch`, note `pr_deferred=true`, leave `pr_url` empty.
 
     Template E — "comment on the PR/issue" (register-and-notify stage, also used for blocked-status notifications):
       agent_name: "register-and-notify-comment"
@@ -706,12 +756,15 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
     d) FALLBACK: "module path not_found" (`module_resolution_confidence` = "not_found").
          Decision tree:
            1. Inspect `issue_details.body` for greenfield intent ("create a new module", "scaffold", "add module", "missing module", "new <provider>-<service>", "add from registry", "terraform registry", explicit "create").
-           2. If greenfield intent is unambiguous → **prefer Template H** (`merge-findings-and-test-loop-registry-wrap`): search `https://registry.terraform.io/v1/modules/search`, pick a published module + version, add a thin wrapper + `*.tftest.hcl`, run validate/test. This is the default for "new module" issues so the org gets battle-tested upstream instead of hand-written guesses.
-           3. If Template H leaves `registry_wrap_failed=true` OR `module_paths` still empty → fall back to **Template G** (`merge-findings-and-test-loop-scaffold`) from scratch in the same stage (still counts as one logical follow-up — do NOT spawn a third registry retry).
-           4. Else (no greenfield intent) → call `ask_clarifying_question` exactly ONCE: "I couldn't find a `<hint>` module in `<repository_full_name>`. Should I (a) add one from the Terraform Registry (wrapper + tests + PR), (b) scaffold without registry, (c) use a different repo, or (d) skip?" Map answers to Template H / Template G / blocked / blocked respectively.
+           2. If `discovery_repo=true` (see §0c / `${local.sop_discovery_modules_layout}`) AND greenfield intent → spawn **Template I** (`merge-findings-and-test-loop-discovery-scaffold`) per discovery layout SOP §4 — do NOT use Template H on discovery repos.
+           3. Else if greenfield intent is unambiguous → **prefer Template H** (`merge-findings-and-test-loop-registry-wrap`): search `https://registry.terraform.io/v1/modules/search`, pick a published module + version, add a thin wrapper + `*.tftest.hcl`, run validate/test. This is the default for "new module" issues on generic module repos.
+           4. If Template H leaves `registry_wrap_failed=true` OR `module_paths` still empty → fall back to **Template G** (`merge-findings-and-test-loop-scaffold`) from scratch in the same stage (still counts as one logical follow-up — do NOT spawn a third registry retry).
+           5. Else (no greenfield intent) → call `ask_clarifying_question` exactly ONCE: "I couldn't find a `<hint>` module in `<repository_full_name>`. Should I (a) add one from the Terraform Registry (wrapper + tests + PR), (b) scaffold without registry, (c) use a different repo, or (d) skip?" Map answers to Template H / Template G / Template I (discovery) / blocked respectively.
 
-    Hard rule for §8: a single workflow run may invoke `ask_clarifying_question` AT MOST ONCE per stage. If you already asked once in a stage, you must commit to one of the responses in (a)–(d) without re-asking. After answering, the next non-clarifying step must be either `Template H`, `Template G`, `Template E` (blocked notification), or a normal stage continuation — never another discovery fan-out.
+    Hard rule for §8: a single workflow run may invoke `ask_clarifying_question` AT MOST ONCE per stage. If you already asked once in a stage, you must commit to one of the responses in (a)–(d) without re-asking. After answering, the next non-clarifying step must be either `Template H`, `Template I`, `Template G`, `Template E` (blocked notification), or a normal stage continuation — never another discovery fan-out.
   EOT
+    ),
+  ]))
 }
 
 # ============================================================================
@@ -721,20 +774,24 @@ resource "sg_runbook_sop" "terraform_bot_orchestration" {
 resource "sg_workflow" "terraform_module_update" {
   name        = local.workflow_name
   domain      = "infrastructure-as-code"
-  description = "Analyzes Terraform module change requests from GitHub issues or PRs. For new modules, prefers Terraform Registry discovery (thin wrapper + tests + PR) before from-scratch scaffold. Runs security/plan compliance and deployment impact, merges findings, runs the test loop, registers into StackGen, and notifies on GitHub."
+  description = "Analyzes Terraform module change requests from GitHub issues or PRs. Merges compliance and test findings, assesses senior DevOps quality (bounded retry loop via loop_stage), registers into StackGen, and notifies on GitHub. Discovery-modules repos use layout-aware scaffold; generic repos prefer Terraform Registry wrappers."
   approve     = true
 
   triggers = [
     { field = "event_type", values = ["issue.created", "pull_request.opened"], type = "active", source = "github" }
   ]
 
-  runbook_refs = [
-    sg_runbook_sop.terraform_bot_orchestration.name,
-    sg_runbook_sop.terraform_module_compliance.name,
-    sg_runbook_sop.terraform_install_validate_test.name,
-    sg_runbook_sop.github_content_change.name,
-    sg_runbook_sop.stackgen_module_registration.name
-  ]
+  runbook_refs = concat(
+    [
+      sg_runbook_sop.terraform_bot_orchestration.name,
+      sg_runbook_sop.terraform_module_compliance.name,
+      sg_runbook_sop.terraform_install_validate_test.name,
+      sg_runbook_sop.github_content_change.name,
+      sg_runbook_sop.stackgen_module_registration.name,
+      sg_runbook_sop.module_quality.name,
+    ],
+    local.discovery_modules_enabled ? [sg_runbook_sop.discovery_modules_layout[0].name] : [],
+  )
 
   required_inputs = ["repository_url", "issue_or_pr_number"]
   optional_inputs = ["requested_change"]
@@ -767,13 +824,37 @@ resource "sg_workflow" "terraform_module_update" {
     {
       stage_id    = "merge-findings-and-test-loop"
       description = "Merge compliance and impact, add tests; for new modules prefer Terraform Registry wrapper + tests then PR (fallback: from-scratch scaffold)"
-      note        = "Join stage: merge parallel tracks. For new-module issues, run Template H (registry.terraform.io search + thin wrapper + tftest) before Template G. Run install/validate/test skill; open PR via gh. If compliant iterate; if breaking plan major or new module path."
+      note        = "Join stage: merge parallel tracks. For new-module issues, run Template H (registry.terraform.io search + thin wrapper + tftest) before Template G. Run install/validate/test skill; open PR via gh. On quality-loop rework, fix module_quality_gaps only (see module-quality-sop)."
       required    = true
+    },
+    {
+      stage_id    = "module-quality-assess"
+      description = "Evaluate fmt/validate/test, security scans, and discovery stackgen.yaml against the senior DevOps quality bar"
+      note        = "Run module-quality-assess-recheck; emit quality_check_fmt/validate/test and module_quality_summary. See module-quality-sop."
+      required    = true
+    },
+    {
+      stage_id    = "module-quality-pass-gate"
+      description = "When quality is already PASS, skip remediation and jump forward to registration"
+      note        = "conditional_skip on module_quality_summary: PASS — forward only (no backward jumps)."
+      required    = false
+    },
+    {
+      stage_id    = "module-quality-iterate"
+      description = "Remediate quality gaps, re-run validate/test, and re-emit PASS or NEEDS_REVISION"
+      note        = "Remediate gaps and re-emit quality_check_* + module_quality_summary (see module-quality-sop). Loop budget is enforced only by module-quality-loop-gate."
+      required    = true
+    },
+    {
+      stage_id    = "module-quality-loop-gate"
+      description = "Loop back to merge-findings when quality is still not PASS (bounded retries)"
+      note        = "loop_stage GO_BACK to merge-findings; exit when output contains module_quality_summary: PASS. On max iterations, FINISH with max iterations reached — register treats that as blocked."
+      required    = false
     },
     {
       stage_id    = "register-and-notify"
       description = "Register the new or updated module into StackGen core and comment on the GitHub PR"
-      note        = "Once the module is updated and tests pass, register the module version into the StackGen module catalog. Finally, add a detailed comment to the original GitHub issue or PR explaining the changes made, the compliance status, and the new module version."
+      note        = "Happy path requires module_quality_summary PASS and all quality_check_* PASS; opens deferred PR when pr_deferred=true. Blocked on loop exhaustion or upstream stage_summary blockers."
       required    = true
     }
   ]
@@ -785,8 +866,12 @@ resource "sg_workflow" "terraform_module_update" {
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
-      skill_refs = concat([local.sop_orchestration_name], try(var.workflow_skill_refs["terraform-module-update::analyze-request"], []))
-      note       = <<-EOT
+      skill_refs = concat(
+        [local.sop_orchestration_name],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
+        try(var.workflow_skill_refs["terraform-module-update::analyze-request"], []),
+      )
+      note = <<-EOT
         Budget contract: ≤ 1 subagent, ≤ $0.75, ≤ 120s.
 
         Plan (do this exactly; the prior failed run skipped steps 1 + 2 and let later stages guess the repo):
@@ -796,9 +881,11 @@ resource "sg_workflow" "terraform_module_update" {
              - `repository_default_branch`   ← `repository.default_branch`
              - `issue_or_pr_number`          ← `issue.number` or `pull_request.number`
              - `event_type`                  ← `trigger_event.type`
+             - `issue_labels`                ← `issue.labels[].name` (empty list for PR-only payloads)
              - `pr_head_ref`                 ← `pull_request.head.ref`         (empty for issue events)
              - `pr_head_clone_url`           ← `pull_request.head.repo.clone_url` (empty for issue events)
              - `pr_head_repo_full_name`      ← `pull_request.head.repo.full_name` (empty for issue events)
+           If `repository_full_name` matches a discovery-modules repo (§0c), note `discovery_repo=true` and enforce the label gate in `${local.sop_discovery_modules_layout}` §1 when configured.
            If any of `repository_full_name` / `issue_or_pr_number` is empty, branch to §8(a) of `terraform-bot-orchestration-sop` immediately — DO NOT search the org for the repo.
         2. `read_notes` for `issue_details` and `gh_token`. If both are already populated (re-entry case), skip to step 4.
         3. Spawn EXACTLY one subagent named `analyze-request-fetch-issue` per orchestration-sop Template B. It does TWO things in one execute_series: (a) `gh auth token` to capture the GitHub PAT into note `gh_token` (sensitive), (b) `gh api /repos/<repository_full_name>/issues/<n>` (or `/pulls/<n>` for PR events) with the `--jq` selector from Template B, persisting note `issue_details`.
@@ -823,6 +910,7 @@ resource "sg_workflow" "terraform_module_update" {
       ]
       skill_refs = concat(
         [local.sop_orchestration_name, local.sop_github_content_change, local.sop_module_compliance, local.sop_install_validate_test],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::security-scan-and-plan"], [])
       )
       note = <<-EOT
@@ -877,22 +965,25 @@ resource "sg_workflow" "terraform_module_update" {
       ]
       skill_refs = concat(
         [local.sop_orchestration_name, local.sop_install_validate_test, local.sop_github_content_change],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::merge-findings-and-test-loop"], [])
       )
       note = <<-EOT
         Budget contract: ≤4 subagents, ≤$5.00, ≤12 minutes (new-module path may need: optional recovery clone + registry-wrap + optional from-scratch scaffold + tests + PR). Reserve ≥$1.50 for register-and-notify.
 
         Plan:
-        1. `read_notes` for `repository_full_name`, `repo_clone_path`, `module_paths`, `module_resolution_confidence`, `target_module_hints`, `validation_summary`, `static_security_findings`, `deployment_impact`, `issue_details`, `pr_head_ref`, `issue_or_pr_number`, `gh_token`, `repository_default_branch`, `registry_wrap_failed`, `test_summary`. Do NOT re-clone, re-scan, or refetch — those notes are authoritative unless a recovery path below says otherwise.
+        1. `read_notes` for `repository_full_name`, `repo_clone_path`, `module_paths`, `module_resolution_confidence`, `target_module_hints`, `validation_summary`, `static_security_findings`, `deployment_impact`, `issue_details`, `pr_head_ref`, `issue_or_pr_number`, `gh_token`, `repository_default_branch`, `registry_wrap_failed`, `test_summary`, `module_quality_gaps`, `module_quality_rework`, `pr_deferred`, `pr_url`, `working_branch`. Do NOT re-clone, re-scan, or refetch — those notes are authoritative unless a recovery path below says otherwise.
+           When `module_quality_gaps` is non-empty OR `module_quality_rework=true`: note you are in a **quality rework loop** — fix only the listed gaps per `${local.sop_module_quality}` §6; clear `validation_summary`, `test_summary`, and all `quality_check_*` notes before re-validating; do NOT re-run Template H/G/I unless `module_paths` is empty.
 
         2. Triage branching BEFORE spawning work subagents:
            a) If `repo_clone_path` is empty:
                 - If `repository_full_name` is empty too → note `stage_summary:merge-findings-and-test-loop="blocked: missing trigger payload from analyze-request"`, jump to step 7.
                 - Else → spawn Template A as `merge-findings-and-test-loop-clone` ONCE. On `clone_blocker`, note `stage_summary:...="blocked: clone failed"`, jump to step 7.
            b) If `module_resolution_confidence == "not_found"` AND greenfield intent per §8(d) of `terraform-bot-orchestration-sop`:
-                i)   Spawn Template H as `merge-findings-and-test-loop-registry-wrap` ONCE (Terraform Registry search → thin wrapper `module` block → fmt/init/validate/tests → notes `registry_module_source`, `registry_module_version`, `registry_wrap_summary`, `module_paths`, `module_resolution_confidence=registry_wrap`, `test_summary` when tests ran inside H).
-                ii)  If `read_notes` shows `registry_wrap_failed=true` OR `module_paths` still empty → spawn Template G as `merge-findings-and-test-loop-scaffold` ONCE (from-scratch fallback). Clear `registry_wrap_failed` after success if applicable.
-                iii) If no greenfield intent → `ask_clarifying_question` ONCE per §8(d)4, then on answer spawn Template H and/or G as mapped — never a second clarifying round.
+                i)   If `discovery_repo=true` → spawn Template I as `merge-findings-and-test-loop-discovery-scaffold` ONCE (per `${local.sop_discovery_modules_layout}` §4). Skip Template H entirely.
+                ii)  Else spawn Template H as `merge-findings-and-test-loop-registry-wrap` ONCE (Terraform Registry search → thin wrapper `module` block → fmt/init/validate/tests → notes `registry_module_source`, `registry_module_version`, `registry_wrap_summary`, `module_paths`, `module_resolution_confidence=registry_wrap`, `test_summary` when tests ran inside H).
+                iii) If `read_notes` shows `registry_wrap_failed=true` OR `module_paths` still empty → spawn Template G as `merge-findings-and-test-loop-scaffold` ONCE (from-scratch fallback). Clear `registry_wrap_failed` after success if applicable.
+                iv)  If no greenfield intent → `ask_clarifying_question` ONCE per §8(d)5, then on answer spawn Template I / H / G as mapped — never a second clarifying round.
            c) If `module_resolution_confidence == "ambiguous"` → `ask_clarifying_question` ONCE; persist chosen path to `module_paths`, then continue.
            d) Else (`exact`, `probable`, `registry_wrap`, or `greenfield` after step 2): continue.
 
@@ -900,13 +991,15 @@ resource "sg_workflow" "terraform_module_update" {
 
         4. Spawn `merge-findings-and-test-loop-author-tests` ONLY when BOTH are true: (i) `module_paths` is non-empty, (ii) `test_summary` is empty OR contains `FAIL` / `Error` / non-zero exit, OR `module_resolution_confidence` ∈ {`exact`,`probable`} (existing module path that still needs tftest). Skip this step when Template H or G already left a passing `test_summary` for the new wrapper path.
 
-        5. If `module_paths` is non-empty AND (`pr_url` is empty OR you have local commits not pushed): spawn `merge-findings-and-test-loop-pr` per Template D (branch, commit, push, `gh pr create` / link issue in body). Inline `gh_token` and `repository_full_name`. Note `working_branch`, `pr_url`.
+        5. If `module_paths` is non-empty AND (`pr_url` is empty OR you have local commits not pushed):
+             - When `${var.defer_pr_until_quality_pass}` is true (default): spawn `merge-findings-and-test-loop-push` per Template D-push (branch, commit, push only). Note `pr_deferred=true`, `working_branch`; leave `pr_url` empty.
+             - Else: spawn `merge-findings-and-test-loop-pr` per Template D (includes `gh pr create`). Note `working_branch`, `pr_url`, `pr_deferred=false`.
 
         6. If step 5 was skipped because there was nothing to commit (e.g. blocked before any files): still ensure `stage_summary:merge-findings-and-test-loop` explains the blocker.
 
-        7. note key="stage_summary:merge-findings-and-test-loop" — module path, registry vs greenfield, test outcome, PR URL, or blocker.
+        7. note key="stage_summary:merge-findings-and-test-loop" — module path, registry vs greenfield, test outcome, PR URL or `pr_deferred=true`, or blocker.
 
-        Approved subagent names for this stage ONLY: `merge-findings-and-test-loop-clone`, `merge-findings-and-test-loop-registry-wrap`, `merge-findings-and-test-loop-scaffold`, `merge-findings-and-test-loop-author-tests`, `merge-findings-and-test-loop-pr`.
+        Approved subagent names for this stage ONLY: `merge-findings-and-test-loop-clone`, `merge-findings-and-test-loop-discovery-scaffold`, `merge-findings-and-test-loop-registry-wrap`, `merge-findings-and-test-loop-scaffold`, `merge-findings-and-test-loop-author-tests`, `merge-findings-and-test-loop-pr`, `merge-findings-and-test-loop-push`.
 
         Forbidden:
         - Org-wide `gh repo list` discovery.
@@ -915,9 +1008,87 @@ resource "sg_workflow" "terraform_module_update" {
       EOT
     },
     {
-      stage_id         = "register-and-notify"
+      stage_id         = "module-quality-assess"
       agent_ref        = sg_agent.terraform_module_manager.name
       stage_depends_on = ["merge-findings-and-test-loop"]
+      runbook_refs = [
+        sg_runbook_sop.terraform_bot_orchestration.name,
+        sg_runbook_sop.terraform_install_validate_test.name,
+        sg_runbook_sop.module_quality.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name, local.sop_install_validate_test, local.sop_module_quality],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
+        try(var.workflow_skill_refs["terraform-module-update::module-quality-assess"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $1.00, ≤ 3 minutes.
+
+        Plan (follow `${local.sop_module_quality}` §2 — deterministic checks are mandatory):
+        1. `read_notes` for ALL upstream notes: `module_paths`, `validation_summary`, `test_summary`, `static_security_findings`, `stackgen_yaml_summary`, `discovery_repo`, `pr_url`, `pr_deferred`, `stage_summary:merge-findings-and-test-loop`, and any `stage_summary:*` blockers.
+        2. Spawn ONE subagent `module-quality-assess-recheck` that runs fmt/init/validate/test per `${local.sop_install_validate_test}` for every `module_paths` entry and returns exit codes (do not infer PASS from prose).
+        3. Map exit codes to notes and stage output lines: `quality_check_fmt`, `quality_check_validate`, `quality_check_test` (each exactly PASS or FAIL), then `module_quality_summary: PASS` only when all three are PASS and §3 of the quality SOP holds; otherwise `NEEDS_REVISION` plus `module_quality_gaps:` bullets.
+        4. `note` all four sentinel keys. If NEEDS_REVISION, also `note` `module_quality_rework=true`.
+        5. `note` key="stage_summary:module-quality-assess" with verdict, the three check lines, and top gaps (if any).
+
+        Forbidden: opening a new PR, org-wide `gh repo list`, more than one subagent, emitting PASS without the recheck subagent.
+      EOT
+    },
+    {
+      stage_id         = "module-quality-pass-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["module-quality-assess"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = "(?m)^\\s*module_quality_summary:\\s*PASS\\s*$"
+        skip_to   = "register-and-notify"
+        reason    = "Senior DevOps quality bar met — skip iterate/loop and proceed to registration"
+      }
+    },
+    {
+      stage_id         = "module-quality-iterate"
+      agent_ref        = sg_agent.terraform_module_manager.name
+      stage_depends_on = ["module-quality-pass-gate"]
+      runbook_refs = [
+        sg_runbook_sop.terraform_bot_orchestration.name,
+        sg_runbook_sop.terraform_install_validate_test.name,
+        sg_runbook_sop.github_content_change.name,
+        sg_runbook_sop.module_quality.name,
+      ]
+      skill_refs = concat(
+        [local.sop_orchestration_name, local.sop_install_validate_test, local.sop_github_content_change, local.sop_module_quality],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
+        try(var.workflow_skill_refs["terraform-module-update::module-quality-iterate"], []),
+      )
+      note = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $4.00, ≤ 10 minutes.
+
+        This stage runs only when `module-quality-pass-gate` did NOT match PASS (workflow continued linearly).
+
+        Plan (follow `${local.sop_module_quality}` §5 — one remediation pass; loop gate owns the iteration budget):
+        1. `read_notes` for `module_quality_gaps`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
+        2. Spawn ONE subagent `module-quality-iterate-remediate` (Ubuntu CLI): fix gaps, re-run fmt/init/validate/test (+ stackgen.yaml on discovery repos), commit to existing branch, push if needed. Do NOT run `gh pr create` when `pr_deferred=true`.
+        3. Re-run the same shell checks as assess and re-emit all four sentinel lines (`quality_check_fmt`, `quality_check_validate`, `quality_check_test`, `module_quality_summary`) in stage output and notes.
+        4. `note` key="stage_summary:module-quality-iterate" with the three check lines and outcome.
+
+        Approved subagent name ONLY: `module-quality-iterate-remediate`.
+      EOT
+    },
+    {
+      stage_id         = "module-quality-loop-gate"
+      action_type      = "loop_stage"
+      stage_depends_on = ["module-quality-iterate"]
+      action_config = {
+        loop_to        = "merge-findings-and-test-loop"
+        max_iterations = var.module_quality_max_iterations
+        exit_condition = "output_contains"
+        exit_match     = "module_quality_summary: PASS"
+      }
+    },
+    {
+      stage_id         = "register-and-notify"
+      agent_ref        = sg_agent.terraform_module_manager.name
+      stage_depends_on = ["module-quality-loop-gate"]
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
         sg_runbook_sop.stackgen_module_registration.name,
@@ -925,28 +1096,37 @@ resource "sg_workflow" "terraform_module_update" {
       ]
       skill_refs = concat(
         [local.sop_orchestration_name, local.sop_stackgen_registration, local.sop_github_content_change],
+        local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::register-and-notify"], [])
       )
       note = <<-EOT
-        Budget contract: ≤ 2 subagents, ≤ $1.50, ≤ 3 minutes. THIS STAGE MUST RUN — it is how the user sees the workflow output, including blocked-status outputs from upstream stages.
+        Budget contract: ≤ 3 subagents, ≤ $2.00, ≤ 4 minutes. THIS STAGE MUST RUN — it is how the user sees the workflow output, including blocked-status outputs from upstream stages.
 
         Plan:
-        1. `read_notes` for `gh_token`, `repository_full_name`, `issue_or_pr_number`, `pr_url`, `validation_summary`, `test_summary`, `static_security_findings`, `deployment_impact`, `working_branch`, `module_paths`, `module_resolution_confidence`, `scaffold_summary`, `registry_module_source`, `registry_module_version`, `registry_wrap_summary`, `registry_search_query`, and ALL `stage_summary:*` keys.
+        1. `read_notes` for `gh_token`, `repository_full_name`, `issue_or_pr_number`, `pr_url`, `pr_deferred`, `validation_summary`, `test_summary`, `static_security_findings`, `deployment_impact`, `working_branch`, `module_paths`, `module_resolution_confidence`, `scaffold_summary`, `registry_module_source`, `registry_module_version`, `registry_wrap_summary`, `registry_search_query`, `module_quality_summary`, `module_quality_gaps`, `quality_check_fmt`, `quality_check_validate`, `quality_check_test`, `discovery_repo`, `registration_skipped`, and ALL `stage_summary:*` keys.
+           Parse `currentInput` (predecessor stage output). If it is loop-gate JSON and `Reason` contains `max iterations reached`, treat as **blocked** (quality loop exhausted).
 
-        2. Branch on upstream success vs blocker:
-           a) If any `stage_summary:*` note begins with "blocked:" OR (`module_resolution_confidence == "not_found"` AND `module_paths` is empty) OR (`pr_url` is empty AND `test_summary` is empty AND `module_paths` is empty):
-                Skip step 3 (no registration when there's nothing valid to register). Jump to step 4 with a status="blocked" summary that lists the originating stage + reason from `stage_summary:*`.
-           b) Else (happy path): continue to step 3.
+        2. **Happy path** requires ALL of:
+             - `module_quality_summary` note value is exactly `PASS` (stage output must also contain the line `module_quality_summary: PASS` when predecessor is assess/iterate text)
+             - `quality_check_fmt`, `quality_check_validate`, `quality_check_test` note values are each exactly `PASS`
+             - `module_paths` is non-empty
+             - No `stage_summary:*` note begins with `blocked:`
+             - Predecessor is NOT loop exhaustion (`max iterations reached`)
+           Otherwise **blocked** — skip registration/upload; jump to step 5 with status=blocked quoting `stage_summary:*`, `module_quality_gaps`, and loop reason when applicable.
 
-        3. Spawn ONE subagent `register-and-notify-register`: install `stackgen` CLI in the clone (per stackgen-module-registration-sop) and run `stackgen register` for each module in `module_paths`. Inline `gh_token` (env export) and `repo_clone_path`. Note `registered_versions`. If registration fails for a module, capture the error and continue — registration failure must not prevent step 4.
+        3. When happy AND `pr_deferred=true` AND `pr_url` is empty: spawn ONE subagent `register-and-notify-open-pr` per Template D (open PR now that quality passed). Then continue.
 
-        4. Spawn ONE subagent `register-and-notify-comment` per orchestration-sop Template E. The goal MUST:
+        4. When happy: spawn ONE subagent `register-and-notify-register`: install `stackgen` CLI (per stackgen-module-registration-sop). Verify `STACKGEN_TOKEN` is set in the Ubuntu sandbox; if missing, note `registration_skipped=missing_stackgen_token` and skip upload/register commands. For `discovery_repo=true`, run `stackgen upload custom-modules` per discovery layout SOP; else `stackgen register` per module path. Note `registered_versions`.
+
+        5. Spawn ONE subagent `register-and-notify-comment` per orchestration-sop Template E. The goal MUST:
              a) Detect blocked-vs-happy mode (based on `stage_summary:*` notes).
              b) When happy: post a "## Status: ✅ Compliant" PR comment quoting registered versions (if any), compliance summary, test output, deployment impact. If `module_resolution_confidence` is `registry_wrap`, include pinned `registry_module_source` + `registry_module_version` and the public registry URL.
              c) When blocked: post a "## Status: ⛔ Workflow blocked" comment on the originating issue (or PR if `pr_url` is set) quoting the specific `stage_summary:*` blocker text and listing the four §8 recovery options the operator can take (provide repo+path, confirm greenfield, fix integration auth, abort). NEVER include `gh_token` value.
            Choose `gh pr comment` if `pr_url` is set, else `gh issue comment <issue_or_pr_number> --repo <repository_full_name>`.
 
-        5. note key="stage_summary:register-and-notify" with the final PR URL OR a one-line blocker description and a pointer to which upstream stage was blocked.
+        6. note key="stage_summary:register-and-notify" with the final PR URL OR a one-line blocker description and a pointer to which upstream stage was blocked.
+
+        Approved subagent names for this stage ONLY: `register-and-notify-open-pr`, `register-and-notify-register`, `register-and-notify-comment`.
       EOT
     }
   ]
@@ -960,6 +1140,6 @@ resource "sg_webhook" "github_pr_issue" {
   name        = local.webhook_name
   target_type = "workflow"
   target_name = sg_workflow.terraform_module_update.name
-  action      = "A new GitHub issue or PR was created in the terraform module repository. Triage the payload, determine the requested change, and initiate the module update workflow."
+  action      = "A new GitHub issue or PR was created in a Terraform module repository (including StackGen discovery-modules repos when configured). Triage the payload, determine whether the target module exists, scaffold discovery templates when missing, run validate/security/test, and initiate the module update workflow."
   enabled     = true
 }

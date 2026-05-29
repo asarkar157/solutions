@@ -133,3 +133,82 @@ variable "webhook_trigger_org_id" {
   type        = string
   default     = ""
 }
+
+variable "discovery_modules_repository_full_names" {
+  description = <<-EOT
+    GitHub repositories that follow the StackGen discovery-modules layout (`aws/`, `gcp/`,
+    `azurerm/<module>/` with `.stackgen/stackgen.yaml`). When the webhook payload's
+    `repository.full_name` matches an entry, the bot loads the discovery-modules layout SOP:
+    checks module existence under provider roots, scaffolds resource templates (Template I),
+    validates `stackgen.yaml`, and uses `stackgen upload custom-modules` on registration.
+    Default includes `stackgenhq/discovery-modules`. Set to `[]` to disable the profile.
+  EOT
+  type        = list(string)
+  default     = ["stackgenhq/discovery-modules"]
+}
+
+variable "discovery_modules_issue_label" {
+  description = <<-EOT
+    Optional label gate for discovery-modules repos. When non-empty, `analyze-request`
+    requires this label on the triggering issue before cloning (same pattern as
+    `aios-agent-scenario-author`). Leave empty to accept any issue on configured repos.
+    Recommended: `discovery-module-request`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "stackgen_upload_url" {
+  description = <<-EOT
+    Optional StackGen base URL passed to `stackgen upload custom-modules` when registering
+    discovery modules (e.g. `https://main.dev.stackgen.com`). Leave empty to use the CLI default.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "stackgen_upload_project_id" {
+  description = <<-EOT
+    Optional StackGen project id for `stackgen upload custom-modules --project` when registering
+    discovery modules after a successful PR scaffold.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "stackgen_token_secret_id" {
+  description = <<-EOT
+    Optional `sg_secret` id whose metadata exposes `STACKGEN_TOKEN` in the Ubuntu sandbox
+    (same pattern as AWS/git secrets on `secret_ref_ids`). Required for `stackgen register`
+    and `stackgen upload custom-modules` on discovery-modules repos. When empty, registration
+    stages note `registration_skipped=missing_stackgen_token` and post a blocked summary for
+    discovery uploads.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "defer_pr_until_quality_pass" {
+  description = <<-EOT
+    When true (default), `merge-findings-and-test-loop` commits and pushes to a working branch
+    but does not run `gh pr create` until `register-and-notify` after `module_quality_summary`
+    is PASS with all `quality_check_*` sentinels PASS. Avoids reviewers seeing failing WIP PRs.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "module_quality_max_iterations" {
+  description = <<-EOT
+    Maximum number of times `module-quality-loop-gate` may return to `merge-findings-and-test-loop`
+    when quality is still not PASS. When the budget is exhausted, registration posts a blocked
+    summary (no StackGen upload) even if the agent still emitted NEEDS_REVISION.
+  EOT
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.module_quality_max_iterations >= 1 && var.module_quality_max_iterations <= 10
+    error_message = "module_quality_max_iterations must be between 1 and 10."
+  }
+}

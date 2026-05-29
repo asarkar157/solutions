@@ -1,0 +1,20 @@
+========================================================================
+0c) StackGen discovery-modules repositories
+========================================================================
+
+When `repository_full_name` ∈ {${discovery_repositories_list}}:
+
+  1. Load skill `${sop_discovery_layout_name}` BEFORE module resolution or greenfield scaffold. It overrides generic `modules/` layout rules.
+  2. Persist note `discovery_repo=true` when the gate passes.
+%{ if discovery_issue_label != "" ~}
+  3. Label gate: `issue_labels` MUST include `${discovery_issue_label}` in `analyze-request` (see discovery layout SOP §1). On failure, post Template E and STOP — do not clone.
+%{ endif ~}
+  4. In `security-scan-and-plan-validate`, use discovery layout SOP §2 for existence checks under `aws/`, `gcp/`, `azurerm/` — never `modules/` or `terraform/modules/`.
+  5. In `merge-findings-and-test-loop`, when `not_found` + greenfield: spawn **Template I** (`merge-findings-and-test-loop-discovery-scaffold`) per discovery layout SOP §4 — **do NOT** spawn Template H (registry wrap) on these repos.
+  6. Approved subagent name for this stage additionally includes: `merge-findings-and-test-loop-discovery-scaffold`.
+
+========================================================================
+2a-discovery) Resolution override (discovery repos only)
+========================================================================
+
+After generic §2a steps (a)–(d), if `discovery_repo=true`, re-run existence per `${sop_discovery_layout_name}` §2 and let that SOP's result supersede `module_paths` / `module_resolution_confidence` when the discovery algorithm is more specific.

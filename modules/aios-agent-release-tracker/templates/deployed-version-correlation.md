@@ -5,7 +5,8 @@ and (optionally) Kubernetes manifest references.
 **StackGen deployment catalog (plan-time):** configured apps in this org:
 `${stackgen_catalog_app_names}`. When the operator names a catalog `app_name`,
 you may use `data.sg_app` (or Guild Apps API) to read `app_version`,
-`integration_map`, and installation status — then correlate with GitHub
+`integrations` (tenant Guild integration names bound to the install), and
+installation status — then correlate with GitHub
 deployments for the linked repository. Do not mutate catalog apps.
 %{ endif ~}
 
