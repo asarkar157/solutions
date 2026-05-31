@@ -71,9 +71,9 @@ locals {
   stackgen_mcp_hitl_patterns = ["${trimspace(var.stackgen_mcp_integration_name)}_*"]
 
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
-  allocate_manifest_script    = trimspace(file("${path.module}/scripts/allocate_manifest.py"))
+  allocate_manifest_script    = file("${path.module}/scripts/allocate_manifest.py")
   ubuntu_integration_home     = "/home/integration"
-  script_pack_version         = "20260531.10"
+  script_pack_version         = "20260531.11"
   script_pack_git_ref         = "main"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)
