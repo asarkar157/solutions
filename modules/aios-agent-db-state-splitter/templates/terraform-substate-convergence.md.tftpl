@@ -51,7 +51,7 @@ When emitting per-iteration "blocking items" output (e.g. "Blocking Items for It
 
 Integration shells often hit **~300s** ceilings. A single long **`${ubuntu_tool_prefix}_execute_command`** that runs `init` + `plan` for every shard in one shot is a common source of **timeout-shaped failures** in DAG exports.
 
-- **One shard per shell step** (or a small fixed batch) with a conservative **`timeout_seconds`** per command; persist plan logs under your **`/tmp/...`** workdir and **`note`** paths to excerpts.
+- **One shard per shell step** (or a small fixed batch) with a conservative **`timeout_seconds`** per command; persist plan logs under your **`$HOME/.<workflow_run_id>`** workdir and **`note`** paths to excerpts.
 - **`${ubuntu_tool_prefix}_execute_series` is the default for multi-step shell work** (per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*) — never N rapid-succession `${ubuntu_tool_prefix}_execute_command` calls in the same turn. Each shard's `tofu init` + `tofu plan` + `tofu show` belongs in **one** `execute_series`, not three separate `execute_command` calls.
 - When **`remote_runner_name`** is configured on the module, **fan out** heavy `plan` / `terraform show -json` there (see **`db-state-split-orchestration-sop`**) instead of wedging everything through one Ubuntu session.
 

@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.20, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", # spawn_contracts / workflow metadata (provider >= 0.1.21).
+    version = ">= 0.1.21, < 0.2.0" }
   }
 }
 
@@ -163,6 +164,10 @@ resource "sg_workflow" "feature_development" {
   description = trimspace(templatefile("${path.module}/templates/workflow-feature-development.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   required_inputs        = ["linear_issue_id", "repository"]
   optional_inputs        = ["branch"]
   evidence_checklist_ref = sg_evidence_checklist.feature_development_evidence.name

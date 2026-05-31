@@ -1,0 +1,89 @@
+========================================================================
+3c) Linear stage note ownership
+========================================================================
+
+| Stage | Owns (write) |
+|-------|----------------|
+| `check-info-and-clone` | trigger fields, `issue_details`, `repo_clone_path`, `repo_head_sha`, `gate_result` |
+| `implement-module` | `target_module_hints`, `module_paths`, `module_resolution_confidence`, `registry_*`, `scaffold_summary` |
+| `validate-and-test` | `validation_summary`, `static_security_findings`, `test_summary`, `quality_check_*`, `module_quality_summary` |
+| `create-pr` | `pr_url`, `pr_deferred`, `working_branch`, `registered_versions`, final `stage_summary:create-pr` |
+
+Optional soft context: `deployment_impact` may be noted in `validate-and-test` or `create-pr` when `graph_query` was run inline — never a hard gate.
+
+========================================================================
+3d) Execution Optimization Protocol — batch Ubuntu CLI calls
+========================================================================
+
+**Hard rule.** Audit logs showed bursts of **8 simultaneous `${ubuntu_tool_prefix}_execute_command` calls** racing `$WORK_ROOT/notes.json` and the clone tree. Forbidden.
+
+| Situation | Tool |
+|-----------|------|
+| One command (e.g. `cat $WORK_ROOT/notes.json`) | `${ubuntu_tool_prefix}_execute_command` |
+| Ordered multi-step (clone, validate chain, commit+push) | **`${ubuntu_tool_prefix}_execute_series`** (default) |
+| Independent per-module validate/test | `${ubuntu_tool_prefix}_execute_parallel` or parallel subagents — not N `execute_command` in one turn |
+| Shell-heavy stage work (clone / validate / PR / discovery check) | **ONE** `${ubuntu_tool_prefix}_execute_series` embedding `stage-runner.sh` via heredoc (script-pack §0–§2) |
+
+Inside each `execute_series`, target **≤ 270s** per step (~300s integration ceiling). Script-runner subagent goals **≤ 1000 chars** — say `load_skill` **`${module_prefix}-workflow-script-pack`** and run the §2 block for the stage; do **not** paste the full heredoc into the goal.
+
+**Script pack (§3h).** The Ubuntu MCP container may reset between **separate** tool calls — **never** `create_files` workflow scripts or module files in one call and validate in another. Embed `stage-runner.sh` in a single `execute_series` per Ubuntu subagent. `WORK_ROOT=$HOME/.<workflow_run_id>` (from `[Workflow execution]` header).
+
+**Subagent spawn discipline** (matches `aios-agent-db-state-splitter`):
+- Stable name: `<stage_id>-runner` or approved `<stage_id>-<phase>` from §5b — **never** `-v2`, `recovery-probe`, `verify-auth`.
+- `task_type="terminal_calling"` for shell-heavy subagents.
+- If a subagent does not converge, **re-plan** (smaller scope, different tools) — do not re-run the same payload under a new name.
+- **Planner iteration budget:** Guild raises tool iterations to **40** for `terraform-module-update` stages — still batch notes per §3i so the budget goes to `create_agent`, not atomic `note` calls.
+
+========================================================================
+3e) Workflow shape (terraform-module-update) — linear 4 steps
+========================================================================
+
+```
+check-info-and-clone → check-info-blocked-gate → implement-module → validate-and-test → validate-infra-gate → validate-loop-gate → create-pr
+```
+
+**Intake fast-path** (`check-info-blocked-gate`): when clone **actually failed** in `check-info-and-clone` (`clone_blocker=*` or `stage_summary:check-info-and-clone=blocked`), skip directly to **`create-pr`** for one GitHub-only blocker comment — do not run implement/validate. **`gh_env_present=false` alone is NOT a skip trigger** when `repo_clone_path` is set (public anonymous clone).
+
+**Push auth path** (`create-pr` §2b): when validate reached `PASS` but `push_requires_token=true` / `clone_auth_mode=anonymous` (no PAT in Ubuntu env), post Template E with module progress — operator binds PAT and re-triggers; do not loop implement/validate again.
+
+**Infra fast-path** (`validate-infra-gate`): when `module_quality_summary: BLOCKED`, skip the rework loop and jump to **`create-pr`** for a GitHub-only blocked comment — do not re-scaffold.
+
+**Quality rework loop** (`validate-loop-gate`) returns to **`implement-module`** when `module_quality_summary` is `NEEDS_REVISION` (code FAIL only — bounded by `module_quality_max_iterations`). `create-pr` always runs after the gates finish (PASS, BLOCKED, or max iterations).
+
+========================================================================
+3f) Evidence gate (`create-pr`)
+========================================================================
+
+Before declaring workflow success, verify `submit_evidence` for every **required** item on checklist **`terraform-bot-module-update-evidence`**:
+
+- `trigger_payload_recorded`
+- `repo_clone_materialized`
+- `module_paths_or_blocker_documented`
+- `validation_summary_recorded`
+- `quality_checks_pass_or_blocked`
+- `pr_url_or_blocker_documented`
+
+If any required item is missing OR `module_quality_summary` is not `PASS` when claiming success OR any `stage_summary:*` begins with `blocked:` — **fail** with `notify({status:'evidence_missing', missing_items:[…]})`. Do **not** post "✅ Compliant" on GitHub. Vacuous success reports are a workflow defect.
+
+========================================================================
+3g) When `ask_clarifying_question` is appropriate
+========================================================================
+
+Use for: missing PAT / operator must choose among ambiguous `module_paths`, genuine greenfield intent fork (once per stage per §8).
+
+Do **not** use to recover `repository_full_name`, `repo_clone_path`, or prior-stage summaries — use **cold-start fast-fail** (`notify` + return) instead.
+
+========================================================================
+3h) Workflow script pack — single-command embed (no create_files)
+========================================================================
+
+Load **`${module_prefix}-workflow-script-pack`** before spawning Ubuntu script-runner subagents.
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>` — copy `workflow_run_id` from the stagerunner `[Workflow execution]` header verbatim.
+2. Each Ubuntu subagent: `load_skill` script-pack → **ONE** `execute_series` with the §2 block (`_embed_tfbot_run` + heredoc). **Forbidden:** `create_files` for scripts or module files that must survive to a **later** tool call.
+3. Runner stdout `key=value` lines are mirrored to `$WORK_ROOT/notes.json` inside the same shell; subagents still `note` the same keys for planner handoff.
+4. **Discovery scaffold** (`implement-module-discovery-scaffold`): `max_llm_calls=${subagent_budgets.hcl_author_max_llm_calls}`, `task_type=terminal_calling` — ONE execute_series: §2.5 `discovery-check`, then write all discovery layout files via `printf`/heredoc/python **in that same series** (see discovery-modules-layout §4). Optional inline `terraform fmt` only in the same series — full validate belongs in `validate-and-test`.
+5. **Registry wrap / greenfield scaffold** (Templates H/G): ONE execute_series for registry `curl`/`jq` when needed; write wrapper HCL via shell in the **same** series. Defer deep validate to `validate-and-test` §2.2.
+6. **Never omit `max_llm_calls`** on create_agent — omitted values often land at ~15 and fail mid-run with `[stop_agent_error] max LLM calls (15) exceeded`. See orchestration §5e for the full table.
+7. **Empty tool args:** never call `${ubuntu_tool_prefix}_execute_series` with `{}` or missing `commands` — Guild rejects with `commands is required`.
+8. **`[SubagentFailure]` blocks:** when the prior stage message includes `[SubagentFailure]`, read the failure summary; do not re-spawn the same subagent name with the same goal. Fix root cause (usually split execute_series or missing webhook fields) before retry.

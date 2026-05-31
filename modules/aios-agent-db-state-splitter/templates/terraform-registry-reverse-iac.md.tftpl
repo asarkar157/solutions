@@ -6,16 +6,16 @@ Keywords: import block, terraform import, moved block, module registry, stackgen
 
 This stage runs **after** ingest / discover / allocate / count-reconcile. Always start with **`read_notes`** for:
 
-- **`repo_clone_path`** — writable Ubuntu path, normally under `/tmp/db-state-split-<workflow_id>/repo`.
+- **`repo_clone_path`** — writable Ubuntu path, normally under `$HOME/.<workflow_run_id>/repo`.
 - **`monolith_state_local_path`** — downloaded `terraform.tfstate` (or `terraform show -json` snapshot).
 - **`logical_group_manifest`** (or legacy `shard_manifest`) — `group_id -> { cloud_hint, resource_addresses[] }`.
 - **`count_reconciliation_ok`** — must be `"true"`; if not, do **not** start this stage.
 
-**Never `notify` the operator** for those values. If `read_notes` returns nothing, recover under `/tmp/db-state-split-<workflow_id>/` and re-run the upstream procedure (re-clone repo, re-download state, re-run shard extraction) before any escalation. AppStack materialization is the **next** stage — this stage produces TF roots, import/moved blocks, and `registry_mapping_report` only; do not ask whether StackGen MCP is attached.
+**Never `notify` the operator** for those values. If `read_notes` returns nothing, recover under `$HOME/.<workflow_run_id>/` and re-run the upstream procedure (re-clone repo, re-download state, re-run shard extraction) before any escalation. AppStack materialization is the **next** stage — this stage produces TF roots, import/moved blocks, and `registry_mapping_report` only; do not ask whether StackGen MCP is attached.
 
 ## Execution (Ubuntu + large states)
 
-- All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`/tmp/db-state-split-.../`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
+- All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`$HOME/.<workflow_run_id>/`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
 - **Chunk** work by `group_id` (or by cloud): one bounded **`${ubuntu_tool_prefix}_execute_series`** per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation). Per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*, multi-step shell work is **always** one `execute_series` — never N concurrent `${ubuntu_tool_prefix}_execute_command` calls in the same turn. `${ubuntu_tool_prefix}_execute_command` is reserved for a single cohesive command; `${ubuntu_tool_prefix}_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned way to fan out independent work.  
 - Prefer **`${ubuntu_tool_prefix}_create_files`** for generated HCL/scripts, then short **`execute_series`** steps that reference the script path.
 
@@ -31,7 +31,7 @@ This stage runs **after** ingest / discover / allocate / count-reconcile. Always
 
 `tofu plan` in a per-group root will report `N to add` (and never converge to "No changes") whenever a `resource "X" "Y" {}` body is **missing or empty**. Do **not** leave 402 (or any) stub `main.tf` files for a human to fill in. Hydrate them in two passes per group, both Ubuntu CLI:
 
-1. **Pass 1 — generate config from import blocks.** In `groups/<group_id>/` (writable, under `/tmp/...` if needed):
+1. **Pass 1 — generate config from import blocks.** In `groups/<group_id>/` (writable, under `$HOME/.<workflow_run_id>` if needed):
 
    ```bash
    tofu init -input=false -no-color
@@ -75,7 +75,7 @@ Hard rules:
 
 1. **No `*.tf.json` filenames** anywhere in the per-group root, even as "easier-to-template" placeholders. The `hcl_hydration_status:<group_id>` evidence schema records `generated_tf_path` which must end in `.tf`.
 2. **`tofu fmt`** is the parity check — run it on every group root after scaffold + after hydration. JSON-syntax files fail `tofu fmt` cleanly, which is why this rule is enforceable downstream.
-3. **State JSON stays in scratch.** `terraform show -json` / `tofu show -json` output (`*.state.json`, `*.plan.json`) lives under `/tmp/db-state-split-<workflow_id>/` and is **never** committed alongside the per-group `.tf` files. Treat that output as *parser input*, not Terraform configuration.
+3. **State JSON stays in scratch.** `terraform show -json` / `tofu show -json` output (`*.state.json`, `*.plan.json`) lives under `$HOME/.<workflow_run_id>/` and is **never** committed alongside the per-group `.tf` files. Treat that output as *parser input*, not Terraform configuration.
 4. **`jq`-built JSON is not Terraform config.** Do not synthesize `*.tf.json` via `jq` / `python -c json.dumps` even when an attribute is awkward in HCL. If a value is genuinely unrepresentable, push the address to `orphans_bundle{reason:"requires_dynamic_codegen"}` for `orphan-iac-module-authoring` to wrap in HCL.
 
 ## StackGen module / template cross-check
@@ -95,7 +95,7 @@ Match group resource patterns to published modules (double-slash Git source in r
 | GitHub / Slack / Grafana integrations | `modules/aios-integration-github`, `aios-integration-slack`, `aios-integration-grafana` |
 | Schedules | `modules/aios-agent-schedules` |
 
-When a subgraph fits an existing **data** module, pin `source` + `ref` and replace hand-written duplicates. When **no** Terraform module fits but a **StackGen resource_type** exists, record the mapping for **`add_resource_to_appstack`**. When nothing fits, add the address list + rationale to **`orphans_bundle`** for the secondary pipeline.
+When a subgraph fits an existing **data** module, pin `source` + `ref` and replace hand-written duplicates. When **no** Terraform module fits but a **StackGen resource_type** exists, record the mapping for **`bulk_add_resources_to_appstack`** (`resources[].resource_type`). When nothing fits, add the address list + rationale to **`orphans_bundle`** for the secondary pipeline.
 
 ## Output
 

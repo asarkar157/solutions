@@ -1,8 +1,9 @@
 terraform {
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.20, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # spawn_contracts / workflow metadata (provider >= 0.1.21).
+      version = ">= 0.1.21, < 0.2.0"
     }
   }
 }
@@ -95,6 +96,12 @@ resource "sg_workflow" "alert_triage_pipeline" {
   domain      = "incident-response"
   description = "A workflow that automatically triages incoming Grafana alerts against AWS, Azure, K8s, or Remote Runner environments using dynamic agent resolution based on skill matching."
   approve     = true
+
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
+
 
   triggers = [
     { field = "source", values = ["grafana"], type = "active", source = "grafana" }

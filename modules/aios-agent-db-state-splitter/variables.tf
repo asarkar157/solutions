@@ -5,6 +5,7 @@ variable "stackgen_mcp_integration_name" {
     this module does **not** provision it (no `aios-integration-stackgen-mcp` exists yet); pass
     the name of a Guild integration backed by the StackGen Consumer MCP (typically
     `stackgen-mcp`). The agent calls AppStack / integrations tools (`create_appstack`,
+    `bulk_add_resources_to_appstack`, `bulk_connect_resources_in_appstack`,
     `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`,
     `get_appstacks`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**
     for the user-MCP matrix). This module no longer supports the "TF-only, no AppStack
@@ -175,9 +176,10 @@ variable "workflow_skill_refs" {
   description = <<-EOT
     Optional extra skill_refs per primary-workflow stage binding. Keys:
     "db-monorepo-state-split-convergence::<stage_id>" where stage_id is one of:
-    ingest-monolith, discover-db-anchors, allocate-related-resources, count-reconcile-loop,
-    registry-and-import-codegen, hcl-hydrate-per-group, materialize-stackgen-appstacks,
+    ingest-and-split, registry-and-import-codegen, hcl-hydrate-per-group, materialize-stackgen-appstacks,
     orphans-secondary-pipeline, multi-shard-plan-convergence, final-gate-and-memory.
+    Legacy keys (ingest-monolith, discover-db-anchors, allocate-related-resources, count-reconcile-loop) are
+    merged into ingest-and-split — map extra skills to ingest-and-split instead.
     Note: `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, and `orphans-secondary-pipeline`
     are the 3-way parallel layer after `registry-and-import-codegen`; `multi-shard-plan-convergence`
     fans in from all three.
@@ -208,6 +210,47 @@ variable "max_convergence_iterations" {
     condition     = var.max_convergence_iterations >= 1 && var.max_convergence_iterations <= 20
     error_message = "max_convergence_iterations must be between 1 and 20."
   }
+}
+
+variable "stackgen_project_name" {
+  description = <<-EOT
+    Default StackGen project name or UUID for AppStack MCP calls (`get_appstacks`, `create_appstack`, …).
+    Mirrored to workflow notes at `ingest-and-split` when the workflow input omits `stackgen_project_name`.
+    Pass the StackGen **project UUID** (same value as Guild provider `project_id`) when project display name
+    is unknown. Empty means the materialize stage must resolve via MCP `me`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "subagent_budgets" {
+  description = <<-EOT
+    Optional overrides for create_agent subagent budgets (Guild clamps max_llm_calls to [8, 60]
+    and max_tool_iterations to [40, 50]). Raise script_runner_max_llm_calls when ingest-and-split
+    hits "max LLM calls exceeded" during download/split-manifest; raise registry_codegen_max_llm_calls
+    for large-state scaffold + show -json chunking.
+  EOT
+  type = object({
+    script_runner_max_llm_calls                = optional(number)
+    script_runner_max_tool_iterations          = optional(number)
+    script_runner_timeout_seconds              = optional(number)
+    registry_codegen_max_llm_calls             = optional(number)
+    registry_codegen_max_tool_iterations       = optional(number)
+    registry_codegen_timeout_seconds           = optional(number)
+    hcl_hydrate_batch_max_llm_calls            = optional(number)
+    hcl_hydrate_batch_max_tool_iterations      = optional(number)
+    hcl_hydrate_batch_timeout_seconds          = optional(number)
+    appstack_batch_max_llm_calls               = optional(number)
+    appstack_batch_max_tool_iterations         = optional(number)
+    appstack_batch_timeout_seconds             = optional(number)
+    plan_convergence_batch_max_llm_calls       = optional(number)
+    plan_convergence_batch_max_tool_iterations = optional(number)
+    plan_convergence_batch_timeout_seconds     = optional(number)
+    mcp_shell_runner_max_llm_calls             = optional(number)
+    mcp_shell_runner_max_tool_iterations       = optional(number)
+    mcp_shell_runner_timeout_seconds           = optional(number)
+  })
+  default = {}
 }
 
 # ---------------------------------------------------------------------------

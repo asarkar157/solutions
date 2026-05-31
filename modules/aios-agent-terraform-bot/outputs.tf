@@ -10,6 +10,11 @@ output "workflow_name" {
   value       = sg_workflow.terraform_module_update.name
 }
 
+output "evidence_checklist_name" {
+  description = "Guild evidence checklist name for terraform-module-update proof-of-work."
+  value       = sg_evidence_checklist.terraform_module_update_evidence.name
+}
+
 output "github_integration_name" {
   description = "Final Guild GitHub integration name (`terraform-bot-github[-<suffix>]` or the consumer override)."
   value       = local.resolved_github_integration_name

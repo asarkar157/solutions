@@ -1,0 +1,135 @@
+Skill: Canonical workflow shell scripts for terraform-module-update. **Single-command protocol** — embed `stage-runner.sh` in ONE `${ubuntu_tool_prefix}_execute_series` via heredoc. Pair with orchestration-sop §3d/§3h.
+
+Keywords: workflow scripts, execute_series, heredoc, stage-runner, bootstrap, clone, validate, commit, pr, discovery.
+
+========================================================================
+0) Single-command protocol (mandatory)
+========================================================================
+
+**Problem:** The Ubuntu MCP container may **reset between separate tool calls** (lazy-init recovery, MCP EOF). Production traces (`157b399eacdc`, `84d21f0e4923`) lost clone trees and scaffold files when work was split across multiple `${ubuntu_tool_prefix}_execute_*` calls. State survives only **inside one `${ubuntu_tool_prefix}_execute_series`** (same shell session).
+
+**Hard rules:**
+1. **`WORK_ROOT=$HOME/.<workflow_run_id>`** — copy `workflow_run_id` verbatim from the stagerunner `[Workflow execution]` header (e.g. `wf-terraform-module-update-157b399eacdc402c`). Do **not** guess from trace_id or Temporal workflow id.
+2. **Never** `${ubuntu_tool_prefix}_create_files` for workflow scripts or for module files that must be validated in a **later** tool call. **Forbidden:** materialize scripts under `$WORK_ROOT/scripts/`, then run a second tool call.
+3. **Exactly ONE** `${ubuntu_tool_prefix}_execute_series` per Ubuntu subagent turn. That single series must include bootstrap, clone (if needed), all file writes (printf/python/heredoc), fmt/init/validate/test, and commit/push when the subagent owns that scope.
+4. Subagent loads this skill (`load_skill`), copies the §2 block for its stage, substitutes placeholders, runs it as the **sole** series entry.
+5. After stdout `key=value` lines, mirror keys in-shell to `$WORK_ROOT/notes.json` (orchestration §3b). The planner batches them into one `workflow_notes_snapshot` note at stage end (§3i).
+
+**Embed helper** (prefix every §2 block — runner body is §1):
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+
+_embed_tfbot_run() {
+  bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+```
+
+Minimum Ubuntu script-runner tools:
+`["${ubuntu_tool_prefix}_execute_command","${ubuntu_tool_prefix}_execute_series","load_skill","note","read_notes"]`
+
+**Discovery / greenfield HCL:** write module files with `printf`, `python3`, or heredocs **inside the same execute_series** as `discovery-check` and optional inline `validate` — do **not** use `${ubuntu_tool_prefix}_create_files` in a separate tool call before validate.
+
+========================================================================
+1) stage-runner.sh (embedded by _embed_tfbot_run)
+========================================================================
+
+Commands: `clone` | `validate` | `commit-pr` | `resolve-paths` | `discovery-check`
+
+(Same body as `scripts/stage-runner.sh` in the module — rendered into `_embed_tfbot_run` above.)
+
+========================================================================
+2) Stage single-command blocks (ONE execute_series each)
+========================================================================
+
+Replace `<workflow_run_id>`, `<repository_clone_url>`, etc. Paste the **entire** block (helper + `_embed_tfbot_run` call) as one series command.
+
+### §2.1 clone (Template A — check-info-and-clone-clone)
+
+Stage-runner sets `clone_auth_mode=token|anonymous` and `push_requires_token=true|false`. Public repos may clone without PAT (`GIT_TERMINAL_PROMPT=0`, no credential helper). Push/PR always needs PAT — if clone succeeds with `gh_env_present=false`, intake is **not** blocked; create-pr uses §2b push-auth path when validate PASS.
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+_embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+_embed_tfbot_run clone "$WORK_ROOT" "<repository_clone_url>" "<repository_default_branch>" "<issue_or_pr_number>" "<pr_head_ref>" "<pr_head_clone_url>"
+```
+
+### §2.2 validate (Template C — one path; repeat _embed_tfbot_run in a for-loop for multiple paths)
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+_embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+for _p in <path1> <path2>; do
+  _embed_tfbot_run validate "$WORK_ROOT" "$_p"
+done
+```
+
+### §2.3 commit-pr (Template D — create-pr-open)
+
+Builds branch name, conventional commit, and reviewer-ready PR title/body from staged module diff + `notes.json` (validation + stackgen metadata). Commit message arg is optional.
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+_embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+_embed_tfbot_run commit-pr "$WORK_ROOT" "<repository_full_name>" "<issue_or_pr_number>" "" "<repository_default_branch>"
+```
+
+Example PR title (discovery greenfield): `feat(aws): add ECS blue/green deployment module` — not `feat(aws_ecs_blue_green_deployment): discovery module scaffold`.
+
+### §2.4 resolve-paths (implement-module)
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+_embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+_embed_tfbot_run resolve-paths "$WORK_ROOT" "<repo_clone_path>" "<repository_default_branch>" "<hint1,hint2>"
+```
+
+### §2.5 discovery-check (Template I — implement-module-discovery-scaffold)
+
+Scaffold templates **must** include `mock_provider "aws" {}` (or matching provider) in **`basic.tftest.hcl` at the module root** (NOT `tests/basic.tftest.hcl` — discovery-modules layout). Primary resource file is **`<resource_type>.tf`** (e.g. `aws_ecs_service.tf`), not `main.tf`.
+
+```bash
+WORK_ROOT="$HOME/.<workflow_run_id>"
+mkdir -p "$WORK_ROOT"
+_embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
+}
+_embed_tfbot_run discovery-check "$WORK_ROOT" "<repo_clone_path>" "<provider>" "<module_dir>"
+# In the same execute_series, write basic.tftest.hcl with:
+#   mock_provider "aws" {}
+#   run "basic" { command = plan ... }
+```
+
+========================================================================
+3) Stage → block mapping (planner)
+========================================================================
+
+| Stage | Subagent | Script-pack block |
+|-------|----------|-------------------|
+| `check-info-and-clone` | `check-info-and-clone-clone` | §2.1 clone |
+| `implement-module` | `implement-module-discovery-scaffold` | §2.5 discovery-check + write all layout files in **same** execute_series |
+| `implement-module` | other | §2.4 resolve-paths → edit files in `$WORK_ROOT/repo` |
+| `validate-and-test` | `validate-and-test-runner` | §2.2 validate (for-loop over `module_paths`) |
+| `create-pr` | `create-pr-open` | §2.3 commit-pr |
+
+Subagent goals MUST say: `load_skill` this pack → ONE `execute_series` with the §2 block — **never** reference `$WORK_ROOT/scripts/*.sh` paths.

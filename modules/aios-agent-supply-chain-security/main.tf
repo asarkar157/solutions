@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.20, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", # spawn_contracts / workflow metadata (provider >= 0.1.21).
+    version = ">= 0.1.21, < 0.2.0" }
   }
 }
 
@@ -196,6 +197,10 @@ resource "sg_workflow" "supply_chain_scan" {
   description = trimspace(templatefile("${path.module}/templates/workflow-supply-chain-security-analyst.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   triggers = [
     { field = "incident_title_contains", values = ["supply chain", "npm", "malicious package", "provenance"], type = "passive" },
   ]

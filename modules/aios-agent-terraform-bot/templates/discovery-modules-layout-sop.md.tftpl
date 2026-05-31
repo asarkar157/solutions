@@ -21,20 +21,34 @@ A valid module directory MUST contain:
       * Azure RM: `hashicorp/azurerm` `~> 3.9` (add `hashicorp/azuread` `~> 3.1.0` only when the resource is Entra ID)
   - `variables.tf.json` and `outputs.tf.json` — JSON schema describing inputs/outputs (copy structure from the nearest sibling module under the same provider root).
   - `provider.tf` — minimal provider block when siblings use it (often just `provider "aws" {}`).
-  - `basic.tftest.hcl` at the **module root** (NOT under `tests/`) — `command = plan`, real `provider` block with a safe region, `assert` on key attributes.
+  - `basic.tftest.hcl` at the **module root** (NOT under `tests/`) — `command = plan`, **`mock_provider "aws" {}`** (or matching provider) so `tofu test` never needs real cloud credentials in the sandbox, `assert` on key attributes.
   - `.stackgen/stackgen.yaml` — UI + discovery metadata (see §3).
 
 Optional: `README.md` one paragraph citing the originating GitHub issue number.
+
+**Forbidden layout mistakes** (trace `01beb81f` — agent wrote these repeatedly):
+  - ❌ `tests/basic.tftest.hcl` — discovery modules use **`basic.tftest.hcl` at the module root**, not under `tests/`
+  - ❌ `main.tf` as the primary resource file — use **`<resource_type>.tf`** (e.g. `aws_ecs_service.tf`) matching sibling modules
+  - ❌ `modules/<name>/` or `terraform/modules/` — discovery repos use **`<provider>/<module_dir>/` only**
 
 ========================================================================
 1) Issue label gate (when configured)
 ========================================================================
 
 %{ if discovery_issue_label != "" ~}
-On discovery repos, `analyze-request` MUST verify `issue_labels` (from the webhook payload) contains `${discovery_issue_label}` before cloning. If missing:
+On discovery repos, the **`check-info-and-clone`** stage MUST run this label gate **immediately after** persisting `issue_labels` from the webhook payload (step 1 of the stage binding). Do this **before** `load_skill`, `graph_query`, `check-info-and-clone-fetch`, or any clone.
+
+Pass when `issue_labels` contains **any** of:
+  - `${discovery_issue_label}` (required canonical label), OR
+  - deprecated aliases: ${discovery_legacy_labels} (migration only — do not add new issues with these).
+
+If the gate fails:
   - note `gate_result="missing_label"`
-  - note `stage_summary:analyze-request="blocked: missing ${discovery_issue_label} label"`
-  - spawn `register-and-notify-comment` (Template E) explaining how to add the label, then STOP.
+  - note `stage_summary:check-info-and-clone="blocked: missing ${discovery_issue_label} label (legacy aliases: ${discovery_legacy_labels})"`
+  - spawn `create-pr-comment` using orchestration-sop **Template E (GitHub path)** — `terraform-bot-github_execute_*` only; no Ubuntu bootstrap.
+  - STOP the workflow (no clone, no discovery layout skill, no graph queries).
+
+If the gate passes with only a legacy alias, note `gate_result="pass_legacy_label"` and continue.
 %{ else ~}
 No label gate — any issue/PR on a discovery repo may trigger the workflow.
 %{ endif ~}
@@ -82,22 +96,21 @@ Before opening a PR for a **new** module:
 4) Template I — discovery module scaffold (preferred over Template G/H)
 ========================================================================
 
-Subagent name: `merge-findings-and-test-loop-discovery-scaffold`
+Subagent name: `implement-module-discovery-scaffold`
 
 When `module_resolution_confidence=not_found` AND greenfield intent AND `repository_full_name` is a discovery repo:
 
-  1. Infer `discovery_provider`, `discovery_module_dir`, `discovery_stackgen_provider` (§2).
-  2. Scaffold under `<repo_clone_path>/<discovery_provider>/<discovery_module_dir>/` per §0.
-  3. Author HCL from the issue body + Terraform provider docs (use `curl` provider registry docs if needed — Ubuntu CLI only). Keep the resource block minimal and faithful to the official argument schema.
-  4. Mirror `variables.tf.json` / `outputs.tf.json` from a sibling module; only declare variables the resource uses.
-  5. Write `basic.tftest.hcl` with `command = plan` and safe dummy inputs (see `aws/aws_s3_bucket/basic.tftest.hcl`).
-  6. Run `${sop_install_validate_test}` steps 1, 2, 2b, 4 **inside this module directory** (`cd` into the module path first).
-  7. Run §3 stackgen.yaml validation.
-  8. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `validation_summary`, `test_summary`, `stackgen_yaml_summary`.
+  0. `WORK_ROOT=$HOME/.<workflow_run_id>` (from `[Workflow execution]` header). load_skill workflow-script-pack.
+  1. ONE execute_series: script-pack §2.5 `discovery-check`, then write **all** scaffold files under `<repo_clone_path>/<provider>/<module_dir>/` via `printf`/heredoc/python **in that same series** (container resets between separate tool calls — trace `157b399eacdc`).
+  2. If confidence is `exact`, note existing `module_paths` and STOP (edit-only path).
+  3. If `not_found`, mirror sibling `variables.tf.json` / `outputs.tf.json` / `.stackgen/stackgen.yaml` from nearest module under the same provider root.
+  4. Write `basic.tftest.hcl` with `command = plan` and `mock_provider` for the cloud provider (required — see `aws/aws_s3_bucket/basic.tftest.hcl`) inside the same execute_series.
+  5. Optional inline stackgen.yaml validation (§3) in the **same** execute_series — not a second tool call.
+  6. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `stackgen_yaml_summary`. Defer fmt/init/validate/test to validate-and-test §2.2.
 
 DO NOT use Template H (Terraform Registry wrapper) on discovery repos — discovery modules are first-class resource templates, not registry wrappers.
 
-DO NOT commit/push here — `merge-findings-and-test-loop-pr` handles that.
+DO NOT commit/push here — `create-pr-open` handles that in the `create-pr` stage.
 
 ========================================================================
 5) StackGen catalog upload (register-and-notify stage)

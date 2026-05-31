@@ -2,8 +2,9 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.20, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # spawn_contracts / workflow metadata (provider >= 0.1.21).
+      version = ">= 0.1.21, < 0.2.0"
     }
   }
 }

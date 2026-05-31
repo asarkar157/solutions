@@ -1,11 +1,11 @@
 Skill: **Materialize StackGen AppStacks** from Terraform/OpenTofu state groupings using **StackGen user MCP** tools (the AppStack / integrations surface exposed at URLs such as **`…/api/mcp/user`**). Use for **AWS, Azure, and GCP** resources in the same monolith state.
 
-Keywords: create_appstack, add_resource_to_appstack, connect_resources, get_supported_resource_types, get_appstacks, create_env_profile, create_appstack_action_run, get_action_run_logs, snapshots, get_current_violations.
+Keywords: create_appstack, bulk_add_resources_to_appstack, bulk_connect_resources_in_appstack, add_resource_to_appstack, connect_resources, get_supported_resource_types, get_appstacks, create_env_profile, create_appstack_action_run, get_action_run_logs, snapshots, get_current_violations.
 
 ## Preconditions (discoverable — do not ask the operator)
 
 - **MCP attached?** Detect via **`search_tools`** for `*_create_appstack` / `*_get_appstacks` (Guild prefixes the integration name). If absent, this stage is a no-op: `note` `stackgen_appstack_map=skipped: no_mcp` and `stackgen_appstack_membership_report=skipped: no_mcp`. Do **not** `notify` the operator to confirm — the integration list is in your tool surface.
-- **Project UUID:** prefer workflow input **`stackgen_project_name`** if present in `read_notes`; otherwise call **`me`** to resolve the org / project context. Do not ask the operator.
+- **Project UUID:** read **`stackgen_project_name`** from `read_notes` first (mirrored at `ingest-and-split` from workflow input or module default **`${stackgen_project_name_default}`**). **Never** call `get_appstacks` / `create_appstack` with empty `project_name`. If still empty, call **`me`** once, `note` the resolved UUID, then proceed. Do not ask the operator.
 - **Inputs from `read_notes`:** `logical_group_manifest` (or legacy `shard_manifest`), `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`. If any required note is missing, recover via the Stage entry protocol in **db-state-split-orchestration-sop** before escalating.
 - **Per-group `cloud_provider`** ∈ {`aws`,`azure`,`gcp`} is inferred from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*`); mixed-provider groups must be split upstream.
 - For the **canonical tool matrix** shared with repo-to-iac flows, load **`stackgen-mcp-consumer-tool-catalog-sop`** from `aios-agent-repo-to-iac` — it is aligned with the **user** MCP catalog (not every hypothetical StackGen extension).
@@ -15,7 +15,7 @@ Keywords: create_appstack, add_resource_to_appstack, connect_resources, get_supp
 DAGs from long runs often show dozens of **`get_appstacks`** / **`get_appstack_resources`** calls. That burns latency, hits rate limits, and duplicates spans in telemetry.
 
 1. **One list pass per materialization wave** — call **`get_appstacks`** once (with the filters you need, e.g. `labels: ["template"]` when using templates), then **`note`** a compact JSON snapshot under **`stackgen_appstack_list_cache`** (`{ updated_at, stacks: [{ id, name, labels? }] }`).
-2. **Per-stack resource listing** — call **`get_appstack_resources`** only for the `appstack_id` you are actively mutating, or immediately after **`create_appstack`** / append flows to verify membership — not before every **`add_resource_to_appstack`**.
+2. **Per-stack resource listing** — call **`get_appstack_resources`** only for the `appstack_id` you are actively mutating, or immediately after **`create_appstack`** / bulk-add flows to verify membership — not before every resource mutation.
 3. **After mutations** — refresh **`stackgen_appstack_list_cache`** only when you create/delete/rename stacks or when a follow-up call returns a stale/not-found error.
 4. **Do not** interleave **`search_skill`** / **`load_skill`** here; use this playbook + **`db-state-split-orchestration-sop`** (runbooks on the workflow).
 
@@ -31,7 +31,9 @@ These names match the **integrations / AppStack** MCP server (`streamable_http` 
 
 - `get_appstacks`, `get_appstack_resources`
 - `create_appstack`
-- `add_resource_to_appstack`, `add_resource_pack_to_appstack`, `update_resource`, `delete_resource`
+- **`bulk_add_resources_to_appstack`** — add many resources (+ optional `configuration` / `tf_vars` per item) in one call; max **${bulk_add_resources_max_per_call}** items; parallel server-side execution with per-item `status` and top-level **`needs_attention`** indices
+- **`bulk_connect_resources_in_appstack`** — wire many edges in one call; max **${bulk_connect_resources_max_per_call}** items; use **`source_identifier`** / **`target_identifier`** (terraform names from bulk-add) or UUIDs; defaults `connection_type=INFERRED`, `attribute_mapping_type=user`
+- `add_resource_to_appstack`, `add_resource_pack_to_appstack`, `update_resource`, `delete_resource` — **fallback** for `needs_attention` retries after a bulk call, not the default path for whole groups
 - `get_supported_resource_types`, `get_resource_type_configurations`, `get_resource_configurations`
 - `get_possible_resource_connections`, `connect_resources`
 
@@ -66,10 +68,11 @@ For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in or
 
 1. **Pin the group** — read `logical_group_manifest[group_id]`. Treat `resource_addresses[]` as the **closed set** of Terraform addresses for this AppStack. Infer **one** `cloud_provider` from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*` → map to aws/azure/gcp heuristics). Mixed-provider groups → split the group first; do **not** flatten.
 2. `create_appstack` with a stable sanitized **name** (`<repo>-<group_key>`), **labels** echoing source tags (e.g. `split-from:monolith`, `group:<key>`); optional **`appstack_ref_id`** from a template id discovered via `get_appstacks` + `labels: ["template"]`. **Persist** `stackgen_appstack_map[group_id] = { appstack_id, appstack_name, cloud_provider, project_name }` immediately so a retry can resume against the same stack.
-3. **Build the expected identifier table** for this group (deterministic Terraform-address → identifier mapping):
+3. **Build the expected identifier table and bulk-add payload** (deterministic Terraform-address → identifier mapping):
    - For each `addr` in `group.resource_addresses`, derive `identifier = sanitize_identifier(addr)` (lowercase snake; replace `.`, `[`, `]`, `"`, `/`, `-`, spaces with `_`; collapse repeats; strip leading digits/underscores per server rules). Keep a JSON map `identifier_for_address: { addr -> identifier }`.
-   - For each `addr`, map Terraform `resource_type` → StackGen **`resource_type`** via `get_supported_resource_types`. Resources with **no** mapping go to **`orphans_bundle`** with `reason: "no_supported_resource_type"` — they **must not** be silently dropped.
-   - Call **`add_resource_to_appstack`** with `appstack_name = stackgen_appstack_map[group_id].appstack_id` and the derived `identifier` + `resource_type` (and `resource_template_id` when needed). Process the addresses **in deterministic order** so retries are idempotent. On **5xx / `409`**, retry the same call once before logging to `stackgen_mcp_errors`.
+   - For each `addr`, map Terraform `resource_type` → StackGen **`resource_type`** via `get_supported_resource_types` (call once per wave, cache in notes). Resources with **no** mapping go to **`orphans_bundle`** with `reason: "no_supported_resource_type"` — they **must not** be silently dropped.
+   - Assemble `resources[]` in **deterministic address order** — each entry: `{ resource_type, identifier, configuration?, tf_vars?, template_id? }`. Include **`configuration`** when the registry mapping or `terraform show -json` supplies attributes (bulk-add applies them in the same round trip).
+   - Call **`bulk_add_resources_to_appstack`** with `appstack_name` = `stackgen_appstack_map[group_id].appstack_id` (or `appstack_id` per schema), `project_name`, and the full `resources[]` array. **Chunk** when `len(resources) > ${bulk_resources_chunk_size}`: slices of ≤ **${bulk_resources_chunk_size}** (never exceed **${bulk_add_resources_max_per_call}** per call). Read the response **`needs_attention`** array — for each index, fix validation errors in one follow-up bulk call (validate-all-then-execute returns every issue at once) or fall back to singular **`add_resource_to_appstack`** / **`update_resource`** for that item only. On **5xx** for the whole bulk call, retry the same payload once before logging to `stackgen_mcp_errors`.
 3.5. **Membership verification gate** — **MANDATORY** before any `connect_resources` or Plan call for this group:
    - Call **`get_appstack_resources(appstack_id)`** **once** for this group; collect `actual_identifiers[]`.
    - Compare with `expected_identifiers[]` (values of `identifier_for_address`). Compute:
@@ -78,11 +81,11 @@ For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in or
      - `cross_group_bleed`: subset of `unexpected` whose identifiers also appear in any **other** group’s `identifier_for_address` (a hard error — these came from another group’s addresses).
    - **`note`** **`stackgen_appstack_membership:<group_id>`** as JSON `{ appstack_id, expected_count, actual_count, expected_identifiers, actual_identifiers, missing, unexpected, cross_group_bleed, ok }` where `ok = (missing==[]) && (unexpected==[])`.
    - **Reconcile until `ok=true`:**
-     - For each `id` in `missing`: re-call **`add_resource_to_appstack`** with the recorded mapping; if the server returns "identifier already exists" treat as already-present.
+     - For each `id` in `missing`: re-call **`bulk_add_resources_to_appstack`** with only the missing entries (one-item bulk is fine) or singular **`add_resource_to_appstack`**; if the server returns "identifier already exists" treat as already-present.
      - For each `id` in `unexpected` **not** in `cross_group_bleed`: **`delete_resource(appstack_id, identifier=id)`** (after confirming with `get_appstack_resources` that the identifier truly does not appear in `expected_identifiers`).
      - For each `id` in `cross_group_bleed`: **stop** and write **`stackgen_mcp_errors`** with `reason: "cross_group_bleed"`, `bleed_source_group: <other group_id>`, `addresses_affected`. Do **not** auto-delete from another group’s AppStack — escalate via `notify` and re-enter Loop B.
    - After reconciliation, re-call `get_appstack_resources` and rewrite the same `stackgen_appstack_membership:<group_id>` note. Only proceed to step 4 when `ok=true`.
-4. `get_possible_resource_connections` → `connect_resources` for obvious edges (VPC→subnet→instance, server→database, etc.). **Never** connect across `appstack_id`s — connections are scoped within a stack.
+4. **Intra-group wiring** — `get_possible_resource_connections` for the resource types on this stack, then build `connections[]` from `terraform show -json` / manifest `cross_shard_refs` (intra-group only). Prefer **`bulk_connect_resources_in_appstack`** with **`source_identifier`** / **`target_identifier`** matching step 3 identifiers (no need to hold UUIDs). Chunk when `len(connections) > ${bulk_connections_chunk_size}` (max **${bulk_connect_resources_max_per_call}** per call). Process **`needs_attention`** like bulk-add; fall back to singular **`connect_resources`** only for stubborn edges. **Never** connect across `appstack_id`s.
 
 5. **Env profile (OPTIONAL).** Project environments (e.g. `dev`, `prod`) must already exist in **Project Settings** — this MCP cannot create them. Behavior:
    - `read_notes` for **`stackgen_target_environment`** (workflow input; default unset) and **`stackgen_environments_required`** (default `"false"`).
@@ -114,9 +117,9 @@ The materialization stage **must not** declare success while `groups_failed > 0`
 
 ## Hard rules — resource membership
 
-- **Closed-set rule.** Never call `add_resource_to_appstack` for any Terraform address that is **not** in this group’s `resource_addresses`. The grouping pass owns the set; the MCP pass copies it verbatim.
+- **Closed-set rule.** Never bulk-add or singular-add any Terraform address that is **not** in this group’s `resource_addresses`. The grouping pass owns the set; the MCP pass copies it verbatim.
 - **No type buckets.** Do not group resources by Terraform type (e.g. "all `aws_iam_*`") at MCP time — that pattern is what produced the previous run’s 11-stack collapse. Use `logical_group_manifest` exactly.
-- **One identifier per address.** The derived identifier must be unique per AppStack; if two addresses sanitize to the same identifier, append a short content hash and update both `identifier_for_address` and the `add_resource_to_appstack` call.
+- **One identifier per address.** The derived identifier must be unique per AppStack; if two addresses sanitize to the same identifier, append a short content hash and update both `identifier_for_address` and the bulk/singular add payload.
 - **No cross-group bleed.** If `get_appstack_resources` shows an identifier that belongs to a different group’s expected set, that is a **hard error**, not a casual cleanup.
 - **Idempotence.** Re-running the materialization step for an existing `appstack_id` in `stackgen_appstack_map` must converge on the same membership; retries should not drop or duplicate resources.
 
@@ -138,7 +141,9 @@ If the workflow passes **`cloud_discovery_id`**, treat it as an **operator corre
 ## Anti-patterns
 
 - Passing **resource pack name** to `add_resource_pack_to_appstack` (must be UUID from `get_supported_resource_types`).
-- Calling `add_resource_to_appstack` with invalid **`identifier`** (must match server rules — typically lowercase snake).
+- Per-group loops of singular **`add_resource_to_appstack`** when the group fits in one or two **`bulk_add_resources_to_appstack`** calls (dominant wall-time regression before bulk tools).
+- Calling bulk-add or singular add with invalid **`identifier`** (must match server rules — typically lowercase snake).
+- Ignoring bulk response **`needs_attention`** and re-walking the entire group with singular tools.
 - Running `terraform`/`tofu` **inside** MCP instead of Ubuntu CLI — keep CLI in Ubuntu MCP; keep StackGen API in StackGen MCP.
 - Assuming **discovery import**, **`download-iac`**, or **git push** MCP tools exist on the default user MCP URL.
 - Skipping the **membership verification gate** (step 3.5) — moving on to `connect_resources` / Plan with `ok=false` is the **specific failure mode** that produced previous runs where AppStacks were created but only a fraction of the group’s addresses were actually present, or where resources from one group leaked into another’s stack.

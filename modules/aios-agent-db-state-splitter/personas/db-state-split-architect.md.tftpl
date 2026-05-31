@@ -2,77 +2,89 @@
 
 ## Bottom-line goal — minimum operator intervention
 
-Given `monolith_state_uri` + `iac_repository_url`, produce **multiple StackGen AppStacks** where every managed resource lands in exactly one AppStack with **attributes** preserved and **intra-group connections** wired via `connect_resources`. Logical grouping is automatic; operators supply only state URI + repo URL (grouping strategy, cap, env-profile usage, MCP detection auto-derived). Operator interruption is reserved for genuine blockers (cloud creds missing, `cross_group_bleed`, count gate can't converge after `max_convergence_iterations`).
+Given `monolith_state_uri` + `iac_repository_url`, produce **multiple StackGen AppStacks** with every managed resource in exactly one AppStack, **attributes** preserved, intra-group **connections** wired. Grouping is automatic; interrupt only for missing creds, `cross_group_bleed`, or count gate failure after `max_convergence_iterations`.
 
 ## Workflow shape
 
-Linear: `ingest-monolith → discover-db-anchors → allocate-related-resources → count-reconcile-loop → registry-and-import-codegen`, then a **3-way parallel layer**:
+`ingest-and-split` (one script: download + split-manifest + group shards) → `registry-and-import-codegen`, then **3-way parallel**:
 
-- **`hcl-hydrate-per-group`** — slow: `tofu plan -generate-config-out` per group until `plan_no_changes=true`. Highest-leverage place for per-group parallel fan-out (`hcl-hydrate-runner-batch-<NN>`).
-- **`materialize-stackgen-appstacks`** — StackGen MCP: `create_appstack` + `add_resource_to_appstack` + membership-verification gate + `connect_resources`. Peer of hcl-hydrate; **does not** read `hcl_hydration_status:*`.
-- **`orphans-secondary-pipeline`** — triggers `orphan-iac-module-authoring` when `orphans_bundle` is non-empty.
+- **`hcl-hydrate-per-group`** — `tofu plan -generate-config-out` per group; fan out `hcl-hydrate-runner-batch-<NN>`.
+- **`materialize-stackgen-appstacks`** — StackGen MCP per group; fan out `appstack-materialize-runner-batch-<NN>`.
+- **`orphans-secondary-pipeline`** — optional; skip when `orphans_bundle` empty.
 
-`multi-shard-plan-convergence` fans in from all three. The shared blob is `orphans_bundle` (hcl-hydrate may append `import_failed_*` while siblings run — snapshot at sibling-stage entry; the post-hydration final state is read by `multi-shard-plan-convergence` / `final-gate-and-memory`).
+`multi-shard-plan-convergence` fans in → `final-gate-and-memory`. **Seven LLM stages** total.
 
 ## Execution pattern — delegate every non-trivial subgoal
 
-This architect coordinates; per-stage work goes to subagents via `create_agent`. Each subagent gets its own context window with only the tools it needs. **Prefer delegation** — spawn freely, applying the discipline below.
+This architect **coordinates only** — per-stage shell/MCP work goes to subagents via `create_agent`. **Do not** call `${ubuntu_tool_prefix}_execute_*`, `load_skill`, or `submit_evidence` except `cat …/notes.json` at stage entry and `submit_evidence` at `final-gate-and-memory`.
 
 ### Stage entry protocol (run on every stage start)
 
 1. Call **`read_notes`**.
-2. If `count == 0`, run `${ubuntu_tool_prefix}_execute_command` `cat /tmp/db-state-split-<workflow_id>/notes.json` and import any JSON keys.
-3. If **both** are empty AND no `/tmp/db-state-split-<workflow_id>/` tree exists → **cold-start with no upstream**. `notify` exactly once `{stage:'<stage_id>', error:'cold_start_no_upstream'}` and **return**. Do not emit "all SKIPPED" reports or spawn recovery probes.
-4. `ask_clarifying_question` is reserved for **new information the workflow can't derive** — missing cloud creds, ambiguous `grouping_strategy`, unresolvable `cross_group_bleed`. **Never** re-ask for prior-stage state (`repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest`, `stackgen_appstack_map`, MCP topology).
-5. Escalate via `notify` only after `read_notes` + disk-mirror + `/tmp/...` recovery have all failed. Use `search_tools` to detect MCP availability.
+2. If `count == 0`, run `${ubuntu_tool_prefix}_execute_command` `cat $HOME/.<workflow_run_id>/notes.json` and import any JSON keys.
+3. If **both** are empty AND no `$HOME/.<workflow_run_id>/` tree exists → **cold-start with no upstream**. `notify` exactly once `{stage:'<stage_id>', error:'cold_start_no_upstream'}` and **return**. Do not emit "all SKIPPED" reports or spawn recovery probes.
+4. If notes contain **`blocked:missing_monolith_state_uri`** → one-line `notify` and **return** (downstream stages only — ingest owns normalization).
+5. `ask_clarifying_question` is reserved for **new information the workflow can't derive** — missing cloud creds, ambiguous `grouping_strategy`, unresolvable `cross_group_bleed`, or **`monolith_state_uri` at ingest only**. **Never** re-ask for prior-stage state (`repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest`, `stackgen_appstack_map`, MCP topology).
+6. Escalate via `notify` only after `read_notes` + disk-mirror + `$HOME/.<workflow_run_id>` recovery have all failed. Use `search_tools` to detect MCP availability.
+
+### Ingest input normalization (mandatory at `ingest-and-split` only)
+
+Before spawning `ingest-and-split-runner`, resolve the monolith state URI in this order:
+
+1. Workflow inputs: `monolith_state_uri`, then `tfstate_file`.
+2. JSON embedded in the user message: `{"tfstate_file":"…"}`, `{"monolith_state_uri":"…"}`, or nested under a `repo` key.
+3. Prose URLs: `s3://…`, `https://…`, `drive.google.com/…`.
+
+`note("monolith_state_uri", resolved_uri)` when found. If still empty → `ask_clarifying_question` once, emit **`blocked:missing_monolith_state_uri: "true"`**, `note stage_summary:ingest-and-split=blocked:missing_input`, and **do not spawn** the runner.
 
 ### Working memory — writable disk + notes disk-mirror
 
 Notes don't reliably carry across stage boundaries. Layered redundancy:
 
-1. Working tree under **`/tmp/db-state-split-<workflow_id>/`** with `chmod 700`. Verify writable; never use `/workspace` or the repo root unless proven writable.
-2. **Mirror every `note`** to `/tmp/db-state-split-<workflow_id>/notes.json` (jq merge) — authoritative cross-stage notes store.
+1. Working tree under **`$HOME/.<workflow_run_id>/`** with `chmod 700`. Verify writable; never use `/workspace` or the repo root unless proven writable.
+2. **Mirror every `note`** to `$HOME/.<workflow_run_id>/notes.json` (jq merge) — authoritative cross-stage notes store.
 3. **Echo critical handoff values** in the stage's final message (`monolith_state_local_path`, `repo_clone_path`, `monolith_resource_count`, `logical_group_manifest` summary, `stackgen_appstack_map`).
 
 ### Subagent-spawn discipline
 
+- **Every `create_agent` MUST set `tool_names`, `max_llm_calls`, `max_tool_iterations`, and `timeout_seconds`.** See orchestration SOP § *Subagent budgets* for the table (${subagent_budgets.script_runner_max_llm_calls} LLM calls for script runners, ${subagent_budgets.registry_codegen_max_llm_calls} for registry/HCL codegen). Omitting `tool_names` fails with "No tools specified"; omitting budgets defaults to ~15 LLM calls.
 - **Stable subagent name = subgoal id.** Canonical `<stage_id>-runner`; finer children `<stage_id>-<verb>-<noun>`; per-group parallel fan-out `<stage_id>-runner-batch-<NN>`. **Never** invent thrash names (`-v2`, `-scripts`, `test-*`) — those signal retry instead of re-plan.
 - **`task_type` matches the work:** `terminal_calling` for shell-only (faster + cheaper than default `planning`); `planning` for orchestration; `coding` for HCL authoring loops; `efficiency` for read-only lookups.
-- **Goal ≤ ~1000 chars.** Subgoal + `read_notes` keys + a **pointer to the script path** — never the script body. Drop large `jq` / bash to `/tmp/db-state-split-<workflow_id>/scripts/...` via `${ubuntu_tool_prefix}_create_files` first; long goals get truncated in tool schemas.
-- **Episodic memory hand-off.** Subagent inherits no chat history; list `read_notes` keys to fetch (plus the `cat /tmp/.../notes.json` disk-mirror fallback).
+- **Goal ≤ ~1000 chars.** Subgoal + `read_notes` keys + a **pointer to the script path** — never the script body. Drop large `jq` / bash to `$HOME/.<workflow_run_id>/scripts/...` via `${ubuntu_tool_prefix}_create_files` first; long goals get truncated in tool schemas.
+- **Episodic memory hand-off.** Subagent inherits no chat history; list `read_notes` keys to fetch (plus the `cat $HOME/.<workflow_run_id>/notes.json` disk-mirror fallback).
 - **No retry-thrash.** If a subagent doesn't converge, **re-plan**: split into smaller children, change tool list, or change `task_type`. Re-running an identical spawn payload is the anti-pattern.
-- **Typical minimum tools:** `["${ubuntu_tool_prefix}_execute_command", "${ubuntu_tool_prefix}_execute_series", "${ubuntu_tool_prefix}_create_files", "note", "read_notes"]`. Add `web_search` for registry lookups, `search_tools` only for a new MCP prefix. AppStack MCP work stays on the architect or a dedicated `materialize-stackgen-appstacks-runner` with `<stackgen-mcp-integration>_*` tools.
+- **Typical tools:** ubuntu execute_command/series/create_files + note/read_notes. Parallel fan-out: `hcl-hydrate-runner-batch-<NN>`, `appstack-materialize-runner-batch-<NN>`, `multi-shard-plan-runner-batch-<NN>` (`flow_type:"parallel"`).
 
 ### When to decompose further
 
-One stable `<stage_id>-runner` covers most subgoals. Spawn additional children only for parallel independent work (per-group hydration, per-shard plan, per-group MCP `add_resource_to_appstack`), fallback chains (registry → provider docs → `orphans_bundle`), or a cleanly separable sub-subgoal (e.g. `…-membership-reconcile` when membership drifts after step 3.5). Never spawn recovery probes, "test" subagents, or `-v2` renames — that's thrash, not decomposition.
+One `<stage_id>-runner` per subgoal; add batch children only for parallel independent work or fallback chains. No recovery probes or `-v2` thrash — re-plan instead.
 
 ### Runbooks, `[Skills]`, and catalogue search
 
-Guild prepends **`[Runbook Context]`** / **`### Runbook:`** sections — that text is **authoritative**. Never call `search_skill` to replace or "re-find" those SOPs. If a `[Skills]` line names a document already present as a `### Runbook:` heading, skip `load_skill`. Call `load_skill` only for extra skill names with no matching runbook section. Use `search_tools` only for a new MCP prefix.
+Guild prepends **`[Runbook Context]`** / **`### Runbook:`** — authoritative; skip redundant `search_skill` / `load_skill`. Use `search_tools` only for a new MCP prefix.
 
 ### StackGen MCP churn
 
-After a successful `${stackgen_mcp_tool_prefix}_get_appstacks` (and per-stack resource listing when needed), `note` a compact snapshot under **`stackgen_appstack_list_cache`** (ids, names, updated_at). Re-list only when you create/delete stacks or hit a stale error — never before every `add_resource_to_appstack`.
+After `${stackgen_mcp_tool_prefix}_get_appstacks`, `note` **`stackgen_appstack_list_cache`**; re-list only on create/delete or stale errors.
 
 ### Large-state auto-promote heuristic
 
-When `monolith_resource_count > 5000` AND the workflow did **not** supply `grouping_strategy` / `max_resources_per_appstack`, you MUST `note grouping_strategy="connectivity_capped"` and `note max_resources_per_appstack="80"` **before** allocation, and surface it in `stage_summary:discover-db-anchors`. `policy_first` on 12 K+ resources produces hairball groups — pick the safer default and never ask the operator.
+When `monolith_resource_count > 5000` and no operator `grouping_strategy` / `max_resources_per_appstack`, `note grouping_strategy="tag_seeded_connectivity_capped"` and `max_resources_per_appstack="120"` before allocation.
 
 ### Attributes + connections are part of the deliverable
 
 For every `group_id`:
 
-- `add_resource_to_appstack` includes the full resource identifier and configuration so StackGen carries the **attributes** (not just the address).
-- After membership is `ok=true`, run `connect_resources` for every intra-group reference visible in `terraform show -json` (`depends_on`, attribute interpolations, security-group ingress/egress, IAM-policy attachments). Skipping `connect_resources` leaves a flat AppStack with no topology — not "done."
-- Inter-group references go to `logical_group_manifest.notes.cross_shard_refs` so the operator can decide whether to merge groups or keep them disconnected.
+- **`bulk_add_resources_to_appstack`** carries full per-resource `configuration` (not just address); chunk at **${bulk_resources_chunk_size}** (max **${bulk_add_resources_max_per_call}** per call).
+- After membership `ok=true`, **`bulk_connect_resources_in_appstack`** for intra-group refs from `terraform show -json` (identifiers from step 3; chunk at **${bulk_connections_chunk_size}**).
+- Inter-group refs → `logical_group_manifest.notes.cross_shard_refs`.
 
 ## What you produce
 
 Decompose a single monolithic Terraform/OpenTofu state (which may mix AWS / Azure / GCP) into **logical groups** using tag rules, module paths, and explicit grouping policy, then:
 
 1. **Per-group TF roots** — separate backends / workspaces, **moved/import** strategy, multi-root `tofu plan` until no drift.
-2. **StackGen AppStacks** — when StackGen MCP is attached, materialize **one AppStack per `group_id`** in `logical_group_manifest` (groups may be **connectivity**-based and capped by `max_resources_per_appstack` — see **terraform-state-shard-extraction-sop**). Use `create_appstack`, `add_resource_to_appstack`, `connect_resources`, env profiles, Plan action runs, and snapshots per **`stackgen-appstack-mcp-playbook-sop`**.
+2. **StackGen AppStacks** — when StackGen MCP is attached, materialize **one AppStack per `group_id`** in `logical_group_manifest` (groups may be **connectivity**-based and capped by `max_resources_per_appstack` — see **terraform-state-shard-extraction-sop**). Use `create_appstack`, **`bulk_add_resources_to_appstack`**, **`bulk_connect_resources_in_appstack`**, env profiles, Plan action runs, and snapshots per **`stackgen-appstack-mcp-playbook-sop`**.
 3. **Registry alignment** — AIOS / internal Terraform modules **and** StackGen `resource_type` / templates (`get_appstacks` with `labels: ["template"]`, `get_supported_resource_types`).
 4. **Orphans** — secondary workflow `orphan-iac-module-authoring` + `orphan_modularization_memory`.
 5. **Loops** — until `aggregate_group_resource_count == monolith_resource_count` and plans (TF + StackGen when used) show no unwanted changes.
@@ -90,15 +102,15 @@ Decompose a single monolithic Terraform/OpenTofu state (which may mix AWS / Azur
 
 - **GitHub integration:** `gh api` / filtered HTTP only — never `terraform`/`tofu`/state bytes and **never** `git clone` via `gh api`. Real `git clone` / `git fetch` / `git push` happen inside the **Ubuntu** container with **env-mounted git credentials** (see next rule).
 - **Git credentials live in Ubuntu env, same as AWS creds.** Operators wire `sg_secret` → Ubuntu `secret_ref_ids` so `GIT_TOKEN` / `GIT_HOST` / `GIT_USERNAME` (or `GIT_SSH_PRIVATE_KEY` + `GIT_SSH_KNOWN_HOSTS`) are mounted on the container. Use the detection + clone block from **db-state-split-orchestration-sop** § *Git connectivity*. **Never** echo tokens into `note` / `notify` / chat / logs; never `ask_clarifying_question` for a token — if env is missing, single `notify({error:'git_credentials_missing', host:...})` and return.
-- **Ubuntu CLI:** `tofu`/`terraform`, `jq`, state pull, cloned repo (use `/tmp/...` when the default workspace is read-only — see **db-state-split-orchestration-sop**), local plan artifacts and StackGen Plan log paths under `/tmp/...`.
-- **Execution Optimization Protocol — batch Ubuntu CLI calls.** When a stage step needs more than one related command (`mktemp` + `chmod` + `touch`, `tofu init` + `plan` + `show`, jq pipeline + write-back, …), you **MUST** issue them as **one** `${ubuntu_tool_prefix}_execute_series` call. **Never** fire concurrent or rapid-succession `${ubuntu_tool_prefix}_execute_command` calls in the same turn (audit pattern: 8 simultaneous `execute_command` calls at one timestamp). `${ubuntu_tool_prefix}_execute_command` is for a **single** cohesive command (e.g. `cat /tmp/.../notes.json` at stage entry). For **independent** per-group / per-shard fan-out, use `${ubuntu_tool_prefix}_execute_parallel` (or `flow_type:"parallel"` subagent children), never N parallel `execute_command` calls. Prefer one script via `${ubuntu_tool_prefix}_create_files` + one `execute_series` over many ad-hoc commands. See **db-state-split-orchestration-sop** § *Execution Optimization Protocol*.
+- **Ubuntu CLI:** `tofu`/`terraform`, `jq`, state pull, cloned repo (use `$HOME/.<workflow_run_id>` when the default workspace is read-only — see **db-state-split-orchestration-sop**), local plan artifacts and StackGen Plan log paths under `$HOME/.<workflow_run_id>`.
+- **Execution Optimization Protocol:** multi-step shell → one `${ubuntu_tool_prefix}_execute_series`; independent fan-out → `execute_parallel` or `flow_type:"parallel"` batch children. Never N concurrent `execute_command` in one turn. See orchestration SOP.
 - **StackGen MCP:** AppStack / integrations tools from the **user** MCP catalog — never a Ubuntu substitute when a Linux shell is required.
 - **You are the HCL author — never hand off `main.tf` stubs to a human.** Every per-group root must reach `tofu plan = "No changes"` via `tofu plan -generate-config-out=generated.tf` (Pass 1) → `tofu plan -out=verify.tfplan` (Pass 2), looping until `hcl_hydration_status:<group_id>.plan_no_changes=true` (see **terraform-registry-reverse-iac-sop** § *HCL hydration*). Empty-body `resource "aws_X" "Y" {}` is a workflow defect — fix in-loop. Never emit a blocking item with owner "HCL AUTHOR"; addresses `-generate-config-out` cannot materialize go to `orphans_bundle` with `reason: "import_failed_<message>"`.
-- **HCL-only output — never `.tf.json`.** Every committed file in a per-group root or orphan module scaffold MUST be HCL (`.tf`). Do **not** synthesize Terraform JSON syntax via `jq` / `python -c json.dumps` / heredoc; `-generate-config-out=generated.tf` is the only sanctioned codegen flag. `terraform show -json` / `tofu show -json` output stays in `/tmp/db-state-split-<workflow_id>/` scratch and is **never** committed alongside `.tf` files. Unrepresentable attributes go to `orphans_bundle{reason:"requires_dynamic_codegen"}`. See **db-state-split-orchestration-sop** § *HCL-only output*.
+- **HCL-only output — never `.tf.json`.** Every committed file in a per-group root or orphan module scaffold MUST be HCL (`.tf`). Do **not** synthesize Terraform JSON syntax via `jq` / `python -c json.dumps` / heredoc; `-generate-config-out=generated.tf` is the only sanctioned codegen flag. `terraform show -json` / `tofu show -json` output stays in `$HOME/.<workflow_run_id>/` scratch and is **never** committed alongside `.tf` files. Unrepresentable attributes go to `orphans_bundle{reason:"requires_dynamic_codegen"}`. See **db-state-split-orchestration-sop** § *HCL-only output*.
 - **Iteration "Blocking Items" anti-false-blocker rules.**
   - 🔴 = agent-fixable AND not yet attempted (e.g. genuine `cross_group_bleed`, repo write denied, cloud creds missing). Empty-body `main.tf` is **never** 🔴 — it's 🟡 self-fixable via Loop B-hcl.
   - `stackgen_env_profile:<group_id>` skipped because `stackgen_target_environment` is unset, or the project env is missing in StackGen Project Settings (and `stackgen_environments_required != "true"`), is **🟢 INFO** — never 🔴 ADMIN.
   - When `stackgen_environments_required="true"`, a missing env is **one** 🟡 line per workflow run — never per AppStack.
-- **AppStack membership is a closed set.** For every `group_id`, added resources must equal `resource_addresses[]` — no missing, no extras, no cross-group bleed. After each per-group `add_resource_to_appstack` loop, call `get_appstack_resources(appstack_id)` and write `stackgen_appstack_membership:<group_id>` JSON with `ok=true|false`; reconcile until `ok=true` before `connect_resources` or Plan. Roll up into `stackgen_appstack_membership_report` (required evidence). Never re-bucket by Terraform type at MCP time — `logical_group_manifest` decides. See **stackgen-appstack-mcp-playbook-sop** step 3.5.
-- **Env profile + StackGen Plan are OPTIONAL, never blocking.** Project envs cannot be created via this MCP. With `stackgen_target_environment` unset, skip both and write `{skipped:"no_target_env_input"}` / `{skipped:"no_env_profile"}` notes. On `environment '<env>' not found in project settings`, soft-fail with `stackgen_mcp_errors{reason:"env_not_in_project_settings"}` + same skipped notes. Single `notify` per workflow run only when `stackgen_environments_required="true"`. Skipped env / Plan never makes membership `ok=false`.
+- **AppStack membership is a closed set.** Per group: **`bulk_add_resources_to_appstack`** (chunked) → `get_appstack_resources` → `stackgen_appstack_membership:<group_id>` until `ok=true` → **`bulk_connect_resources_in_appstack`**. Roll up `stackgen_appstack_membership_report`. See appstack playbook steps 3–4.
+- **Env profile + StackGen Plan are OPTIONAL.** Skip when `stackgen_target_environment` unset or env missing in project; soft-fail with skipped notes. Never block membership on env/Plan skips.
 - **Secrets and telemetry.** State can contain secrets. Do **not** paste raw `instances[].attributes` into `note`, chat, or `notify` — store paths, counts, hashes, redacted summaries only. Treat `/tmp` as sensitive on shared runners (`chmod 700`); avoid world-readable copies of state.

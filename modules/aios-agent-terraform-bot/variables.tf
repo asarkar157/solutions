@@ -51,8 +51,9 @@ variable "existing_ubuntu_integration_name" {
   description = <<-EOT
     Optional. When set, this module SKIPS provisioning its own `terraform-bot-ubuntu`
     Guild integration and attaches the agent to the supplied existing integration
-    name instead. Note: the existing Ubuntu container must already have the GitHub PAT
-    surfaced as `GH_TOKEN` (otherwise `gh` / `git clone` will fail inside the sandbox).
+    name instead.     Note: the existing Ubuntu integration must already have the GitHub PAT wired via
+    `secret_ref_ids` as a `Provider/github` secret (surfaced as `GIT_TOKEN` / `GH_TOKEN`
+    in the container env). Otherwise `gh` / `git clone` will fail inside the sandbox.
     Default `""` keeps the self-contained behaviour.
   EOT
   type        = string
@@ -62,7 +63,7 @@ variable "existing_ubuntu_integration_name" {
 variable "workflow_skill_refs" {
   description = <<-EOT
     Optional Guild skill_refs for sg_workflow stage_bindings (load_skill hints so stages stay on playbook).
-    Keys: "terraform-module-update::<stage_id>" where stage_id matches the workflow stage (e.g. analyze-request, security-scan-and-plan).
+    Keys: "terraform-module-update::<stage_id>" where stage_id matches the workflow stage (e.g. check-info-and-clone, implement-module, validate-and-test, create-pr).
     Each value is appended after the module defaults for that stage.
   EOT
   type        = map(list(string))
@@ -149,13 +150,14 @@ variable "discovery_modules_repository_full_names" {
 
 variable "discovery_modules_issue_label" {
   description = <<-EOT
-    Optional label gate for discovery-modules repos. When non-empty, `analyze-request`
-    requires this label on the triggering issue before cloning (same pattern as
-    `aios-agent-scenario-author`). Leave empty to accept any issue on configured repos.
-    Recommended: `discovery-module-request`.
+    GitHub label gate for discovery-modules repos (same pattern as
+    `aios-agent-scenario-author` / `scenario-request`). The intake stage requires this
+    label on the triggering issue before cloning. Leave empty to accept any issue on
+    configured discovery repos. Default: `discovery-module-request`. Legacy alias
+    `analyze-request` is accepted during migration (see discovery layout SOP §1).
   EOT
   type        = string
-  default     = ""
+  default     = "discovery-module-request"
 }
 
 variable "stackgen_upload_url" {
@@ -190,8 +192,7 @@ variable "stackgen_token_secret_id" {
 
 variable "defer_pr_until_quality_pass" {
   description = <<-EOT
-    When true (default), `merge-findings-and-test-loop` commits and pushes to a working branch
-    but does not run `gh pr create` until `register-and-notify` after `module_quality_summary`
+    When true (default), `create-pr` defers `gh pr create` until `module_quality_summary`
     is PASS with all `quality_check_*` sentinels PASS. Avoids reviewers seeing failing WIP PRs.
   EOT
   type        = bool
@@ -200,9 +201,9 @@ variable "defer_pr_until_quality_pass" {
 
 variable "module_quality_max_iterations" {
   description = <<-EOT
-    Maximum number of times `module-quality-loop-gate` may return to `merge-findings-and-test-loop`
-    when quality is still not PASS. When the budget is exhausted, registration posts a blocked
-    summary (no StackGen upload) even if the agent still emitted NEEDS_REVISION.
+    Maximum number of times `validate-loop-gate` may return to `implement-module`
+    when quality is still not PASS. When the budget is exhausted, `create-pr` still runs
+    but posts a blocked summary (no StackGen upload) even if the agent still emitted NEEDS_REVISION.
   EOT
   type        = number
   default     = 3
@@ -211,4 +212,28 @@ variable "module_quality_max_iterations" {
     condition     = var.module_quality_max_iterations >= 1 && var.module_quality_max_iterations <= 10
     error_message = "module_quality_max_iterations must be between 1 and 10."
   }
+}
+
+variable "subagent_budgets" {
+  description = <<-EOT
+    Optional overrides for create_agent subagent budgets (Guild clamps max_llm_calls to [8, 60]
+    and max_tool_iterations to [40, 50]). Raise hcl_author_max_llm_calls when discovery/registry
+    scaffolds hit "max LLM calls exceeded"; script runners rarely need more than 25.
+  EOT
+  type = object({
+    script_runner_max_llm_calls     = optional(number)
+    github_fetch_max_llm_calls      = optional(number)
+    github_comment_max_llm_calls    = optional(number)
+    validate_runner_max_llm_calls   = optional(number)
+    hcl_author_max_llm_calls        = optional(number)
+    script_runner_timeout_seconds   = optional(number)
+    github_fetch_timeout_seconds    = optional(number)
+    github_comment_timeout_seconds  = optional(number)
+    validate_runner_timeout_seconds = optional(number)
+    hcl_author_timeout_seconds      = optional(number)
+  })
+  default = {}
+
+  # Note: optional() keys in an object-typed variable default to null when unset.
+  # main.tf coalesces each key against subagent_budget_defaults — do not merge() directly.
 }

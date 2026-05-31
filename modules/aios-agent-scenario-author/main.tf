@@ -6,7 +6,8 @@ terraform {
       # 0.1.17 — adopt-on-conflict for sg_policy_bundle, already-approved
       # sg_workflow, sg_guild_model_provider / sg_guild_model; integration env
       # map; floor that includes evidence-checklist + remediation patterns.
-      version = ">= 0.1.20, < 0.2.0"
+      # spawn_contracts on stage_bindings + workflow metadata (provider >= 0.1.21).
+      version = ">= 0.1.21, < 0.2.0"
     }
   }
 }
@@ -198,6 +199,10 @@ resource "sg_workflow" "scenario_request_triage" {
   description = "Triages `scenario-request` GitHub issues filed against the configured solutions-style repo (default `appcd-dev/solutions`). Hands the clone/triage/scaffold/PR work to a Cursor Cloud Agent (no Ubuntu sandbox shell scripting), then comments back on the issue with the PR URL or the existing-scenario match. Powers the SE feedback loop documented in docs/se-feedback.md and docs/se-playbook.md."
   approve     = true
 
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
+
   triggers = [
     { field = "event_type", values = var.trigger_event_types, type = "active", source = "github" }
   ]
@@ -249,8 +254,9 @@ resource "sg_workflow" "scenario_request_triage" {
         [local.sop_orchestration_name],
         try(var.workflow_skill_refs["scenario-request-triage::analyze-issue"], []),
       )
-      note = <<-EOT
-        Budget contract: ≤ 2 subagents, ≤ $0.75, ≤ 120s.
+      spawn_contracts = local.spawn_contracts_analyze_issue
+      note            = <<-EOT
+        Budget contract: ≤ 2 subagents, ≤ $0.75, ≤ 120s. Host applies `spawn_contracts` — do NOT re-specify create_agent budgets.
 
         Plan (do this exactly — the gate is what protects the bot from random org-wide noise):
 
@@ -266,7 +272,7 @@ resource "sg_workflow" "scenario_request_triage" {
 
         2. `read_notes` for `issue_details`. If populated (re-entry case), skip to step 4.
 
-        3. Spawn EXACTLY one subagent named `analyze-issue-fetch-issue` per orchestration-sop Template A. It calls `${local.resolved_github_integration_name}_execute_command` with `gh api /repos/<repository_full_name>/issues/<n>` and the `--jq` filter from Template A → note `issue_details`. NO token capture step — the GitHub integration container is pre-bound to the PAT secret.
+        3. Spawn EXACTLY one `analyze-issue-fetch-issue` (Template A). Host applies spawn contract for gh fetch → note `issue_details`. NO token capture.
 
         4. Evaluate the §0c gate using the notes:
              a) `gate_result = "wrong_repo"` if `repository_full_name` ≠ `${var.repository_full_name}`.
@@ -296,8 +302,9 @@ resource "sg_workflow" "scenario_request_triage" {
         [local.sop_orchestration_name, local.sop_cursor_author_name],
         try(var.workflow_skill_refs["scenario-request-triage::cursor-author"], []),
       )
-      note = <<-EOT
-        Budget contract: ≤ 1 subagent, ≤ $2.00, ≤ 12 minutes (Cursor's `run_task` polls until the cloud agent reports FINISHED / FAILED / CANCELED — it can take 5-10 minutes for a non-trivial scaffold). Reserve ≥ $0.50 for `notify-issue-comment`.
+      spawn_contracts = local.spawn_contracts_cursor_author
+      note            = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $2.00, ≤ 12 minutes. Host applies `spawn_contracts`. (Cursor's `run_task` polls until the cloud agent reports FINISHED / FAILED / CANCELED — it can take 5-10 minutes for a non-trivial scaffold). Reserve ≥ $0.50 for `notify-issue-comment`.
 
         Short-circuit: this stage is a no-op when `gate_result != "pass"` (`read_notes` first). In that case, note `stage_summary:cursor-author="skipped: gate ${var.scenario_request_label} -> <gate_result>"` and yield.
 
@@ -342,8 +349,9 @@ resource "sg_workflow" "scenario_request_triage" {
         [local.sop_orchestration_name, local.sop_pr_and_notify_name],
         try(var.workflow_skill_refs["scenario-request-triage::notify-issue-comment"], []),
       )
-      note = <<-EOT
-        Budget contract: ≤ 1 subagent, ≤ $0.50, ≤ 60s. THIS STAGE MUST RUN — it is how the SE sees the bot's output, including blocked-status outputs from upstream stages.
+      spawn_contracts = local.spawn_contracts_notify_issue
+      note            = <<-EOT
+        Budget contract: ≤ 1 subagent, ≤ $0.50, ≤ 60s. Host applies `spawn_contracts`. THIS STAGE MUST RUN — it is how the SE sees the bot's output, including blocked-status outputs from upstream stages.
 
         Plan:
 

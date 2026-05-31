@@ -56,13 +56,17 @@ opa-check:
 	@chmod +x "$(CURDIR)/scripts/opa-check-all.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/opa-check-all.sh"
 
-validate: validate-db-state-split-templates
+validate: validate-db-state-split-templates validate-terraform-bot-workflow-scripts
 	@chmod +x "$(TF_ROOT_SCRIPT)" 2>/dev/null || true
 	@"$(TF_ROOT_SCRIPT)"
 
 validate-db-state-split-templates:
 	@chmod +x "$(CURDIR)/scripts/verify-db-state-split-templates.sh" 2>/dev/null || true
 	@"$(CURDIR)/scripts/verify-db-state-split-templates.sh"
+
+validate-terraform-bot-workflow-scripts:
+	@chmod +x "$(CURDIR)/scripts/verify-terraform-bot-workflow-scripts.sh" 2>/dev/null || true
+	@"$(CURDIR)/scripts/verify-terraform-bot-workflow-scripts.sh"
 
 # verify-persona-length enforces two hard rules in one pass:
 #   1. Guild's 15000-byte agent persona cap on every modules/*/personas/**/*.md.

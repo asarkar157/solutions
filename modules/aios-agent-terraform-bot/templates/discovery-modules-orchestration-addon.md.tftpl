@@ -4,14 +4,17 @@
 
 When `repository_full_name` ∈ {${discovery_repositories_list}}:
 
-  1. Load skill `${sop_discovery_layout_name}` BEFORE module resolution or greenfield scaffold. It overrides generic `modules/` layout rules.
-  2. Persist note `discovery_repo=true` when the gate passes.
+  1. Persist note `discovery_repo=true` as soon as the repo matches (`check-info-and-clone` step 1).
 %{ if discovery_issue_label != "" ~}
-  3. Label gate: `issue_labels` MUST include `${discovery_issue_label}` in `analyze-request` (see discovery layout SOP §1). On failure, post Template E and STOP — do not clone.
+  2. **Label gate first** (`check-info-and-clone` step 2 — discovery layout SOP §1): check `issue_labels` from the webhook payload before any other work. On failure, Template E (GitHub path) and STOP.
+  3. Only after `gate_result` is `pass` or `pass_legacy_label`: load skill `${sop_discovery_layout_name}` before module resolution or greenfield scaffold.
+%{ else ~}
+  2. Load skill `${sop_discovery_layout_name}` BEFORE module resolution or greenfield scaffold. It overrides generic `modules/` layout rules.
 %{ endif ~}
-  4. In `security-scan-and-plan-validate`, use discovery layout SOP §2 for existence checks under `aws/`, `gcp/`, `azurerm/` — never `modules/` or `terraform/modules/`.
-  5. In `merge-findings-and-test-loop`, when `not_found` + greenfield: spawn **Template I** (`merge-findings-and-test-loop-discovery-scaffold`) per discovery layout SOP §4 — **do NOT** spawn Template H (registry wrap) on these repos.
-  6. Approved subagent name for this stage additionally includes: `merge-findings-and-test-loop-discovery-scaffold`.
+  4. In `implement-module`, use discovery layout SOP §2 for existence checks under `aws/`, `gcp/`, `azurerm/` — never `modules/` or `terraform/modules/`.
+  5. In `implement-module`, when `not_found` + greenfield: spawn **Template I** (`implement-module-discovery-scaffold`) per discovery layout SOP §4 — **do NOT** spawn Template H (registry wrap) on these repos.
+  6. Approved subagent name for this stage additionally includes: `implement-module-discovery-scaffold`.
+  7. **Forbidden in `check-info-and-clone`** before the label gate passes: `graph_query`, `load_skill` (including this layout SOP), `check-info-and-clone-fetch` when title/body/labels are already in the webhook payload.
 
 ========================================================================
 2a-discovery) Resolution override (discovery repos only)

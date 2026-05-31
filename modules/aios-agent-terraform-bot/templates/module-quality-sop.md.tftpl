@@ -1,4 +1,4 @@
-Skill: Senior DevOps quality bar for Terraform modules produced by the Terraform Module Manager. Used by `module-quality-assess` and `module-quality-iterate` stages.
+Skill: Senior DevOps quality bar for Terraform modules produced by the Terraform Module Manager. Used by `validate-and-test` (primary) and rework via `validate-loop-gate` → `implement-module`.
 
 Keywords: module quality, fmt, validate, tftest, tfsec, checkov, stackgen.yaml, module_quality_summary, quality_check_fmt, quality_check_validate, quality_check_test, PASS, NEEDS_REVISION.
 
@@ -8,10 +8,10 @@ Keywords: module quality, fmt, validate, tftest, tfsec, checkov, stackgen.yaml, 
 
 Every assess/iterate stage MUST end its stage output with these lines (each on its own line, exact tokens):
 
-  quality_check_fmt: PASS|FAIL
-  quality_check_validate: PASS|FAIL
-  quality_check_test: PASS|FAIL
-  module_quality_summary: PASS|NEEDS_REVISION
+  quality_check_fmt: PASS|FAIL|BLOCKED
+  quality_check_validate: PASS|FAIL|BLOCKED
+  quality_check_test: PASS|FAIL|BLOCKED
+  module_quality_summary: PASS|NEEDS_REVISION|BLOCKED
 
 Optional when not PASS:
 
@@ -19,15 +19,15 @@ Optional when not PASS:
   - <specific gap 1>
   - <specific gap 2>
 
-Also persist the same keys via `note` (`quality_check_*`, `module_quality_summary`). When NEEDS_REVISION, also `note` `module_quality_rework=true`.
+Also include the same keys in `workflow_notes_snapshot` (`quality_check_*`, `module_quality_summary`). When NEEDS_REVISION (code quality only), set `module_quality_rework=true` in the snapshot. When **BLOCKED** (integration infra), do **NOT** set `module_quality_rework=true` — `validate-infra-gate` skips the rework loop.
 
-**Iteration budget:** Only `module-quality-loop-gate` (`loop_stage`) counts rework cycles (max ${module_quality_max_iterations}). Do NOT maintain a separate `module_quality_iteration` counter or emit `GIVE_UP` from agent stages — loop exhaustion is detected from loop gate JSON (`Reason` contains `max iterations reached`).
+**Iteration budget:** Only `validate-loop-gate` (`loop_stage`) counts rework cycles (max ${module_quality_max_iterations}) for `NEEDS_REVISION` only — never for `BLOCKED`. Do NOT maintain a separate `module_quality_iteration` counter or emit `GIVE_UP` from agent stages — loop exhaustion is detected from loop gate JSON (`Reason` contains `max iterations reached`).
 
 ========================================================================
 2) Deterministic shell checks (mandatory before PASS)
 ========================================================================
 
-`module-quality-assess` MUST spawn ONE Ubuntu subagent `module-quality-assess-recheck` that runs, for every path in `module_paths`:
+`validate-and-test` MUST spawn ONE Ubuntu subagent `validate-and-test-runner` that runs, for every path in `module_paths`:
 
   - `${sop_install_validate_test}` steps 1, 2, 2b (fmt -check, init -backend=false, validate)
   - step 4 (tofu test / terraform test) when tests exist or are required
@@ -39,6 +39,25 @@ Map exit codes to sentinels (never guess from prose):
   - test exit 0 or documented approved skip → `quality_check_test: PASS` else FAIL
 
 `module_quality_summary: PASS` is allowed ONLY when all three `quality_check_*` lines are `PASS` AND §3 criteria hold.
+
+========================================================================
+2b) Infra BLOCKED vs code FAIL (mandatory — trace 01beb81f)
+========================================================================
+
+Use **BLOCKED** (not FAIL or NEEDS_REVISION) when the Ubuntu integration never ran real shell:
+
+  - Subagent output mentions "workspace unavailable" or synthesizes results without tool execution
+  - `terraform-bot-ubuntu_execute_series` returned empty/canned text with no fmt/init/validate stdout
+  - Repeated lazy-init / sidecar errors after §8(e) retries (max 3)
+
+When BLOCKED:
+
+  - Set all three `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED`
+  - Do **NOT** set `module_quality_rework=true`
+  - `validate-infra-gate` skips the loop to `create-pr` for a GitHub-only blocked comment
+  - Do **NOT** loop back to `implement-module` — re-scaffolding cannot fix a dead sidecar
+
+Use **FAIL** / **NEEDS_REVISION** only when shell commands ran and reported non-zero exit codes or test assertion failures.
 
 ========================================================================
 3) PASS criteria (all must hold)
@@ -54,8 +73,9 @@ Map exit codes to sentinels (never guess from prose):
 4) NEEDS_REVISION triggers (non-exhaustive)
 ========================================================================
 
-- Any `quality_check_*: FAIL`
-- Missing `basic.tftest.hcl` (discovery) or `tests/*.tftest.hcl` (generic) for a greenfield module
+- Any `quality_check_*: FAIL` (after real shell execution)
+- `module_quality_summary: BLOCKED` — operator must fix Ubuntu integration; not a rework target
+- Missing `basic.tftest.hcl` at module root (discovery) or `tests/*.tftest.hcl` (generic) for a greenfield module
 - Missing or invalid `.stackgen/stackgen.yaml` on discovery repos
 - Empty `module_paths` after merge when greenfield was requested
 - Critical security findings without remediation plan
@@ -65,7 +85,8 @@ Map exit codes to sentinels (never guess from prose):
 ========================================================================
 
 1. `read_notes` for `module_quality_gaps`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
-2. Spawn ONE Ubuntu subagent `module-quality-iterate-remediate` that:
+2. When `module_paths` is empty after validate: the loop returns to `implement-module` (Templates H/G/I) — do NOT open a PR until paths exist and validate PASS.
+   When `module_paths` is non-empty: spawn ONE Ubuntu subagent `module-quality-iterate-remediate` that:
      - Fixes ONLY the listed gaps (and discovery layout SOP if `discovery_repo=true`).
      - Re-runs `${sop_install_validate_test}` steps 1, 2, 2b, 4 inside each `module_paths` entry.
      - Re-validates stackgen.yaml on discovery repos when applicable.
@@ -76,13 +97,13 @@ Map exit codes to sentinels (never guess from prose):
 6) Merge stage rework (when loop returns)
 ========================================================================
 
-When `module_quality_rework=true` or `module_quality_gaps` is non-empty in notes, `merge-findings-and-test-loop` MUST:
+When `module_quality_rework=true` or `module_quality_gaps` is non-empty in notes, `implement-module` MUST:
 - Treat gap list as the authoritative fix list (do not re-scaffold from scratch unless paths are empty).
 - Clear stale `test_summary`, `validation_summary`, and all `quality_check_*` notes before re-validating.
-- Append to `stage_summary:merge-findings-and-test-loop` that this is a quality-loop rework (budget enforced by `module-quality-loop-gate`).
+- Append to `stage_summary:implement-module` that this is a quality-loop rework (budget enforced by `validate-loop-gate`).
 
 ========================================================================
 7) Deferred PR (when enabled)
 ========================================================================
 
-When `pr_deferred=true`, merge stage pushes commits only (Template D-push). Registration stage opens the PR via Template D-open-pr after quality PASS.
+When `pr_deferred=true`, `create-pr` opens the PR only after `module_quality_summary` is PASS with all `quality_check_*` sentinels PASS (see `defer_pr_until_quality_pass`).

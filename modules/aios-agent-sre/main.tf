@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.20, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", # spawn_contracts / workflow metadata (provider >= 0.1.21).
+    version = ">= 0.1.21, < 0.2.0" }
   }
 }
 
@@ -521,6 +522,10 @@ resource "sg_workflow" "incident_response" {
   description = trimspace(templatefile("${path.module}/templates/workflow-incident-response.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   triggers = [
     { field = "incident_title_contains", values = ["outage", "degradation", "p1", "sev1", "sev2"], type = "passive" },
     { field = "event_type", values = ["incident.triggered", "incident.escalated"], type = "active", source = "pagerduty" },
@@ -642,6 +647,10 @@ resource "sg_workflow" "incident_quick_triage" {
   description = trimspace(templatefile("${path.module}/templates/workflow-incident-triage.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   triggers = [
     { field = "incident_title_contains", values = ["warning", "degradation", "p3", "p4", "sev3", "sev4"], type = "passive" },
   ]

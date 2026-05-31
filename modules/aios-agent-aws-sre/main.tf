@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.20, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", # spawn_contracts / workflow metadata (provider >= 0.1.21).
+    version = ">= 0.1.21, < 0.2.0" }
   }
 }
 
@@ -130,6 +131,10 @@ resource "sg_workflow" "k8s_monitoring" {
   description = trimspace(templatefile("${path.module}/templates/workflow-k8s-monitoring.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   triggers        = [{ field = "incident_title_contains", values = ["CrashLoopBackOff", "NodeNotReady"], type = "passive" }]
   required_inputs = ["cluster_name"]
   runbook_refs    = [sg_runbook_sop.k8s_diagnostics.name]
@@ -146,6 +151,10 @@ resource "sg_workflow" "aws_unified_audit" {
   description = trimspace(templatefile("${path.module}/templates/workflow-aws-unified-audit.md", {}))
   approve     = true
 
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
   runbook_refs    = [sg_runbook_sop.aws_security_audit.name, sg_runbook_sop.aws_cost_analysis.name, sg_runbook_sop.aws_tags_sanity.name]
   example_queries = ["Run a security check on S3 buckets", "Find idle EBS volumes", "Validate tagging compliance"]
 

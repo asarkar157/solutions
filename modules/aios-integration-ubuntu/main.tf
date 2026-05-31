@@ -13,7 +13,13 @@ locals {
   install_tools_env = length(var.install_tools) > 0 ? {
     INSTALL_TOOLS = join(",", var.install_tools)
   } : {}
-  ubuntu_env = merge(local.install_tools_env, var.env_vars)
+  # Provider/github secrets use vault keys token/git_host/git_username; mcp-shell maps
+  # them via MCP_SECRET_MAP (see stackgen-guild cmd/integrations/ubuntu-cli/entrypoint.sh).
+  # Terraform can set the same map so pods work before the image entrypoint ships.
+  ubuntu_secret_map_env = length(var.secret_ref_ids) > 0 ? {
+    MCP_SECRET_MAP = "GIT_TOKEN=token,GH_TOKEN=token,GITHUB_TOKEN=token,GIT_HOST=git_host,GIT_USERNAME=git_username"
+  } : {}
+  ubuntu_env = merge(local.install_tools_env, local.ubuntu_secret_map_env, var.env_vars)
 }
 
 resource "sg_guild_integration" "ubuntu_cli" {

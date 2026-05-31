@@ -1,7 +1,8 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
-    sg = { source = "releases.stackgen.com/stackgen/stackgen", version = ">= 0.1.20, < 0.2.0" }
+    sg = { source = "releases.stackgen.com/stackgen/stackgen", # spawn_contracts / workflow metadata (provider >= 0.1.21).
+    version = ">= 0.1.21, < 0.2.0" }
   }
 }
 
@@ -91,6 +92,12 @@ resource "sg_workflow" "infrastructure_audit" {
   domain      = "cloudops"
   description = "Uses StackGen MCP to pull current infrastructure state and audit it against best practices."
   approve     = true
+
+
+  metadata = {
+    planner_max_tool_iterations = "40"
+  }
+
 
   stages = [
     { stage_id = "fetch-state", description = "Call StackGen MCP to retrieve application graph.", required = true },
