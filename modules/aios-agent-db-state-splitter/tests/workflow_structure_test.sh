@@ -185,4 +185,11 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
+pack_main="$(grep -E 'script_pack_version[[:space:]]*=' "${MAIN}" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+pack_runner="$(grep -E '^SCRIPT_PACK_VERSION=' "${ROOT}/scripts/stage-runner.sh" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+if [ -z "$pack_main" ] || [ -z "$pack_runner" ] || [ "$pack_main" != "$pack_runner" ]; then
+  echo "FAIL: script_pack_version mismatch main.tf=${pack_main} stage-runner.sh=${pack_runner}" >&2
+  exit 1
+fi
+
 echo "OK: db-state-splitter workflow structure checks passed"

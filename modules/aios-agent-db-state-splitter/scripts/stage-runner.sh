@@ -4,7 +4,7 @@
 # Usage: DBSPLIT_EMBEDDED=1 bash -s <command> [args...] << 'DBSPLIT_STAGE_RUNNER' ... DBSPLIT_STAGE_RUNNER
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="20260531.4"
+SCRIPT_PACK_VERSION="20260531.7"
 REQUIRED_ALLOCATE_MARKER="def merge_small_by_seed"
 
 mirror_note() {
