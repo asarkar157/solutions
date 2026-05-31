@@ -4,7 +4,7 @@
 # Usage: DBSPLIT_EMBEDDED=1 bash -s <command> [args...] << 'DBSPLIT_STAGE_RUNNER' ... DBSPLIT_STAGE_RUNNER
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="20260531.7"
+SCRIPT_PACK_VERSION="20260531.8"
 REQUIRED_ALLOCATE_MARKER="def merge_small_by_seed"
 
 mirror_note() {
@@ -171,13 +171,16 @@ download_google_drive() {
   local uri="$1"
   local dest="$2"
   local file_id=""
-  file_id="$(printf '%s' "$uri" | sed -nE 's#.*[/=]([a-zA-Z0-9_-]{20,}).*#\1#p' | head -1)"
+  file_id="$(printf '%s' "$uri" | sed -nE 's#.*/d/([a-zA-Z0-9_-]+)/?.*#\1#p' | head -1)"
   if [ -z "$file_id" ]; then
-    echo "download_error=google_drive_file_id_not_found" >&2
+    file_id="$(printf '%s' "$uri" | sed -nE 's#.*[?&]id=([a-zA-Z0-9_-]+).*#\1#p' | head -1)"
+  fi
+  if [ -z "$file_id" ]; then
+    echo "download_error=google_drive_file_id_not_found uri=${uri}" >&2
     return 1
   fi
   if command -v gdown >/dev/null 2>&1; then
-    gdown --fuzzy "$uri" -O "$dest"
+    gdown --id "$file_id" -O "$dest" || gdown --fuzzy "$uri" -O "$dest"
     return 0
   fi
   curl -LfsS "https://drive.google.com/uc?export=download&id=${file_id}&confirm=t" -o "$dest"
@@ -233,8 +236,8 @@ cmd_download_state() {
   cap="$(read_note "$work_root" "max_resources_per_appstack" || true)"
 
   if [ "$count" -gt 5000 ] && [ -z "$strategy" ]; then
-    strategy="tag_seeded_connectivity_capped"
-    cap="120"
+    strategy="${DBSPLIT_DEFAULT_STRATEGY}"
+    cap="${DBSPLIT_DEFAULT_CAP}"
     mirror_note "$work_root" "grouping_strategy" "$strategy"
     mirror_note "$work_root" "max_resources_per_appstack" "$cap"
     echo "auto_promoted_grouping=true strategy=${strategy} cap=${cap}"
@@ -272,8 +275,8 @@ cmd_allocate_manifest() {
   local work_root="${1:?WORK_ROOT}"
   local state_path="${2:-${work_root}/state/terraform.tfstate}"
   local strategy cap
-  strategy="$(note_or_default "$work_root" "grouping_strategy" "tag_seeded_connectivity_capped")"
-  cap="$(note_or_default "$work_root" "max_resources_per_appstack" "120")"
+  strategy="$(note_or_default "$work_root" "grouping_strategy" "$DBSPLIT_DEFAULT_STRATEGY")"
+  cap="$(note_or_default "$work_root" "max_resources_per_appstack" "$DBSPLIT_DEFAULT_CAP")"
   if [ -n "${3:-}" ]; then
     strategy="$3"
   fi
@@ -337,10 +340,10 @@ cmd_ingest_and_split() {
 
   local state_path="${work_root}/state/terraform.tfstate"
   if [ -z "$strategy" ]; then
-    strategy="$(note_or_default "$work_root" "grouping_strategy" "tag_seeded_connectivity_capped")"
+    strategy="$(note_or_default "$work_root" "grouping_strategy" "$DBSPLIT_DEFAULT_STRATEGY")"
   fi
   if [ -z "$cap" ]; then
-    cap="$(note_or_default "$work_root" "max_resources_per_appstack" "120")"
+    cap="$(note_or_default "$work_root" "max_resources_per_appstack" "$DBSPLIT_DEFAULT_CAP")"
   fi
 
   cmd_split_manifest "$work_root" "$state_path" "$strategy" "$cap"
@@ -350,8 +353,8 @@ cmd_split_manifest() {
   local work_root="${1:?WORK_ROOT}"
   local state_path="${2:-${work_root}/state/terraform.tfstate}"
   local strategy cap
-  strategy="$(note_or_default "$work_root" "grouping_strategy" "tag_seeded_connectivity_capped")"
-  cap="$(note_or_default "$work_root" "max_resources_per_appstack" "120")"
+  strategy="$(note_or_default "$work_root" "grouping_strategy" "$DBSPLIT_DEFAULT_STRATEGY")"
+  cap="$(note_or_default "$work_root" "max_resources_per_appstack" "$DBSPLIT_DEFAULT_CAP")"
   if [ -n "${3:-}" ]; then
     strategy="$3"
   fi

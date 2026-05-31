@@ -73,7 +73,7 @@ locals {
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   allocate_manifest_script    = trimspace(file("${path.module}/scripts/allocate_manifest.py"))
   ubuntu_integration_home     = "/home/integration"
-  script_pack_version         = "20260531.7"
+  script_pack_version         = "20260531.8"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)
 
@@ -190,7 +190,7 @@ module "ubuntu_integration" {
 
   integration_name = local.ubuntu_integration_name
   secret_ref_ids   = compact([var.github_secret_id, var.aws_secret_id])
-  install_tools    = ["tofu", "awscli", "gh", "git", "curl"]
+  install_tools    = ["tofu", "awscli", "gh", "git", "curl", "gdown"]
 }
 
 module "aws_integration" {
