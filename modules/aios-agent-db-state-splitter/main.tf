@@ -73,10 +73,12 @@ locals {
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   allocate_manifest_script    = file("${path.module}/scripts/allocate_manifest.py")
   ubuntu_integration_home     = "/home/integration"
-  script_pack_version         = "20260531.11"
+  script_pack_version         = "20260531.12"
   script_pack_git_ref         = "main"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)
+  script_pack_allocate_b64    = base64encode(local.allocate_manifest_script)
+  script_pack_runner_b64      = base64encode(local.stage_runner_script)
 
   subagent_budget_defaults = {
     script_runner_max_llm_calls                = 40
@@ -118,6 +120,8 @@ locals {
     script_pack_git_ref                 = local.script_pack_git_ref
     script_pack_allocate_sha256         = local.script_pack_allocate_sha256
     script_pack_runner_sha256           = local.script_pack_runner_sha256
+    script_pack_allocate_b64            = local.script_pack_allocate_b64
+    script_pack_runner_b64              = local.script_pack_runner_b64
     ubuntu_integration_home             = local.ubuntu_integration_home
     stackgen_project_name_default       = trimspace(var.stackgen_project_name)
     default_grouping_strategy           = var.default_grouping_strategy

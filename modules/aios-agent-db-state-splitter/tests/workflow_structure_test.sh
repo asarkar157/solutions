@@ -185,13 +185,18 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'api.github.com/repos/appcd-dev/solutions' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must fetch scripts via GitHub API (private repo; raw URLs 404)" >&2
+if ! grep -q 'write_embedded_script' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must base64-embed scripts (private repo; raw/API fetch unreliable)" >&2
   exit 1
 fi
 
-if grep -q 'ALLOCATE_MANIFEST_PY' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must not inline allocate_manifest.py heredoc" >&2
+if ! grep -q 'script_pack_allocate_b64' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must reference script_pack_allocate_b64" >&2
+  exit 1
+fi
+
+if grep -q 'raw.githubusercontent.com' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must not use raw.githubusercontent.com (private repo 404)" >&2
   exit 1
 fi
 
