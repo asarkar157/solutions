@@ -1,0 +1,66 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+WORK_ROOT="{{work_root}}"
+MODULE_PATH="$${MODULE_PATH:-}"
+if [ -z "$MODULE_PATH" ]; then
+  echo "error=missing_MODULE_PATH"
+  exit 1
+fi
+if [ ! -d "$MODULE_PATH" ]; then
+  echo "validation_error=module_path_missing path=$MODULE_PATH"
+  exit 1
+fi
+
+find_tf() {
+  local c
+  for c in tofu terraform; do
+    if command -v "$c" >/dev/null 2>&1; then
+      command -v "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+tf=""
+for _wait in $(seq 1 20); do
+  if tf="$(find_tf)"; then
+    break
+  fi
+  sleep 3
+done
+if [ -z "$tf" ]; then
+  echo "validation_error=no_iac_binary"
+  exit 1
+fi
+
+work_dir="$WORK_ROOT/.work"
+mkdir -p "$work_dir"
+cd "$MODULE_PATH"
+
+tf_version="$("$tf" version | head -1)"
+fmt_rc=0 init_rc=0 valid_rc=0 test_rc=0
+"$tf" fmt -recursive -check >"$work_dir/tf-fmt.out" 2>&1 || fmt_rc=$?
+"$tf" init -backend=false -input=false >"$work_dir/tf-init.out" 2>&1 || init_rc=$?
+"$tf" validate -no-color >"$work_dir/tf-validate.out" 2>&1 || valid_rc=$?
+if compgen -G "*.tftest.hcl" >/dev/null || [ -d tests ]; then
+  "$tf" test -verbose >"$work_dir/tf-test.out" 2>&1 || test_rc=$?
+else
+  echo "test_skipped=no_tftest_files" >"$work_dir/tf-test.out"
+fi
+
+summary="binary=${tf_version}; fmt=$([ "$fmt_rc" -eq 0 ] && echo PASS || echo FAIL); init=$([ "$init_rc" -eq 0 ] && echo PASS || echo FAIL); validate=$([ "$valid_rc" -eq 0 ] && echo PASS || echo FAIL); test=$([ "$test_rc" -eq 0 ] && echo PASS || echo FAIL)"
+if [ "$fmt_rc" -eq 0 ] && [ "$valid_rc" -eq 0 ] && [ "$test_rc" -eq 0 ]; then
+  mq="PASS"
+else
+  mq="NEEDS_REVISION"
+fi
+
+echo "fmt_exit=${fmt_rc}"
+echo "init_exit=${init_rc}"
+echo "validate_exit=${valid_rc}"
+echo "test_exit=${test_rc}"
+echo "$summary"
+echo "module_quality_summary=$mq"

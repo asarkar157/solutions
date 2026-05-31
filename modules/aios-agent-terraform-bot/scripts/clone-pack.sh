@@ -6,7 +6,7 @@
 # Guild execute_series runs each command via sh -c; the outer command MUST invoke /bin/bash -s (never bare sh function syntax).
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.4}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.5}"
 
 mirror_note() {
   local work_root="${1:?WORK_ROOT}"

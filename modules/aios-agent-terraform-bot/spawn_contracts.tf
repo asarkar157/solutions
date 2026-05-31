@@ -13,6 +13,10 @@ script_pack_version: ${local.script_pack_version}
 ---BEGIN CLONE_EXECUTE_SERIES---
 ${local.clone_execute_series_body}
 ---END CLONE_EXECUTE_SERIES---
+
+---BEGIN VALIDATE_EXECUTE_SERIES---
+${local.validate_execute_series_body}
+---END VALIDATE_EXECUTE_SERIES---
 EOT
 
   spawn_contract_create_pr_comment = {
@@ -129,7 +133,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.validate_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.validate_runner_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. read_notes module_paths. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1. Use script-pack §2.2: /bin/bash -s validate {{work_root}} \"<path>\" <<'TFBOT_STAGE_RUNNER' export TFBOT_EMBEDDED=1 + §1b stage-runner body, TFBOT_STAGE_RUNNER (or §2.2 multi-path bash -s <<'TFBOT_VALIDATE_SERIES' loop). FORBIDDEN: _embed_tfbot_run(){ , multiple commands[], printf fake PASS, quality_check_terraform, quality_check_module_layout. stdout MUST include fmt_exit= and binary=. note workflow_notes_snapshot from tool output only."
+      goal                = "ABS_WORK_ROOT={{work_root}}. Resolve module_paths from read_notes (first path) or architect context. ONE ${local.ubuntu_tool_prefix}_execute_series only: commands.length=1, commands[0].timeout_seconds=600. commands[0].command = export MODULE_PATH='<absolute module dir>' && paste EVERY line between ---BEGIN VALIDATE_EXECUTE_SERIES--- and ---END VALIDATE_EXECUTE_SERIES--- from spawn context (verbatim). Real tofu/terraform required — stdout MUST include fmt_exit= and binary=OpenTofu or Terraform (never binary=/usr/bin/bash). FORBIDDEN: printf fake PASS, quality_check_terraform, load_skill, multiple commands[]. note quality_check_* and module_quality_summary from stdout only."
       context             = local.terraform_spawn_context
     },
   ]

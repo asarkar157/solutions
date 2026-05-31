@@ -204,4 +204,9 @@ if ! grep -q 'clone-execute-series-embedded.sh.tftpl' "${ROOT}/main.tf"; then
   exit 1
 fi
 
+if ! grep -q 'BEGIN VALIDATE_EXECUTE_SERIES' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must embed validate body between BEGIN/END VALIDATE_EXECUTE_SERIES markers" >&2
+  exit 1
+fi
+
 echo "OK: workflow structure checks passed"

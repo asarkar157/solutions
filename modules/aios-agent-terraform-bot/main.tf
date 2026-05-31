@@ -55,7 +55,7 @@ locals {
   stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
   ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.4"
+  script_pack_version       = "20260531.5"
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(
@@ -63,6 +63,12 @@ locals {
     {
       ubuntu_integration_home = local.ubuntu_integration_home
       script_pack_version     = local.script_pack_version
+    },
+  )
+  validate_execute_series_body = templatefile(
+    "${path.module}/templates/validate-execute-series-embedded.sh.tftpl",
+    {
+      ubuntu_integration_home = local.ubuntu_integration_home
     },
   )
   workflow_script_pack_body = trimspace(templatefile("${path.module}/templates/workflow-script-pack.md.tftpl", {
