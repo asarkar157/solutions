@@ -240,7 +240,7 @@ MONOLITH_URI="<monolith_state_uri_or_tfstate_file>"
 mkdir -p "$WORK_ROOT/scripts"
 fetch_script() {
   local name="$1" dest="$2"
-  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  local token="$${GITHUB_TOKEN:-$${GH_TOKEN:-}}"
   if [ -n "$token" ]; then
     curl -fsSL -H "Authorization: Bearer $token" -H "Accept: application/vnd.github.raw" \
       "https://api.github.com/repos/appcd-dev/solutions/contents/modules/aios-agent-db-state-splitter/scripts/$name?ref=${script_pack_git_ref}" -o "$dest"
