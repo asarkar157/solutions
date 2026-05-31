@@ -5,7 +5,7 @@
 # Commands: clone | validate | commit-pr | resolve-paths | discovery-check
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.9}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.12}"
 
 require_embedded_invocation() {
   if [ "${TFBOT_EMBEDDED:-}" = "1" ]; then
@@ -235,6 +235,7 @@ cmd_validate() {
   local tf_version fmt_rc=0 init_rc=0 valid_rc=0 test_rc=0
   tf_version="$("$tf" version | head -1)"
 
+  "$tf" fmt -recursive >"$work_dir/tf-fmt-apply.out" 2>&1 || true
   "$tf" fmt -recursive -check >"$work_dir/tf-fmt.out" 2>&1 || fmt_rc=$?
   "$tf" init -backend=false -input=false >"$work_dir/tf-init.out" 2>&1 || init_rc=$?
   "$tf" validate -no-color >"$work_dir/tf-validate.out" 2>&1 || valid_rc=$?
@@ -288,11 +289,11 @@ cmd_validate() {
   else
     this_pass="NEEDS_REVISION"
   fi
-  prev_summary="$(note_val "$work_root" module_quality_summary)"
-  if [ "$this_pass" = "NEEDS_REVISION" ] || [ "$prev_summary" = "NEEDS_REVISION" ]; then
-    mirror_note "$work_root" "module_quality_summary" "NEEDS_REVISION"
+  mirror_note "$work_root" "module_quality_summary" "$this_pass"
+  if [ "$this_pass" = "NEEDS_REVISION" ]; then
+    mirror_note "$work_root" "module_quality_rework" "true"
   else
-    mirror_note "$work_root" "module_quality_summary" "PASS"
+    mirror_note "$work_root" "module_quality_rework" "false"
   fi
 
   echo "fmt_exit=${fmt_rc}"

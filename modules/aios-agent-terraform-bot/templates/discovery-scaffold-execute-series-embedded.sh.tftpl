@@ -3,6 +3,7 @@ set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export GIT_TERMINAL_PROMPT=0
+export TFBOT_EMBEDDED=1
 WORK_ROOT="{{work_root}}"
 repo_dir="$WORK_ROOT/repo"
 
@@ -11,45 +12,86 @@ if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
   exit 1
 fi
 
-provider_root="aws"
-sibling_dir="aws_ecs_service"
-module_dir="aws_ecs_service_blue_green"
-
-raw="$${TRIGGER_JSON:-}"
-if [ -n "$raw" ]; then
+infer_module_from_trigger() {
+  local raw="$${TRIGGER_JSON:-}"
+  local title body combined
   title="$(printf '%s' "$raw" | jq -r '.issue.title // .pull_request.title // empty' | tr '[:upper:]' '[:lower:]')"
-  if printf '%s' "$title" | grep -Eq 'azure|azurerm'; then
-    provider_root="azurerm"
-    sibling_dir="azurerm_kubernetes_cluster"
-    module_dir="azurerm_kubernetes_cluster_blue_green"
-  elif printf '%s' "$title" | grep -Eq 'gcp|google|gke'; then
-    provider_root="gcp"
-    sibling_dir="google_compute_instance"
-    module_dir="google_compute_instance_blue_green"
+  body="$(printf '%s' "$raw" | jq -r '.issue.body // .pull_request.body // empty' | tr '[:upper:]' '[:lower:]')"
+  combined="$title $body"
+
+  PROVIDER_ROOT="aws"
+  if printf '%s' "$combined" | grep -Eq 'azure|azurerm'; then
+    PROVIDER_ROOT="azurerm"
+  elif printf '%s' "$combined" | grep -Eq 'gcp|google|gke'; then
+    PROVIDER_ROOT="gcp"
   fi
-  if printf '%s' "$title" | grep -Eq 'ecs|fargate|container'; then
-    provider_root="aws"
-    sibling_dir="aws_ecs_service"
-    module_dir="aws_ecs_service_blue_green"
+
+  MODULE_DIR=""
+  SIBLING_DIR=""
+
+  if printf '%s' "$combined" | grep -Eq 'blue.?green|blue/green'; then
+    if printf '%s' "$combined" | grep -Eq 'ecs|fargate|container|microservice'; then
+      MODULE_DIR="aws_ecs_service_blue_green"
+      SIBLING_DIR="aws_ecs_service"
+      PROVIDER_ROOT="aws"
+    fi
   fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'scheduler|schedule'; then
+    MODULE_DIR="aws_scheduler_schedule"
+    SIBLING_DIR="aws_cloudwatch_event_rule"
+    PROVIDER_ROOT="aws"
+  fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'event.?bridge.?pipe|pipes'; then
+    MODULE_DIR="aws_pipes_pipe"
+    SIBLING_DIR="aws_sqs_queue"
+    PROVIDER_ROOT="aws"
+  fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'verified.?access|verifiedaccess'; then
+    MODULE_DIR="aws_verifiedaccess_trust_provider"
+    SIBLING_DIR="aws_ec2_client_vpn_endpoint"
+    PROVIDER_ROOT="aws"
+  fi
+}
+
+infer_module_from_trigger
+
+if [ -n "$${MODULE_DIR:-}" ]; then
+  MODULE_DIR="$${MODULE_DIR}"
+fi
+if [ -n "$${PROVIDER_ROOT:-}" ]; then
+  PROVIDER_ROOT="$${PROVIDER_ROOT}"
+fi
+if [ -n "$${SIBLING_DIR:-}" ]; then
+  SIBLING_DIR="$${SIBLING_DIR}"
 fi
 
-MODULE_DIR="$${MODULE_DIR:-$module_dir}"
-PROVIDER_ROOT="$${PROVIDER_ROOT:-$provider_root}"
-SIBLING="$${SIBLING_DIR:-$sibling_dir}"
+if [ -z "$MODULE_DIR" ]; then
+  echo "scaffold_error=unable_to_infer_module_dir"
+  echo "hint=export MODULE_DIR and PROVIDER_ROOT from issue title/body hints"
+  exit 1
+fi
 
-target="$repo_dir/$PROVIDER_ROOT/$MODULE_DIR"
-sibling="$repo_dir/$PROVIDER_ROOT/$SIBLING"
+check_out="$WORK_ROOT/.work/discovery-check.out"
+mkdir -p "$WORK_ROOT/.work"
+/bin/bash -s discovery-check "$WORK_ROOT" "$repo_dir" "$PROVIDER_ROOT" "$MODULE_DIR" <<'TFBOT_STAGE_RUNNER' | tee "$check_out"
+export TFBOT_EMBEDDED=1
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
 
-if [ -d "$target" ] && [ -n "$(find "$target" -maxdepth 1 -name '*.tf' -print -quit)" ]; then
-  echo "module_paths=$target"
-  echo "module_resolution_confidence=exact"
+confidence="$(grep -E '^module_resolution_confidence=' "$check_out" | tail -1 | cut -d= -f2- || true)"
+if [ "$confidence" = "exact" ]; then
+  module_path="$(grep -E '^module_paths=' "$check_out" | tail -1 | cut -d= -f2- || true)"
+  echo "module_paths=$module_path"
   echo "scaffold_summary=existing_module"
-  echo "discovery_provider=$PROVIDER_ROOT"
-  echo "discovery_module_dir=$MODULE_DIR"
+  echo "script_pack_version=${script_pack_version}"
   exit 0
 fi
 
+target="$repo_dir/$PROVIDER_ROOT/$MODULE_DIR"
+if [ -z "$SIBLING_DIR" ]; then
+  SIBLING_DIR="$(find "$repo_dir/$PROVIDER_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1 | xargs basename 2>/dev/null || true)"
+fi
+sibling="$repo_dir/$PROVIDER_ROOT/$SIBLING_DIR"
 if [ ! -d "$sibling" ]; then
   sibling="$(find "$repo_dir/$PROVIDER_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)"
 fi
@@ -58,27 +100,23 @@ if [ -z "$sibling" ] || [ ! -d "$sibling" ]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "$target")"
-cp -a "$sibling" "$target"
-
 issue_num=""
+raw="$${TRIGGER_JSON:-}"
 if [ -n "$raw" ]; then
   issue_num="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
 fi
 
+mkdir -p "$(dirname "$target")"
+cp -a "$sibling" "$target"
+
 readme="$target/README.md"
 {
-  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for ECS blue/green internet-facing deployments (issue #$${issue_num:-9})." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
+  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for issue #$${issue_num:-unknown}." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
 } >"$readme"
 
 if [ -f "$target/.stackgen/stackgen.yaml" ]; then
   sed -i.bak "s/$(basename "$sibling")/$MODULE_DIR/g" "$target/.stackgen/stackgen.yaml" 2>/dev/null || true
   rm -f "$target/.stackgen/stackgen.yaml.bak"
-fi
-
-if [ -f "$target/basic.tftest.hcl" ]; then
-  sed -i.bak "s/$(basename "$sibling")/$MODULE_DIR/g" "$target/basic.tftest.hcl" 2>/dev/null || true
-  rm -f "$target/basic.tftest.hcl.bak"
 fi
 
 primary_tf=""
@@ -90,9 +128,26 @@ for _f in "$target"/*.tf; do
   primary_tf="$_f"
   break
 done
-if [ -n "$primary_tf" ] && [ "$(basename "$primary_tf")" = "$${SIBLING}.tf" ]; then
+if [ -n "$primary_tf" ] && [ "$(basename "$primary_tf")" = "$${SIBLING_DIR}.tf" ]; then
   mv "$primary_tf" "$target/$${MODULE_DIR}.tf"
 fi
+
+mock_provider="aws"
+[ "$PROVIDER_ROOT" = "gcp" ] && mock_provider="google"
+[ "$PROVIDER_ROOT" = "azurerm" ] && mock_provider="azurerm"
+
+cat >"$target/basic.tftest.hcl" <<EOF
+mock_provider "$mock_provider" {}
+
+run "basic_plan" {
+  command = plan
+
+  assert {
+    condition     = true
+    error_message = "plan should succeed with mock provider"
+  }
+}
+EOF
 
 echo "module_paths=$target"
 echo "module_resolution_confidence=greenfield"

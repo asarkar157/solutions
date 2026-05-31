@@ -3,8 +3,27 @@ set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export GIT_TERMINAL_PROMPT=0
+export TFBOT_EMBEDDED=1
 WORK_ROOT="{{work_root}}"
 MODULE_PATH="$${MODULE_PATH:-}"
+REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
+ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
+BASE_BRANCH="$${BASE_BRANCH:-main}"
+
+parse_trigger_json() {
+  local raw="$${TRIGGER_JSON:-}"
+  [ -n "$raw" ] || return 1
+  if [ -z "$REPO_FULL_NAME" ]; then
+    REPO_FULL_NAME="$(printf '%s' "$raw" | jq -r '.repository.full_name // empty')"
+  fi
+  if [ -z "$ISSUE_OR_PR" ]; then
+    ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+  fi
+  if [ "$BASE_BRANCH" = "main" ]; then
+    BASE_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
+  fi
+}
+
 if [ -z "$MODULE_PATH" ]; then
   echo "error=missing_MODULE_PATH"
   exit 1
@@ -13,145 +32,38 @@ if [ ! -d "$MODULE_PATH" ]; then
   echo "validation_error=module_path_missing path=$MODULE_PATH"
   exit 1
 fi
+parse_trigger_json || true
 
-find_tf() {
-  local c
-  for c in tofu terraform; do
-    if command -v "$c" >/dev/null 2>&1; then
-      command -v "$c"
-      return 0
-    fi
-  done
-  return 1
-}
+validate_out="$WORK_ROOT/.work/validate.out"
+mkdir -p "$WORK_ROOT/.work"
+/bin/bash -s validate "$WORK_ROOT" "$MODULE_PATH" <<'TFBOT_STAGE_RUNNER' | tee "$validate_out"
+export TFBOT_EMBEDDED=1
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
 
-tf=""
-for _wait in $(seq 1 20); do
-  if tf="$(find_tf)"; then
-    break
-  fi
-  sleep 3
-done
-if [ -z "$tf" ]; then
-  echo "validation_error=no_iac_binary"
+if ! grep -qE '^fmt_exit=' "$validate_out"; then
+  echo "validation_error=missing_fmt_exit_marker"
+  echo "module_quality_summary=BLOCKED"
   exit 1
 fi
 
-work_dir="$WORK_ROOT/.work"
-mkdir -p "$work_dir"
-cd "$MODULE_PATH"
-
-tf_version="$("$tf" version | head -1)"
-fmt_rc=0 init_rc=0 valid_rc=0 test_rc=0
-"$tf" fmt -recursive >"$work_dir/tf-fmt-apply.out" 2>&1 || true
-"$tf" fmt -recursive -check >"$work_dir/tf-fmt.out" 2>&1 || fmt_rc=$?
-"$tf" init -backend=false -input=false -upgrade >"$work_dir/tf-init.out" 2>&1 || init_rc=$?
-"$tf" validate -no-color >"$work_dir/tf-validate.out" 2>&1 || valid_rc=$?
-if compgen -G "*.tftest.hcl" >/dev/null || [ -d tests ]; then
-  "$tf" test -verbose >"$work_dir/tf-test.out" 2>&1 || test_rc=$?
-else
-  echo "test_skipped=no_tftest_files" >"$work_dir/tf-test.out"
+if ! grep -qE '^module_quality_summary=PASS' "$validate_out"; then
+  echo "module_quality_rework=true"
+  exit 0
 fi
 
-summary="binary=$${tf_version}; fmt=$([ "$fmt_rc" -eq 0 ] && echo PASS || echo FAIL); init=$([ "$init_rc" -eq 0 ] && echo PASS || echo FAIL); validate=$([ "$valid_rc" -eq 0 ] && echo PASS || echo FAIL); test=$([ "$test_rc" -eq 0 ] && echo PASS || echo FAIL)"
-if [ "$fmt_rc" -eq 0 ] && [ "$valid_rc" -eq 0 ] && [ "$test_rc" -eq 0 ]; then
-  mq="PASS"
-else
-  mq="NEEDS_REVISION"
+if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
+  echo "push_skipped=missing_repo_or_issue"
+  echo "script_pack_version=${script_pack_version}"
+  exit 0
 fi
 
-echo "fmt_exit=$${fmt_rc}"
-echo "init_exit=$${init_rc}"
-echo "validate_exit=$${valid_rc}"
-echo "test_exit=$${test_rc}"
-echo "$summary"
-echo "module_quality_summary=$mq"
+commit_out="$WORK_ROOT/.work/commit-pr.out"
+/bin/bash -s commit-pr "$WORK_ROOT" "$REPO_FULL_NAME" "$ISSUE_OR_PR" "" "$BASE_BRANCH" <<'TFBOT_STAGE_RUNNER' | tee "$commit_out" || true
+export TFBOT_EMBEDDED=1
+${stage_runner_script}
+TFBOT_STAGE_RUNNER
 
-if [ "$mq" = "PASS" ]; then
-  REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
-  ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
-  BASE_BRANCH="$${BASE_BRANCH:-main}"
-  if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
-    raw="$${TRIGGER_JSON:-}"
-    if [ -n "$raw" ]; then
-      [ -z "$REPO_FULL_NAME" ] && REPO_FULL_NAME="$(printf '%s' "$raw" | jq -r '.repository.full_name // empty')"
-      [ -z "$ISSUE_OR_PR" ] && ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
-      BASE_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
-    fi
-  fi
-  if [ -n "$REPO_FULL_NAME" ] && [ -n "$ISSUE_OR_PR" ]; then
-    git_token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
-    if [ -n "$git_token" ]; then
-      export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
-      gh auth setup-git 2>/dev/null || true
-      git config --global user.name "stackgen-terraform-bot"
-      git config --global user.email "terraform-bot@stackgen.local"
-      repo_dir="$WORK_ROOT/repo"
-      if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
-        _walk="$MODULE_PATH"
-        while [ "$_walk" != "/" ] && [ -n "$_walk" ]; do
-          if [ -d "$_walk/.git" ] || [ -e "$_walk/.git" ]; then
-            repo_dir="$_walk"
-            break
-          fi
-          _walk="$(dirname "$_walk")"
-        done
-      fi
-      if [ -d "$repo_dir/.git" ] || [ -e "$repo_dir/.git" ]; then
-        cd "$repo_dir"
-        git add -A
-        module_relpath="$${MODULE_PATH#"$repo_dir"/}"
-        module_relpath="$${module_relpath#/}"
-        provider="$${module_relpath%%/*}"
-        module_name="$(basename "$module_relpath")"
-        module_slug="$${module_name//_/-}"
-        branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
-        pr_title="feat($${provider}): add $${module_name} module"
-        if [ -n "$(git status --porcelain)" ]; then
-          git switch -c "$branch" 2>/dev/null || git switch "$branch"
-          git commit -m "$${pr_title}
-
-Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
-        else
-          echo "push_skipped=no_worktree_changes repo_dir=$repo_dir module_path=$MODULE_PATH"
-        fi
-        if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
-          if git push -u origin HEAD 2>"$work_dir/push.err"; then
-            echo "working_branch=$branch"
-            echo "pr_prepushed=true"
-            echo "pr_title=$pr_title"
-            pr_body_file="$work_dir/pr-body.md"
-            {
-              printf '%s\n' "## Summary" "" "Discovery module scaffold (validate stage)." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
-            } >"$pr_body_file"
-            pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$branch" --json url -q '.[0].url' 2>/dev/null || true)"
-            if [ -z "$pr_url" ] || [ "$pr_url" = "null" ]; then
-              set +e
-              pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
-                --title "$pr_title" --body-file "$pr_body_file" 2>"$work_dir/pr-create.err")"
-              pr_create_rc=$?
-              set -e
-              if [ "$pr_create_rc" -ne 0 ]; then
-                echo "pr_blocker=pr_create_failed rc=$pr_create_rc"
-                cat "$work_dir/pr-create.err" >&2 || true
-              fi
-            fi
-            if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
-              echo "pr_url=$pr_url"
-            fi
-          else
-            echo "pr_blocker=push_failed"
-            cat "$work_dir/push.err" >&2 || true
-          fi
-        fi
-      else
-        echo "push_skipped=no_repo_dir module_path=$MODULE_PATH work_root=$WORK_ROOT"
-      fi
-    else
-      echo "push_skipped=no_token"
-    fi
-  else
-    echo "push_skipped=missing_repo_or_issue"
-  fi
-fi
+grep -E '^(pr_url|working_branch|pr_title|pr_blocker|pr_error|pr_prepushed)=' "$commit_out" || true
+echo "script_pack_version=${script_pack_version}"
 TFBOT_VALIDATE_EXECUTE

@@ -156,7 +156,42 @@ if ! grep -q 'pr_blocker=auth' "${TMP}/commit.err" && ! bash "$RUNNER" commit-pr
   fi
 fi
 
-# --- require_embedded_invocation rejects direct invoke ---
+# --- cmd_validate clears sticky NEEDS_REVISION on subsequent PASS ---
+WORK5="${TMP}/work5"
+MOD5="${TMP}/module5"
+mkdir -p "$MOD5"
+cat >"$MOD5/versions.tf" <<'EOF'
+terraform {
+  required_version = ">= 1.5.0"
+}
+EOF
+cat >"$MOD5/main.tf" <<'EOF'
+resource "null_resource" "this" {
+  invalid =
+}
+EOF
+mkdir -p "$WORK5"
+echo '{"module_quality_summary":"NEEDS_REVISION"}' >"$WORK5/notes.json"
+export TFBOT_ALLOW_DIRECT=1
+OUT_FAIL="$(bash "$RUNNER" validate "$WORK5" "$MOD5" 2>/dev/null || true)"
+if ! grep -q 'module_quality_summary=NEEDS_REVISION' <<<"$OUT_FAIL"; then
+  echo "FAIL: invalid module should NEEDS_REVISION (got: $OUT_FAIL)" >&2
+  exit 1
+fi
+cat >"$MOD5/main.tf" <<'EOF'
+resource "null_resource" "this" {}
+EOF
+OUT_PASS="$(bash "$RUNNER" validate "$WORK5" "$MOD5" 2>/dev/null || true)"
+if ! grep -q 'module_quality_summary=PASS' <<<"$OUT_PASS"; then
+  echo "FAIL: validate should recover to PASS after fix (got: $OUT_PASS)" >&2
+  exit 1
+fi
+STICKY="$(jq -r '.module_quality_summary // empty' "$WORK5/notes.json" 2>/dev/null || true)"
+if [ "$STICKY" != "PASS" ]; then
+  echo "FAIL: notes.json module_quality_summary should be PASS (got '${STICKY}')" >&2
+  exit 1
+fi
+
 unset TFBOT_ALLOW_DIRECT TFBOT_EMBEDDED
 if bash "$RUNNER" validate "$WORK4" "$MOD" 2>"${TMP}/embed.err"; then
   echo "FAIL: direct stage-runner invoke should fail without TFBOT_EMBEDDED" >&2
