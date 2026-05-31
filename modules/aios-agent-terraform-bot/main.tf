@@ -597,22 +597,24 @@ resource "sg_workflow" "terraform_module_update" {
       )
       spawn_contracts = local.spawn_contracts_implement_module
       note            = <<-EOT
-        Budget contract: ≤ 3 subagents, ≤ $4.00, ≤ 10 minutes.
+        Budget contract: ≤ 1 subagent for discovery greenfield, ≤ 3 subagents otherwise, ≤ $4.00, ≤ 10 minutes.
 
         **Step 2 — requirement + module layout + tests**
         **Stage entry (§3a):** `read_notes` + `[Workflow execution]` + prior stage message; recover from `check-info-and-clone` echo if empty. Honor `[SubagentFailure]` — fix root cause before retry.
+        **Canonical clone path:** `repo_clone_path` MUST be `$WORK_ROOT/repo` (stage-runner §2.1). If notes say `repo_clone`, treat as legacy — downstream script-pack normalizes via symlink.
         **Blocked passthrough:** when `repo_clone_path` is empty or notes contain `clone_blocker` — emit `stage_summary:implement-module=blocked: upstream clone failed` without spawning Ubuntu runners; do not scaffold into an empty workdir.
         **Quality-loop rework:** when prior `validate-and-test` had `module_quality_summary: NEEDS_REVISION` (code FAIL, not BLOCKED) and `module_paths` is non-empty — fix `module_quality_gaps` only; do NOT re-scaffold from scratch or re-commit unchanged files.
         1. Resolve target module per orchestration §2a or script-pack §2.4: spawn ONE Ubuntu subagent — ONE execute_series with `resolve-paths` embedded (script-pack §0). Light layout discovery only — deep validate belongs in `validate-and-test`. Do NOT open PR here.
         2. Branch:
-           - `not_found` + greenfield: discovery repo → Template I — ONE execute_series: §2.5 discovery-check **and** write all layout files via printf/heredoc in the **same** series (`max_llm_calls=${local.subagent_budgets.hcl_author_max_llm_calls}`, `task_type=terminal_calling`); else Template H then G if registry fails.
+           - `not_found` + greenfield + `discovery_repo=true`: spawn **ONLY** `implement-module-discovery-scaffold` — ONE execute_series: §2.5 discovery-check **and** write all layout files in the **same** series (`max_llm_calls=${local.subagent_budgets.hcl_author_max_llm_calls}`, `task_type=terminal_calling`). Do **NOT** also spawn `implement-module-scaffold` or `implement-module-clone`.
+           - `not_found` + greenfield + generic repo: Template H then G if registry fails.
            - `ambiguous` → `ask_clarifying_question` ONCE.
            - `exact`/`probable` → edit existing paths in ONE execute_series when shell edits suffice.
-        3. Author `tests/*.tftest.hcl` or discovery `basic.tftest.hcl` when missing — inside the same execute_series as scaffold/edits when possible.
-        4. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:implement-module` + echo `module_paths`, confidence, registry keys.
+        3. Author `basic.tftest.hcl` at module root (discovery) or `tests/*.tftest.hcl` (generic) when missing — inside the same execute_series as scaffold/edits.
+        4. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:implement-module` + echo `module_paths` (single path when greenfield), confidence, registry keys.
 
-        Approved subagents ONLY: `implement-module-clone`, `implement-module-discovery-scaffold`, `implement-module-registry-wrap`, `implement-module-scaffold`.
-        Forbidden: `gh pr create`, split create_files + validate across tool calls, full security scan suite (validate stage owns deep test).
+        Approved subagents ONLY: `implement-module-discovery-scaffold`, `implement-module-registry-wrap`, `implement-module-scaffold` (non-discovery only).
+        Forbidden: `implement-module-clone`, `gh pr create`, split create_files + validate across tool calls, dual module dirs for one issue, full security scan suite (validate stage owns deep test).
       EOT
     },
     {
@@ -636,11 +638,11 @@ resource "sg_workflow" "terraform_module_update" {
         **Step 3 — fmt / init / validate / test**
         1. Require non-empty `module_paths` or documented blocker; if empty without blocker → STOP with notify.
         2. Spawn exactly ONE `validate-and-test-runner` with `max_llm_calls=${local.subagent_budgets.validate_runner_max_llm_calls}`, `task_type=terminal_calling` (Template C / script-pack). If `[stop_agent_error] max LLM calls` → re-spawn once with +10 (cap 60) and a smaller goal — never a second runner name.
-        3. **Infra vs code (module-quality-sop §2b):** when the runner never executed shell (synthesized "workspace unavailable", empty tool output, or `validation_error=no_iac_binary` without a real series) → emit `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED` — do **NOT** set `module_quality_rework=true`. Retry the same runner at most once after §8(e) infra backoff; then BLOCKED.
+        3. **Infra vs code (module-quality-sop §2b–§2c):** BLOCKED when the runner never executed real shell — synthesized PASS lines, forbidden keys (`quality_check_terraform`, `quality_check_module_layout`), or stdout missing `fmt_exit=` / `binary=` from stage-runner validate. Emit `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED` — do **NOT** set `module_quality_rework=true`. Retry the same runner at most once after §8(e) infra backoff; then BLOCKED.
         4. Map real exit codes to sentinels (module-quality-sop §2): `quality_check_fmt`, `quality_check_validate`, `quality_check_test`, then `module_quality_summary: PASS|NEEDS_REVISION`. On NEEDS_REVISION (code FAIL only), include `module_quality_rework=true` in `workflow_notes_snapshot`.
         5. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:validate-and-test` + echo all four sentinel lines in final message.
 
-        Forbidden: opening PR, more than two validate runners per stage invocation, PASS without running the runner, NEEDS_REVISION when infra BLOCKED.
+        Forbidden: opening PR, more than two validate runners per stage invocation, PASS without `fmt_exit=` in runner stdout, NEEDS_REVISION when infra BLOCKED, printf-only execute_series.
       EOT
     },
     {
@@ -649,7 +651,7 @@ resource "sg_workflow" "terraform_module_update" {
       stage_depends_on = ["validate-and-test"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "(?m)^\\s*module_quality_summary:\\s*BLOCKED\\s*$|(?m)^\\s*quality_check_fmt:\\s*BLOCKED\\s*$|workspace unavailable|Ubuntu MCP sidecar unavailable|terraform-bot-ubuntu integration pod"
+        match     = "(?m)^\\s*module_quality_summary:\\s*BLOCKED\\s*$|(?m)^\\s*quality_check_fmt:\\s*BLOCKED\\s*$|quality_check_terraform|quality_check_module_layout|workspace unavailable|Ubuntu MCP sidecar unavailable|terraform-bot-ubuntu integration pod"
         skip_to   = "create-pr"
         reason    = "Integration infra failure — skip quality rework loop; create-pr posts blocked summary on GitHub"
       }

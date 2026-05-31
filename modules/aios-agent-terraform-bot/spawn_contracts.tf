@@ -53,7 +53,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE execute_series: script-pack §2.1 clone with WORK_ROOT={{work_root}}. note repo_clone_path and repo_head_sha. Stop — no directory listing."
+      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE execute_series: copy script-pack §2.1 clone block verbatim (bash -lc + _embed_tfbot_run clone). WORK_ROOT={{work_root}}. Clone MUST land at $WORK_ROOT/repo via stage-runner — FORBIDDEN: ad hoc git clone to repo_clone, mkdir+clone without _embed_tfbot_run, directory listing. note repo_clone_path and repo_head_sha from stdout. Stop."
       context             = local.terraform_spawn_context
     },
     local.spawn_contract_create_pr_comment,
@@ -73,7 +73,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.hcl_author_max_llm_calls
       max_tool_iterations = 48
       timeout_seconds     = local.subagent_budgets.hcl_author_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. load_skill ${local.sop_workflow_script_pack}. ONE execute_series: script-pack §2.5 discovery-check using repo_clone_path from notes, then write ALL discovery layout files via printf/heredoc/python in the SAME series. note module_paths, scaffold_summary. Stop — defer validate to validate-and-test."
+      goal                = "WORK_ROOT={{work_root}}. load_skill ${local.sop_workflow_script_pack} AND ${local.sop_discovery_modules_layout}. ONE bash -lc execute_series: script-pack §2.5 discovery-check with repo_clone_path=$WORK_ROOT/repo, then write ALL discovery layout files in the SAME series (provider/<module_dir>/ only — one path). FORBIDDEN: implement-module-clone, implement-module-scaffold, second subagent, tests/ subdir, main.tf as primary file, repo_clone ad hoc path. note module_paths (single absolute path), scaffold_summary. Stop — defer validate to validate-and-test."
       context             = local.terraform_spawn_context
     },
     {
@@ -106,7 +106,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.hcl_author_max_llm_calls
       max_tool_iterations = 48
       timeout_seconds     = local.subagent_budgets.hcl_author_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. Scaffold a NEW Terraform module under repo_clone_path from notes using execute_series shell writes. note module_paths, module_resolution_confidence=greenfield, scaffold_summary."
+      goal                = "WORK_ROOT={{work_root}}. Non-discovery repos ONLY (when discovery_repo is not true). Scaffold under repo_clone_path=$WORK_ROOT/repo via ONE execute_series shell writes. FORBIDDEN on discovery-modules repos. note module_paths, module_resolution_confidence=greenfield, scaffold_summary."
       context             = local.terraform_spawn_context
     },
   ]
@@ -125,7 +125,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.validate_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.validate_runner_timeout_seconds
-      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE ${local.ubuntu_tool_prefix}_execute_series only: script-pack §2.2 validate for module_paths from notes. WORK_ROOT={{work_root}}. Batch workflow_notes_snapshot with validation_summary, test_summary, quality_check_*, module_quality_summary. Forbidden: second validate series or retry under a new agent name."
+      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE ${local.ubuntu_tool_prefix}_execute_series only: copy script-pack §2.2 validate block verbatim (bash -lc + _embed_tfbot_run validate for-loop over module_paths). WORK_ROOT={{work_root}}. FORBIDDEN: printf/echo fake PASS, quality_check_terraform, quality_check_module_layout, skipping tofu fmt/init/validate/test, execute_command file probes, second series. Real stdout MUST include fmt_exit= and binary= lines. note workflow_notes_snapshot from tool output only — never invent sentinels."
       context             = local.terraform_spawn_context
     },
   ]

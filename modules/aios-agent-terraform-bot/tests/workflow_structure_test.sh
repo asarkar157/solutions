@@ -133,4 +133,29 @@ if ! grep -q 'clone_auth_mode' "${ROOT}/templates/workflow-script-pack.md.tftpl"
   exit 1
 fi
 
+if ! grep -q 'fmt_exit=' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner validate must emit fmt_exit markers" >&2
+  exit 1
+fi
+
+if ! grep -q 'quality_check_terraform' "${ROOT}/templates/module-quality-sop.md.tftpl"; then
+  echo "FAIL: module-quality-sop must forbid synthesized quality_check_terraform" >&2
+  exit 1
+fi
+
+if grep -q 'Approved subagents ONLY:.*implement-module-clone' "${ROOT}/main.tf"; then
+  echo "FAIL: main.tf must not approve implement-module-clone subagent" >&2
+  exit 1
+fi
+
+if ! grep -q 'resolve_repo_dir' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must normalize legacy repo_clone path" >&2
+  exit 1
+fi
+
+if ! grep -q 'FORBIDDEN: printf' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: validate spawn contract must forbid printf fake PASS" >&2
+  exit 1
+fi
+
 echo "OK: workflow structure checks passed"

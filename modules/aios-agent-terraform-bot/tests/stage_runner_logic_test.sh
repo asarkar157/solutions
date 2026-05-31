@@ -10,7 +10,7 @@ trap 'rm -rf "$TMP"' EXIT
 # shellcheck source=/dev/null
 source_helpers() {
   # Extract helper functions without running the command dispatcher.
-  eval "$(sed -n '/^git_clone_url()/,/^}/p; /^git_with_auth_mode()/,/^}/p; /^remove_stale_clone_dir()/,/^}/p' "$RUNNER")"
+  eval "$(sed -n '/^git_clone_url()/,/^}/p; /^git_with_auth_mode()/,/^}/p; /^remove_stale_clone_dir()/,/^}/p; /^mirror_note()/,/^}/p; /^resolve_repo_dir()/,/^}/p' "$RUNNER")"
 }
 
 source_helpers
@@ -61,6 +61,49 @@ remove_stale_clone_dir "$GOOD"
 if [ ! -d "$GOOD/.git" ]; then
   echo "FAIL: remove_stale_clone_dir must not delete valid git dir" >&2
   exit 1
+fi
+
+# --- resolve_repo_dir legacy repo_clone symlink ---
+WORK3="${TMP}/work3"
+mkdir -p "$WORK3/repo_clone/.git"
+touch "$WORK3/repo_clone/.git/HEAD"
+echo '{}' >"$WORK3/notes.json"
+RESOLVED="$(resolve_repo_dir "$WORK3")"
+if [ "$RESOLVED" != "$WORK3/repo" ]; then
+  echo "FAIL: resolve_repo_dir should normalize to repo (got '${RESOLVED}')" >&2
+  exit 1
+fi
+if [ ! -e "$WORK3/repo/.git" ]; then
+  echo "FAIL: resolve_repo_dir should symlink repo -> repo_clone" >&2
+  exit 1
+fi
+
+# --- cmd_validate emits fmt_exit markers ---
+MOD="${TMP}/module"
+mkdir -p "$MOD"
+cat >"$MOD/versions.tf" <<'EOF'
+terraform {
+  required_version = ">= 1.5.0"
+}
+EOF
+cat >"$MOD/main.tf" <<'EOF'
+resource "null_resource" "this" {}
+EOF
+WORK4="${TMP}/work4"
+mkdir -p "$WORK4/.work"
+echo '{}' >"$WORK4/notes.json"
+if command -v tofu >/dev/null 2>&1 || command -v terraform >/dev/null 2>&1; then
+  OUT="$(bash "$RUNNER" validate "$WORK4" "$MOD" 2>/dev/null || true)"
+  if ! grep -q 'fmt_exit=' <<<"$OUT"; then
+    echo "FAIL: validate should emit fmt_exit= marker" >&2
+    exit 1
+  fi
+  if ! grep -q 'binary=' <<<"$OUT"; then
+    echo "FAIL: validate should emit binary= marker" >&2
+    exit 1
+  fi
+else
+  echo "SKIP: validate marker test (no tofu/terraform in PATH)" >&2
 fi
 
 # --- cmd_clone against public repo (network required) ---

@@ -51,6 +51,8 @@ Replace `<workflow_run_id>`, `<repository_clone_url>`, etc. Paste the **entire**
 
 Stage-runner sets `clone_auth_mode=token|anonymous` and `push_requires_token=true|false`. Public repos may clone without PAT (`GIT_TERMINAL_PROMPT=0`, no credential helper). Push/PR always needs PAT — if clone succeeds with `gh_env_present=false`, intake is **not** blocked; create-pr uses §2b push-auth path when validate PASS.
 
+**Canonical clone directory:** `$WORK_ROOT/repo` (note key `repo_clone_path` points here). FORBIDDEN: ad hoc `git clone … repo_clone` without stage-runner — legacy `repo_clone/` dirs are symlinked to `repo/` at validate/commit time.
+
 ```bash
 WORK_ROOT="$HOME/.<workflow_run_id>"
 mkdir -p "$WORK_ROOT"
@@ -63,6 +65,8 @@ _embed_tfbot_run clone "$WORK_ROOT" "<repository_clone_url>" "<repository_defaul
 
 ### §2.2 validate (Template C — one path; repeat _embed_tfbot_run in a for-loop for multiple paths)
 
+Real validation MUST invoke `_embed_tfbot_run validate` — never `printf` PASS sentinels. Stdout MUST include `fmt_exit=`, `init_exit=`, `validate_exit=`, `test_exit=`, and `binary=` before the planner maps `quality_check_*` sentinels.
+
 ```bash
 WORK_ROOT="$HOME/.<workflow_run_id>"
 mkdir -p "$WORK_ROOT"
@@ -74,6 +78,8 @@ for _p in <path1> <path2>; do
   _embed_tfbot_run validate "$WORK_ROOT" "$_p"
 done
 ```
+
+**FORBIDDEN in validate series:** `quality_check_terraform`, `quality_check_module_layout`, echo-only PASS without tofu/terraform output.
 
 ### §2.3 commit-pr (Template D — create-pr-open)
 
@@ -114,9 +120,11 @@ _embed_tfbot_run() { bash -s "$@" << 'TFBOT_STAGE_RUNNER'
 ${stage_runner_script}
 TFBOT_STAGE_RUNNER
 }
-_embed_tfbot_run discovery-check "$WORK_ROOT" "<repo_clone_path>" "<provider>" "<module_dir>"
-# In the same execute_series, write basic.tftest.hcl with:
-#   mock_provider "aws" {}
+REPO="$(resolve via notes: $WORK_ROOT/repo)"
+_embed_tfbot_run discovery-check "$WORK_ROOT" "$REPO" "<provider>" "<module_dir>"
+# In the same execute_series, write discovery layout under $REPO/<provider>/<module_dir>/ only:
+#   <resource_type>.tf, variables.tf.json, outputs.tf.json, basic.tftest.hcl (module root), .stackgen/stackgen.yaml
+#   mock_provider "aws" {} in basic.tftest.hcl
 #   run "basic" { command = plan ... }
 ```
 

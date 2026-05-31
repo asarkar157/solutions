@@ -529,8 +529,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       }
     },
     {
-      stage_id         = "split-ingest-blocked-gate"
-      action_type      = "conditional_skip"
+      stage_id    = "split-ingest-blocked-gate"
+      action_type = "conditional_skip"
       # Fan-in ingest output: conditional_skip evaluates merged predecessor text; loop_stage
       # output alone is JSON without script_pack sentinels (Guild stagerunner limitation).
       stage_depends_on = ["split-loop-gate", "ingest-and-split"]
@@ -542,8 +542,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       }
     },
     {
-      stage_id         = "split-loop-gate"
-      action_type      = "loop_stage"
+      stage_id    = "split-loop-gate"
+      action_type = "loop_stage"
       # Fan-in ingest so exit_match sees count_reconciliation_ok (not only gate JSON wrapper).
       stage_depends_on = ["split-input-gate", "ingest-and-split"]
       action_config = {
@@ -702,8 +702,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       }
     },
     {
-      stage_id         = "multi-shard-plan-loop-gate"
-      action_type      = "loop_stage"
+      stage_id    = "multi-shard-plan-loop-gate"
+      action_type = "loop_stage"
       # Fan-in convergence output so exit_match sees multi_plan_zero_diff_ok after infra gate pass-through.
       stage_depends_on = ["multi-shard-plan-infra-gate", "multi-shard-plan-convergence"]
       action_config = {

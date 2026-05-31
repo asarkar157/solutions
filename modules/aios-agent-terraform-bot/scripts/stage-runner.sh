@@ -14,7 +14,7 @@ mirror_note() {
   [ -f "$notes" ] || echo '{}' >"$notes"
   jq --arg k "$key" --arg v "$value" '. + {($k): $v}' "$notes" >"${notes}.tmp" \
     && mv "${notes}.tmp" "$notes"
-  echo "mirrored:${key}"
+  echo "mirrored:${key}" >&2
 }
 
 bootstrap_gh() {
@@ -63,6 +63,35 @@ remove_stale_clone_dir() {
   if [ -d "$repo_dir" ] && [ ! -d "$repo_dir/.git" ]; then
     rm -rf "$repo_dir"
   fi
+}
+
+# resolve_repo_dir returns the canonical git clone under $WORK_ROOT/repo.
+# Legacy subagents sometimes cloned to repo_clone; normalize with a symlink so
+# validate/commit-pr always share one tree.
+resolve_repo_dir() {
+  local work_root="${1:?WORK_ROOT}"
+  local repo_dir="$work_root/repo"
+  local legacy_dir="$work_root/repo_clone"
+
+  if [ -d "$repo_dir/.git" ]; then
+    printf '%s' "$repo_dir"
+    return 0
+  fi
+
+  if [ -d "$legacy_dir/.git" ]; then
+    ln -sfn "$legacy_dir" "$repo_dir" 2>/dev/null || true
+    if [ -e "$repo_dir/.git" ] || [ -L "$repo_dir" ]; then
+      mirror_note "$work_root" "repo_clone_path" "$repo_dir"
+      mirror_note "$work_root" "repo_path_normalized" "repo_clone_symlink_to_repo"
+      printf '%s' "$repo_dir"
+      return 0
+    fi
+    mirror_note "$work_root" "repo_clone_path" "$legacy_dir"
+    printf '%s' "$legacy_dir"
+    return 0
+  fi
+
+  printf '%s' "$repo_dir"
 }
 
 cmd_clone() {
@@ -253,6 +282,10 @@ cmd_validate() {
     mirror_note "$work_root" "module_quality_summary" "PASS"
   fi
 
+  echo "fmt_exit=${fmt_rc}"
+  echo "init_exit=${init_rc}"
+  echo "validate_exit=${valid_rc}"
+  echo "test_exit=${test_rc}"
   echo "$summary"
   echo "module_quality_summary=$([ "$fmt_rc" -eq 0 ] && [ "$valid_rc" -eq 0 ] && [ "$test_rc" -eq 0 ] && echo PASS || echo NEEDS_REVISION)"
 }
@@ -493,8 +526,9 @@ cmd_commit_pr() {
     return 1
   fi
 
-  local repo_dir="$work_root/repo"
-  if [ ! -d "$repo_dir/.git" ]; then
+  local repo_dir
+  repo_dir="$(resolve_repo_dir "$work_root")"
+  if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
     mirror_note "$work_root" "pr_blocker" "no_clone"
     echo "pr_error=no_clone"
     return 1
@@ -572,6 +606,9 @@ cmd_resolve_paths() {
 
   [ -f "$work_root/notes.json" ] || echo '{}' >"$work_root/notes.json"
   [ -n "$hint_csv" ] && mirror_note "$work_root" "target_module_hints" "$hint_csv"
+
+  repo_clone="$(resolve_repo_dir "$work_root")"
+  mirror_note "$work_root" "repo_clone_path" "$repo_clone"
 
   cd "$repo_clone"
   mapfile -t hints < <(printf '%s' "$hint_csv" | tr ',' '\n' | sed '/^$/d' | head -20)
@@ -664,6 +701,9 @@ cmd_discovery_check() {
   local repo_clone="${2:?REPO_CLONE_PATH}"
   local provider="${3:?PROVIDER}"
   local module_dir="${4:?MODULE_DIR}"
+
+  repo_clone="$(resolve_repo_dir "$work_root")"
+  mirror_note "$work_root" "repo_clone_path" "$repo_clone"
 
   local candidate="$repo_clone/$provider/$module_dir"
   local confidence="not_found"

@@ -38,10 +38,18 @@ Map exit codes to sentinels (never guess from prose):
   - validate exit 0 → `quality_check_validate: PASS` else FAIL
   - test exit 0 or documented approved skip → `quality_check_test: PASS` else FAIL
 
-`module_quality_summary: PASS` is allowed ONLY when all three `quality_check_*` lines are `PASS` AND §3 criteria hold.
+`stage-runner.sh validate` also prints machine-readable exit markers on stdout (required for infra detection):
+
+  fmt_exit=<0|1>
+  init_exit=<0|1>
+  validate_exit=<0|1>
+  test_exit=<0|1>
+  binary=<tofu|terraform version line>
+
+`module_quality_summary: PASS` is allowed ONLY when all three `quality_check_*` lines are `PASS` AND §3 criteria hold AND runner stdout included the `fmt_exit=` / `binary=` lines above.
 
 ========================================================================
-2b) Infra BLOCKED vs code FAIL (mandatory — trace 01beb81f)
+2b) Infra BLOCKED vs code FAIL (mandatory — trace 01beb81f, 131775ed)
 ========================================================================
 
 Use **BLOCKED** (not FAIL or NEEDS_REVISION) when the Ubuntu integration never ran real shell:
@@ -49,6 +57,18 @@ Use **BLOCKED** (not FAIL or NEEDS_REVISION) when the Ubuntu integration never r
   - Subagent output mentions "workspace unavailable" or synthesizes results without tool execution
   - `terraform-bot-ubuntu_execute_series` returned empty/canned text with no fmt/init/validate stdout
   - Repeated lazy-init / sidecar errors after §8(e) retries (max 3)
+
+========================================================================
+2c) Synthesized validate output (mandatory — trace 131775ed)
+========================================================================
+
+Treat as **infra BLOCKED** (§2b) when `validate-and-test-runner` output or notes contain **any** of:
+
+  - Forbidden sentinel keys: `quality_check_terraform`, `quality_check_module_layout` (not part of this SOP)
+  - `validation_summary=PASS` / `quality_check_*: PASS` without runner stdout showing `fmt_exit=` and `binary=`
+  - An `execute_series` whose command is only `printf`/`echo` of PASS lines (no `_embed_tfbot_run validate`)
+
+When detected, the planner MUST rewrite all four canonical sentinels to `BLOCKED` — never accept PASS from prose alone.
 
 When BLOCKED:
 

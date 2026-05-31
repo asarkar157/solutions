@@ -299,9 +299,8 @@ a) Hard cap: at most ONE subagent per logical task per stage. A prior trace spaw
 b) Subagent naming convention: `<stage_id>-<phase>` ONLY. Approved phases per stage:
    - `check-info-and-clone-fetch`
    - `check-info-and-clone-clone`
-   - `implement-module-clone`
    - `implement-module-registry-wrap`
-   - `implement-module-scaffold`
+   - `implement-module-scaffold` (non-discovery repos only)
    - `implement-module-discovery-scaffold`
    - `validate-and-test-runner`
    - `create-pr-runner` (commit + push + PR + issue comment — replaces separate open/comment)
@@ -338,7 +337,7 @@ f) Call `check_budget` **once** at stage start before the first `create_agent`. 
 
 g) If a subagent fails or partially succeeds: merge useful output into `workflow_notes_snapshot`; DO NOT spawn a retry with a slightly different name. After 2 failures on the same logical task, accept partial results and continue.
 
-h) **`validate-and-test`:** exactly **one** `validate-and-test-runner` per stage invocation — ONE `${ubuntu_tool_prefix}_execute_series` (script-pack §2.2). Forbidden: a second runner to "confirm" tests, or many `execute_command` file probes after the series.
+h) **`validate-and-test`:** exactly **one** `validate-and-test-runner` per stage invocation — ONE `${ubuntu_tool_prefix}_execute_series` (script-pack §2.2 with `_embed_tfbot_run validate`). Forbidden: printf-only PASS, forbidden keys `quality_check_terraform` / `quality_check_module_layout`, a second runner to "confirm" tests, or many `execute_command` file probes after the series. PASS requires stdout `fmt_exit=` and `binary=` from stage-runner.
 
 ========================================================================
 6) End-state of every stage
@@ -356,7 +355,7 @@ Template A — "clone the repo" (check-info-and-clone-clone):
   max_tool_iterations: 45, max_llm_calls: ${subagent_budgets.script_runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.script_runner_timeout_seconds}
   task_type: "terminal_calling"
   goal: |
-    load_skill ${module_prefix}-workflow-script-pack. ONE execute_series: script-pack §2.1 clone with WORK_ROOT=$HOME/.<workflow_run_id>, repository_clone_url=<...>, repository_default_branch=<...>, issue_or_pr_number=<...>, pr_head_ref=<...>, pr_head_clone_url=<...>.
+    load_skill ${module_prefix}-workflow-script-pack. ONE execute_series: copy script-pack §2.1 clone block verbatim (bash -lc + _embed_tfbot_run). Clone MUST land at $WORK_ROOT/repo. FORBIDDEN: ad hoc git clone to repo_clone.
     note repo_clone_path + repo_head_sha from stdout. Stop — no directory listing.
 
 Template B — "fetch the triggering issue/PR" (check-info-and-clone-fetch):
@@ -385,8 +384,8 @@ Template C — "validate module" (validate-and-test-runner):
   max_tool_iterations: 45, max_llm_calls: ${subagent_budgets.validate_runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.validate_runner_timeout_seconds}
   task_type: "terminal_calling"
   goal: |
-    load_skill ${module_prefix}-workflow-script-pack. ONE execute_series only: script-pack §2.2 validate for-loop over module_paths (comma-separated). WORK_ROOT=$HOME/.<workflow_run_id>.
-    Parse stdout once; note workflow_notes_snapshot with validation_summary, test_summary, quality_check_*, module_quality_summary. Stop — no second series or execute_command probes.
+    load_skill ${module_prefix}-workflow-script-pack. ONE execute_series only: copy script-pack §2.2 validate block verbatim (bash -lc + _embed_tfbot_run validate for-loop over module_paths). WORK_ROOT=$HOME/.<workflow_run_id>.
+    FORBIDDEN: printf/echo fake PASS, quality_check_terraform, quality_check_module_layout. Real stdout MUST include fmt_exit= and binary=. note workflow_notes_snapshot from tool output only. Stop — no second series.
 
 Template D+F — "PR + comment" (create-pr-runner — preferred):
   agent_name: "create-pr-runner"
