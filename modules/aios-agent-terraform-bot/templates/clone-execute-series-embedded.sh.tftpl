@@ -1,12 +1,58 @@
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
+export GIT_TERMINAL_PROMPT=0
 WORK_ROOT="{{work_root}}"
 mkdir -p "$WORK_ROOT"
+
+parse_trigger_json() {
+  local raw="${TRIGGER_JSON:-}"
+  [ -n "$raw" ] || return 1
+  REPO_CLONE_URL="$(printf '%s' "$raw" | jq -r 'if (.repository.clone_url // "") != "" then .repository.clone_url else "https://github.com/" + .repository.full_name + ".git" end')"
+  DEFAULT_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
+  ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+}
+
 if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
-  echo "error=missing_clone_env"
-  echo "hint=export REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR from read_notes before this block"
+  parse_trigger_json || true
+fi
+
+if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
+  echo "error=missing_clone_params"
+  echo "hint=export REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR from read_notes, architect context, or TRIGGER_JSON webhook payload"
   exit 1
 fi
-/bin/bash -s clone "$WORK_ROOT" "$REPO_CLONE_URL" "$DEFAULT_BRANCH" "$ISSUE_OR_PR" "" "" <<'TFBOT_CLONE_PACK'
-${clone_pack_script}
-TFBOT_CLONE_PACK
+
+git_token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
+if [ -n "$git_token" ]; then
+  export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
+  gh auth setup-git 2>/dev/null || true
+  git config --global user.name "stackgen-terraform-bot"
+  git config --global user.email "terraform-bot@stackgen.local"
+fi
+
+effective_url="$REPO_CLONE_URL"
+if [ -n "$git_token" ] && [[ "$REPO_CLONE_URL" =~ ^https://github\.com/ ]] && [[ ! "$REPO_CLONE_URL" =~ ^https://[^/@]+@ ]]; then
+  effective_url="https://x-access-token:$${git_token}@github.com/$${REPO_CLONE_URL#https://github.com/}"
+fi
+
+repo_dir="$WORK_ROOT/repo"
+if [ -d "$repo_dir" ] && [ ! -d "$repo_dir/.git" ]; then
+  rm -rf "$repo_dir"
+fi
+if [ ! -d "$repo_dir/.git" ]; then
+  if [ -n "$git_token" ]; then
+    git clone "$effective_url" "$repo_dir"
+  else
+    git -c credential.helper= clone "$effective_url" "$repo_dir"
+  fi
+else
+  git -C "$repo_dir" fetch --all --prune
+fi
+
+git -C "$repo_dir" switch "$DEFAULT_BRANCH" 2>/dev/null \
+  || git -C "$repo_dir" switch -c "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+
+sha="$(git -C "$repo_dir" rev-parse HEAD)"
+echo "repo_clone_path=$repo_dir"
+echo "repo_head_sha=$sha"
+echo "script_pack_version=${script_pack_version}"

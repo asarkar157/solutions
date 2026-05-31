@@ -55,14 +55,14 @@ locals {
   stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
   ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.3"
+  script_pack_version       = "20260531.4"
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(
     "${path.module}/templates/clone-execute-series-embedded.sh.tftpl",
     {
       ubuntu_integration_home = local.ubuntu_integration_home
-      clone_pack_script       = local.clone_pack_script
+      script_pack_version     = local.script_pack_version
     },
   )
   workflow_script_pack_body = trimspace(templatefile("${path.module}/templates/workflow-script-pack.md.tftpl", {
@@ -581,7 +581,7 @@ resource "sg_workflow" "terraform_module_update" {
         1. Extract trigger fields into notes (no subagents before label gate): parse webhook JSON from stage Input per orchestration §0b — `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`, `event_type`, `issue_labels`, `pr_head_ref`, `pr_head_clone_url`. Missing repo or issue # → §8(a) blocked notify and STOP.
         2. Discovery label gate (when `discovery_repo=true`): evaluate `${local.sop_discovery_modules_layout}` §1. On `missing_label` → spawn ONE `create-pr-comment` (Template E, GitHub path only), STOP.
         3. Build `issue_details` JSON from parsed webhook fields (§0b step 3) when `issue.title` or `pull_request.title` is present — **do NOT** spawn `check-info-and-clone-fetch`. Fetch ONLY when title is absent after JSON parse.
-        4. If `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone` (`task_type=terminal_calling`). Host applies spawn_contracts with **embedded clone body** between `---BEGIN CLONE_EXECUTE_SERIES---` / `---END CLONE_EXECUTE_SERIES---` in spawn context — subagent copies verbatim (no `load_skill`). ONE `${local.ubuntu_tool_prefix}_execute_series` with **commands.length=1**: `export REPO_CLONE_URL=… && export DEFAULT_BRANCH=… && export ISSUE_OR_PR=… &&` + embedded block. Guild runs each command via `sh -c` — **never** `_embed_tfbot_run(){` or multiple commands[] (causes `Syntax error: "(" unexpected`). Literal absolute `{{work_root}}` only. **Never** spawn `create-pr-comment` on clone failure — `check-info-blocked-gate` → `create-pr` owns notify.
+        4. If `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone` (`task_type=terminal_calling`). **Before spawn**, pass `create_agent` **context** with `repository_clone_url=`, `repository_default_branch=`, `issue_or_pr_number=` from step 1. Host spawn context includes embedded clone between `---BEGIN CLONE_EXECUTE_SERIES---` / `---END---` (short inline script; parses `TRIGGER_JSON` when read_notes empty). ONE `${local.ubuntu_tool_prefix}_execute_series` **commands.length=1**: optional exports + embedded block verbatim. **Never** spawn `create-pr-comment` on clone failure — `check-info-blocked-gate` → `create-pr` owns notify.
         5. **Clone outcome (not token probe alone):** BLOCKED only when `clone_blocker=*` OR `repo_clone_path` still empty after the clone series — note `stage_summary:check-info-and-clone=blocked: <reason>`. If `gh_env_present=false` but `repo_clone_path` is set (public anonymous clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue**.
         6. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:check-info-and-clone` + echo handoff keys (§3b).
 
