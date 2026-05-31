@@ -45,7 +45,7 @@ output "webhook_ingress_payload_url" {
   description = "Full StackGen trigger URL with `apiKey` when `webhook_trigger_base_url` is set and the webhook token is non-empty; null otherwise."
   sensitive   = true
   value = (
-    trimspace(var.webhook_trigger_base_url) != "" && trimspace(coalesce(sg_webhook.github_pr_issue.token, "")) != ""
+    trimspace(var.webhook_trigger_base_url) != "" && trimspace(try(sg_webhook.github_pr_issue.token, "")) != ""
     ) ? format(
     "%s/api/v1/webhooks/trigger?apiKey=%s%s",
     trimsuffix(trimspace(var.webhook_trigger_base_url), "/"),
