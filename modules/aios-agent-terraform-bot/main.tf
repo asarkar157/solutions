@@ -55,7 +55,7 @@ locals {
   stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
   ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.5"
+  script_pack_version       = "20260531.6"
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(
@@ -69,6 +69,13 @@ locals {
     "${path.module}/templates/validate-execute-series-embedded.sh.tftpl",
     {
       ubuntu_integration_home = local.ubuntu_integration_home
+    },
+  )
+  commit_pr_execute_series_body = templatefile(
+    "${path.module}/templates/commit-pr-execute-series-embedded.sh.tftpl",
+    {
+      ubuntu_integration_home = local.ubuntu_integration_home
+      script_pack_version     = local.script_pack_version
     },
   )
   workflow_script_pack_body = trimspace(templatefile("${path.module}/templates/workflow-script-pack.md.tftpl", {
@@ -714,7 +721,7 @@ resource "sg_workflow" "terraform_module_update" {
         2. **Infra BLOCKED path** (`module_quality_summary: BLOCKED` or any `quality_check_*: BLOCKED`): spawn ONE `create-pr-comment` (Template E, GitHub path only) explaining Ubuntu sidecar failure and what was scaffolded; do NOT spawn `create-pr-runner` or `create-pr-register`. `submit_evidence` with blocked quality items.
         2b. **Push auth BLOCKED path** (`module_quality_summary: PASS` but `push_requires_token=true`, `pr_blocker=auth`, or `clone_auth_mode=anonymous`): spawn ONE `create-pr-comment` (Template E) — module validated locally but PAT missing for push/PR; include `module_paths` and validation summary; operator binds Provider/github PAT to ubuntu `secret_ref_ids` and re-triggers.
         3. **Happy path** requires `module_quality_summary: PASS`, all `quality_check_*: PASS`, non-empty `module_paths`, no `stage_summary:*` starting with `blocked:`, and `push_requires_token` not `true`.
-        4. Happy + no `pr_url`: spawn ONE `create-pr-runner` (Template D+F): `max_llm_calls=${local.create_pr_runner_max_llm_calls}`, `task_type=terminal_calling` — ONE Ubuntu series (commit-pr) then ONE GitHub series (issue/PR comment). If runner returns `pr_blocker=auth`, fall back to §2b push-auth path — do not retry commit-pr in a loop.
+        4. Happy + no `pr_url`: spawn ONE `create-pr-runner` — ONE Ubuntu series (embedded COMMIT_PR block from spawn context, not stage-runner heredoc) then ONE GitHub series (issue comment with PR link). If runner returns `pr_blocker=auth`, fall back to §2b push-auth path — do not retry commit-pr in a loop.
         5. Happy + discovery: optionally spawn `create-pr-register` when `STACKGEN_TOKEN` present; else `registration_skipped=missing_stackgen_token` in snapshot.
         6. **Evidence gate (§3f):** `submit_evidence` for checklist `${local.evidence_checklist_name}` before happy-path comment.
         7. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:create-pr` with `pr_url` or blocker. Echo critical keys in final message.

@@ -17,6 +17,10 @@ ${local.clone_execute_series_body}
 ---BEGIN VALIDATE_EXECUTE_SERIES---
 ${local.validate_execute_series_body}
 ---END VALIDATE_EXECUTE_SERIES---
+
+---BEGIN COMMIT_PR_EXECUTE_SERIES---
+${local.commit_pr_execute_series_body}
+---END COMMIT_PR_EXECUTE_SERIES---
 EOT
 
   spawn_contract_create_pr_comment = {
@@ -147,14 +151,13 @@ EOT
         "${local.ubuntu_tool_prefix}_execute_series",
         "${local.github_tool_prefix}_execute_command",
         "${local.github_tool_prefix}_execute_series",
-        "load_skill",
         "note",
         "read_notes",
       ]
       max_llm_calls       = local.create_pr_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds + local.subagent_budgets.github_comment_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. (1) ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1: script-pack §2.3 /bin/bash -s commit-pr {{work_root}} … <<'TFBOT_STAGE_RUNNER' — note working_branch, pr_url, pr_title. (2) ONE ${local.github_tool_prefix}_execute_series: post outcome comment. FORBIDDEN: _embed_tfbot_run(){ , multiple Ubuntu commands[]. Stop after PR + comment."
+      goal                = "ABS_WORK_ROOT={{work_root}}. Resolve REPO_FULL_NAME, ISSUE_OR_PR, BASE_BRANCH from read_notes, architect context, or TRIGGER_JSON. (1) ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 300: export REPO_FULL_NAME=… ISSUE_OR_PR=… BASE_BRANCH=… optional TRIGGER_JSON=… && paste ---BEGIN COMMIT_PR_EXECUTE_SERIES--- through ---END--- from spawn context verbatim. note working_branch, pr_url, pr_title from stdout (must include pr_url=https). (2) ONE ${local.github_tool_prefix}_execute_series: gh issue comment with PR link. FORBIDDEN: load_skill, stage-runner heredoc, _embed_tfbot_run(){ , multiple Ubuntu commands[]. Stop after PR + comment."
       context             = local.terraform_spawn_context
     },
     {

@@ -1,0 +1,99 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+WORK_ROOT="{{work_root}}"
+REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
+ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
+BASE_BRANCH="$${BASE_BRANCH:-main}"
+
+parse_trigger_json() {
+  local raw="$${TRIGGER_JSON:-}"
+  [ -n "$raw" ] || return 1
+  if [ -z "$REPO_FULL_NAME" ]; then
+    REPO_FULL_NAME="$(printf '%s' "$raw" | jq -r '.repository.full_name // empty')"
+  fi
+  if [ -z "$ISSUE_OR_PR" ]; then
+    ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+  fi
+  if [ "$BASE_BRANCH" = "main" ]; then
+    BASE_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
+  fi
+}
+
+if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
+  parse_trigger_json || true
+fi
+if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
+  echo "error=missing_commit_pr_params"
+  echo "hint=export REPO_FULL_NAME ISSUE_OR_PR BASE_BRANCH from read_notes or TRIGGER_JSON"
+  exit 1
+fi
+
+git_token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
+if [ -z "$git_token" ]; then
+  echo "pr_blocker=auth"
+  echo "gh_env_present=false"
+  exit 1
+fi
+export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
+gh auth setup-git 2>/dev/null || true
+git config --global user.name "stackgen-terraform-bot"
+git config --global user.email "terraform-bot@stackgen.local"
+
+repo_dir="$WORK_ROOT/repo"
+if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
+  echo "pr_error=no_clone"
+  exit 1
+fi
+
+cd "$repo_dir"
+git add -A
+if git diff --cached --quiet; then
+  echo "pr_error=nothing_to_commit"
+  exit 1
+fi
+
+first_file="$(git diff --cached --name-only | head -1)"
+module_relpath="$(dirname "$first_file")"
+module_relpath="$${module_relpath#./}"
+if [ "$module_relpath" = "." ]; then
+  module_relpath="$(basename "$first_file")"
+fi
+provider="$${module_relpath%%/*}"
+module_name="$(basename "$module_relpath")"
+module_slug="$${module_name//_/-}"
+branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
+pr_title="feat($${provider}): add $${module_name} module"
+if ! git diff --cached --diff-filter=A --quiet; then
+  pr_title="feat($${provider}): add $${module_name} module"
+fi
+
+git switch -c "$branch" 2>/dev/null || git switch "$branch"
+commit_body="$${pr_title}
+
+Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
+git commit -m "$commit_body"
+
+mkdir -p "$WORK_ROOT/.work"
+if ! git push -u origin HEAD 2>"$WORK_ROOT/.work/push.err"; then
+  echo "pr_blocker=push_failed"
+  cat "$WORK_ROOT/.work/push.err" >&2 || true
+  exit 1
+fi
+
+pr_body_file="$WORK_ROOT/.work/pr-body.md"
+{
+  printf '%s\n' "## Summary" "" "Automated discovery-module scaffold for \`$module_relpath\`." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
+} >"$pr_body_file"
+
+pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$branch" --json url -q '.[0].url' 2>/dev/null || true)"
+if [ -z "$pr_url" ] || [ "$pr_url" = "null" ]; then
+  pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
+    --title "$pr_title" --body-file "$pr_body_file")"
+fi
+
+echo "working_branch=$branch"
+echo "pr_url=$pr_url"
+echo "pr_title=$pr_title"
+echo "script_pack_version=${script_pack_version}"

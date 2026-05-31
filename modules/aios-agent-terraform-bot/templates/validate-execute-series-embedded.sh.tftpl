@@ -42,8 +42,9 @@ cd "$MODULE_PATH"
 
 tf_version="$("$tf" version | head -1)"
 fmt_rc=0 init_rc=0 valid_rc=0 test_rc=0
+"$tf" fmt -recursive >"$work_dir/tf-fmt-apply.out" 2>&1 || true
 "$tf" fmt -recursive -check >"$work_dir/tf-fmt.out" 2>&1 || fmt_rc=$?
-"$tf" init -backend=false -input=false >"$work_dir/tf-init.out" 2>&1 || init_rc=$?
+"$tf" init -backend=false -input=false -upgrade >"$work_dir/tf-init.out" 2>&1 || init_rc=$?
 "$tf" validate -no-color >"$work_dir/tf-validate.out" 2>&1 || valid_rc=$?
 if compgen -G "*.tftest.hcl" >/dev/null || [ -d tests ]; then
   "$tf" test -verbose >"$work_dir/tf-test.out" 2>&1 || test_rc=$?
