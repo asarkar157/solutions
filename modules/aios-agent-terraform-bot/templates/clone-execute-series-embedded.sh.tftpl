@@ -1,0 +1,12 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+WORK_ROOT="{{work_root}}"
+mkdir -p "$WORK_ROOT"
+if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
+  echo "error=missing_clone_env"
+  echo "hint=export REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR from read_notes before this block"
+  exit 1
+fi
+/bin/bash -s clone "$WORK_ROOT" "$REPO_CLONE_URL" "$DEFAULT_BRANCH" "$ISSUE_OR_PR" "" "" <<'TFBOT_CLONE_PACK'
+${clone_pack_script}
+TFBOT_CLONE_PACK

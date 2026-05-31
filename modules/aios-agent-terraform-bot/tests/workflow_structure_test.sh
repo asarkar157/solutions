@@ -194,4 +194,14 @@ if grep -q 'spawn_contract_create_pr_comment' "${ROOT}/spawn_contracts.tf" \
   exit 1
 fi
 
+if ! grep -q 'BEGIN CLONE_EXECUTE_SERIES' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must embed clone body between BEGIN/END CLONE_EXECUTE_SERIES markers" >&2
+  exit 1
+fi
+
+if ! grep -q 'clone-execute-series-embedded.sh.tftpl' "${ROOT}/main.tf"; then
+  echo "FAIL: main.tf must wire clone-execute-series-embedded template" >&2
+  exit 1
+fi
+
 echo "OK: workflow structure checks passed"

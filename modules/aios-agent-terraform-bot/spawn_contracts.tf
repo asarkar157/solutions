@@ -5,7 +5,14 @@ locals {
   terraform_spawn_context = <<-EOT
 workflow_run_id: {{workflow_run_id}}
 WORK_ROOT: {{work_root}}
-module_prefix: ${local.module_prefix}
+ABS_WORK_ROOT: {{work_root}}
+ubuntu_integration_home: ${local.ubuntu_integration_home}
+TFBOT_CLONE_PACK_SHA256: ${local.script_pack_clone_sha256}
+script_pack_version: ${local.script_pack_version}
+
+---BEGIN CLONE_EXECUTE_SERIES---
+${local.clone_execute_series_body}
+---END CLONE_EXECUTE_SERIES---
 EOT
 
   spawn_contract_create_pr_comment = {
@@ -52,7 +59,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. read_notes repository_clone_url, repository_default_branch, issue_or_pr_number. ONE ${local.ubuntu_tool_prefix}_execute_series with commands.length=1. commands[0].command MUST be script-pack §2.1: /bin/bash -s clone {{work_root}} \"<url>\" \"<branch>\" \"<issue#>\" \"\" \"\" <<'TFBOT_CLONE_PACK' then paste §1a clone-pack body from skill ${local.sop_workflow_script_pack}, TFBOT_CLONE_PACK. Literal {{work_root}} only — never $HOME/$WORK_ROOT. FORBIDDEN: _embed_tfbot_run(){ , bash -lc, multiple commands[], function syntax, load_skill, ad hoc git clone. note repo_clone_path, repo_head_sha from stdout. Expect script_pack_version=${local.script_pack_version}."
+      goal                = "ABS_WORK_ROOT={{work_root}}. read_notes repository_clone_url, repository_default_branch, issue_or_pr_number. ONE ${local.ubuntu_tool_prefix}_execute_series only: commands.length=1, commands[0].timeout_seconds=300. commands[0].command MUST start with export REPO_CLONE_URL='<url>' && export DEFAULT_BRANCH='<branch>' && export ISSUE_OR_PR='<issue#>' && then paste EVERY line between ---BEGIN CLONE_EXECUTE_SERIES--- and ---END CLONE_EXECUTE_SERIES--- from spawn context (copy verbatim — do NOT load_skill). Literal {{work_root}} in embedded block only. FORBIDDEN: _embed_tfbot_run(){ , bash -lc, multiple commands[], function syntax, load_skill, create_files, second execute_series, ad hoc git clone. note repo_clone_path, repo_head_sha from stdout. Expect script_pack_version=${local.script_pack_version}."
       context             = local.terraform_spawn_context
     },
   ]
@@ -162,6 +169,5 @@ EOT
       goal                = "Optional StackGen registration when STACKGEN_TOKEN is set. WORK_ROOT={{work_root}}. Skip with note registration_skipped=missing_stackgen_token when unset."
       context             = local.terraform_spawn_context
     },
-    local.spawn_contract_create_pr_comment,
   ]
 }
