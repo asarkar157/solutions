@@ -7,8 +7,8 @@ Keywords: terraform state split, monorepo, opentofu, tfstate, aws, azure, gcp, a
 ```
 ingest-and-split                              (script: preflight → download-state → split-manifest)
  → split-input-gate                          (conditional_skip — missing URI / ingest script-pack failure)
- → split-loop-gate                            (loop_stage — GO_BACK to ingest-and-split if count_reconciliation_ok != "true")
- → split-ingest-blocked-gate                  (conditional_skip — script_pack never verified → final-gate)
+ → split-loop-gate                            (loop_stage — GO_BACK to ingest-and-split if count_reconciliation_ok != "true"; fan-in ingest output)
+ → split-ingest-blocked-gate                  (conditional_skip — fan-in ingest + loop; skip on script_pack / reconcile / GO_BACK)
  → registry-and-import-codegen               (FAST: scaffold + import {} + registry mapping)
    ├→ hcl-hydrate-per-group                  (parallel: tofu preflight → plan per group)
    ├→ materialize-stackgen-appstacks         (parallel: StackGen MCP per group)

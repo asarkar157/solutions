@@ -4,7 +4,7 @@
 # Usage: DBSPLIT_EMBEDDED=1 bash -s <command> [args...] << 'DBSPLIT_STAGE_RUNNER' ... DBSPLIT_STAGE_RUNNER
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="20260531.2"
+SCRIPT_PACK_VERSION="20260531.3"
 REQUIRED_ALLOCATE_MARKER="def merge_small_by_seed"
 
 mirror_note() {
@@ -137,6 +137,14 @@ managed_instance_count() {
 cmd_preflight() {
   local work_root="${1:?WORK_ROOT}"
   require_embedded_invocation || return 1
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "preflight_error=python3_missing"
+    return 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "preflight_error=jq_missing"
+    return 1
+  fi
   mkdir -p "${work_root}/state" "${work_root}/scripts" "${work_root}/groups"
   chmod 700 "$work_root"
   touch "${work_root}/.write_test" && rm "${work_root}/.write_test"
@@ -203,8 +211,20 @@ cmd_download_state() {
     curl -LfsS "$state_uri" -o "$dest"
   fi
 
+  if [ ! -s "$dest" ]; then
+    echo "download_error=empty_state_file uri=${state_uri}"
+    return 1
+  fi
+  if ! jq -e '.resources' "$dest" >/dev/null 2>&1; then
+    echo "download_error=invalid_tfstate_json uri=${state_uri}"
+    return 1
+  fi
+
   local count
   count="$(managed_instance_count "$dest")"
+  if [ "${count:-0}" -eq 0 ]; then
+    echo "download_warning=zero_managed_resources uri=${state_uri}"
+  fi
   mirror_note "$work_root" "monolith_state_local_path" "$dest"
   mirror_note "$work_root" "monolith_resource_count" "$count"
 

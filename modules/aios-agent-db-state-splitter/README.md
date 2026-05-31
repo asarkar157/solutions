@@ -147,7 +147,9 @@ Guild traces on long runs showed **skill-search noise**, **`/workspace` read-onl
 | Cron payload uses `tfstate_file` not `monolith_state_uri` | **`tfstate_file` input alias** + ingest **Step 0 normalization** parses nested JSON / prose URLs; `split-input-gate` skips downstream when URI still missing |
 | Sub-agent used `/bin/sh` and failed on `set -o pipefail` | Script pack mandates **`bash -s` heredoc** with `_embed_dbsplit_run` (never `/bin/sh`) |
 | `$WORK_ROOT` not expanded in `execute_series` (trace `09ff14b8ad27`) | Spawn contract passes literal **`{{work_root}}`** — never `$WORK_ROOT` in tool JSON |
-| Ingest failed 3× but registry still ran (~10 min) | **`split-input-gate`** + **`split-ingest-blocked-gate`** skip to final-gate on ingest/script-pack blockers |
+| Ingest failed 3× but registry still ran (~10 min) | **`split-input-gate`** (early blockers) + **`split-ingest-blocked-gate`** fan-in **`ingest-and-split` + `split-loop-gate`** outputs — skips on script-pack failure, `count_reconciliation_ok: "false"`, or `"action":"GO_BACK"` (DAG mode does not honor GO_BACK re-runs) |
+| `split-ingest-blocked-gate` never matched (loop output is JSON only) | Gate **`stage_depends_on`** includes **`ingest-and-split`** so `conditional_skip` regex sees script_pack / reconcile sentinels in merged predecessor text |
+| Loop FINISH after max iterations with bad reconcile | **`split-ingest-blocked-gate`** matches `count_reconciliation_ok: "false"` in fan-in ingest output even when loop_stage emitted FINISH |
 | `tofu` missing → GO_BACK loop forever | **`blocked:ubuntu_infra_tofu_missing`** + **`multi-shard-plan-infra-gate`** skip to final-gate (no orphan dump) |
 | Missing URI burned downstream GO_BACK stages | **`split-input-gate` conditional_skip** to `final-gate-and-memory` + upstream blocked guards on parallel stages |
 

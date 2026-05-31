@@ -72,7 +72,7 @@ locals {
 
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   allocate_manifest_script    = trimspace(file("${path.module}/scripts/allocate_manifest.py"))
-  script_pack_version         = "20260531.2"
+  script_pack_version         = "20260531.3"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)
 
@@ -431,8 +431,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     },
     {
       stage_id    = "split-ingest-blocked-gate"
-      description = "Skip to final gate when ingest exhausted retries or script pack never verified (avoid burning registry on bad split)"
-      note        = "conditional_skip only — no LLM."
+      description = "Skip to final gate when split never verified, reconcile failed, or loop emitted GO_BACK (DAG mode does not re-run ingest on GO_BACK)"
+      note        = "conditional_skip only — fan-in ingest-and-split + split-loop-gate outputs."
       required    = false
     },
     {
@@ -523,7 +523,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       stage_depends_on = ["ingest-and-split"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "blocked:missing_monolith_state_uri|blocked:three_runner_attempts_failed|blocked:ingest_script_pack_failed|stage_summary:ingest-and-split=blocked:"
+        match     = "blocked:missing_monolith_state_uri|blocked:three_runner_attempts_failed|blocked:ingest_script_pack_failed|stage_summary:ingest-and-split=blocked:|script_pack_verify_ok: \"false\"|script_pack_drift_possible: \"true\""
         skip_to   = "final-gate-and-memory"
         reason    = "Ingest input or script-pack failure — skip rework loop and downstream stages"
       }
@@ -531,18 +531,21 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "split-ingest-blocked-gate"
       action_type      = "conditional_skip"
-      stage_depends_on = ["split-loop-gate"]
+      # Fan-in ingest output: conditional_skip evaluates merged predecessor text; loop_stage
+      # output alone is JSON without script_pack sentinels (Guild stagerunner limitation).
+      stage_depends_on = ["split-loop-gate", "ingest-and-split"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "script_pack_error=|script_pack_verify_ok: \"false\"|allocate_sha256_mismatch|blocked:ingest_script_pack_failed"
+        match     = "script_pack_error=|script_pack_verify_ok: \"false\"|allocate_sha256_mismatch|blocked:ingest_script_pack_failed|script_pack_drift_possible: \"true\"|count_reconciliation_ok: \"false\"|\"action\":\"GO_BACK\""
         skip_to   = "final-gate-and-memory"
-        reason    = "Script pack never verified after split loop — skip registry and parallel layer"
+        reason    = "Split not verified or loop did not converge — skip registry and parallel layer"
       }
     },
     {
       stage_id         = "split-loop-gate"
       action_type      = "loop_stage"
-      stage_depends_on = ["split-input-gate"]
+      # Fan-in ingest so exit_match sees count_reconciliation_ok (not only gate JSON wrapper).
+      stage_depends_on = ["split-input-gate", "ingest-and-split"]
       action_config = {
         loop_to        = "ingest-and-split"
         max_iterations = var.max_convergence_iterations
@@ -565,7 +568,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       spawn_contracts = local.spawn_contracts_registry_codegen
       note            = <<-EOT
         **Upstream blocked guard (step 0):** if notes contain `blocked:missing_monolith_state_uri`, `blocked:three_runner_attempts_failed`, `blocked:ingest_script_pack_failed`, or `stage_summary:ingest-and-split=blocked:` → one-line `notify({stage:'registry-and-import-codegen',error:'upstream_ingest_blocked'})` and **return**. No markdown reports, no `ask_clarifying_question`.
-        **Loop-gate guard (step 1):** if stage Input JSON contains `"action":"GO_BACK"` OR `count_reconciliation_ok` is not `"true"` OR `script_pack_verify_ok` is not `"true"` → one-line `notify({stage:'registry-and-import-codegen',error:'upstream_not_ready'})` and **return** — do NOT scaffold. If `logical_group_manifest` is absent, same fast-fail (no multi-page report).
+        **Loop-gate guard (step 1):** if stage Input JSON contains `"action":"GO_BACK"` OR `count_reconciliation_ok` is not `"true"` OR `script_pack_verify_ok` is not `"true"` OR `script_pack_drift_possible` is `"true"` → one-line `notify({stage:'registry-and-import-codegen',error:'upstream_not_ready'})` and **return** — do NOT scaffold. If `logical_group_manifest` is absent, same fast-fail (no multi-page report).
         **Stage entry contract (cold-start fast-fail):**
           - (1) `read_notes` (2) if 0 keys, `cat $HOME/.<workflow_run_id>/notes.json` (3) if both empty AND `$HOME/.<workflow_run_id>/terraform.tfstate` does not exist → `notify` once with `{stage:'registry-and-import-codegen', error:'cold_start_no_upstream'}` and **return**. Do NOT emit a long markdown report.
           - Required keys: `repo_clone_path`, `monolith_state_local_path`, `logical_group_manifest` (or legacy `shard_manifest`), `count_reconciliation_ok`, optional `grouping_strategy` / `max_resources_per_appstack`.
@@ -701,7 +704,8 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
     {
       stage_id         = "multi-shard-plan-loop-gate"
       action_type      = "loop_stage"
-      stage_depends_on = ["multi-shard-plan-infra-gate"]
+      # Fan-in convergence output so exit_match sees multi_plan_zero_diff_ok after infra gate pass-through.
+      stage_depends_on = ["multi-shard-plan-infra-gate", "multi-shard-plan-convergence"]
       action_config = {
         loop_to        = "hcl-hydrate-per-group"
         max_iterations = var.max_convergence_iterations

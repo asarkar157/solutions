@@ -150,4 +150,24 @@ if ! grep -q 'emit_script_pack_verify' "${ROOT}/scripts/stage-runner.sh"; then
   exit 1
 fi
 
+if ! grep -q 'stage_depends_on = \["split-loop-gate", "ingest-and-split"\]' "${MAIN}"; then
+  echo "FAIL: split-ingest-blocked-gate must fan-in ingest-and-split for gate regex matching" >&2
+  exit 1
+fi
+
+if ! grep -q 'stage_depends_on = \["split-input-gate", "ingest-and-split"\]' "${MAIN}"; then
+  echo "FAIL: split-loop-gate must fan-in ingest-and-split for count_reconciliation_ok matching" >&2
+  exit 1
+fi
+
+if ! grep -q 'stage_depends_on = \["multi-shard-plan-infra-gate", "multi-shard-plan-convergence"\]' "${MAIN}"; then
+  echo "FAIL: multi-shard-plan-loop-gate must fan-in multi-shard-plan-convergence for plan sentinel matching" >&2
+  exit 1
+fi
+
+if ! grep -q 'count_reconciliation_ok: \\\"false\\\"' "${MAIN}"; then
+  echo "FAIL: split-ingest-blocked-gate must match count_reconciliation_ok false" >&2
+  exit 1
+fi
+
 echo "OK: db-state-splitter workflow structure checks passed"
