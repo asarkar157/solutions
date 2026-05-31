@@ -55,7 +55,7 @@ locals {
   stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
   ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.7"
+  script_pack_version       = "20260531.8"
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(
@@ -670,7 +670,7 @@ resource "sg_workflow" "terraform_module_update" {
         2. Spawn exactly ONE `validate-and-test-runner` with `max_llm_calls=${local.subagent_budgets.validate_runner_max_llm_calls}`, `task_type=terminal_calling` (Template C / script-pack). If `[stop_agent_error] max LLM calls` → re-spawn once with +10 (cap 60) and a smaller goal — never a second runner name.
         3. **Infra vs code (module-quality-sop §2b–§2c):** BLOCKED when the runner never executed real shell — synthesized PASS lines, forbidden keys (`quality_check_terraform`, `quality_check_module_layout`), or stdout missing `fmt_exit=` / `binary=` from stage-runner validate. Emit `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED` — do **NOT** set `module_quality_rework=true`. Retry the same runner at most once after §8(e) infra backoff; then BLOCKED.
         4. Map real exit codes to sentinels (module-quality-sop §2): `quality_check_fmt`, `quality_check_validate`, `quality_check_test`, then `module_quality_summary: PASS|NEEDS_REVISION`. On NEEDS_REVISION (code FAIL only), include `module_quality_rework=true` in `workflow_notes_snapshot`.
-        5. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:validate-and-test` + echo all four sentinel lines in final message.
+        5. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:validate-and-test` + echo sentinel lines and `pr_url` / `working_branch` when validate runner opened a PR in-shell.
 
         Forbidden: opening PR, more than two validate runners per stage invocation, PASS without `fmt_exit=` in runner stdout, NEEDS_REVISION when infra BLOCKED, printf-only execute_series.
       EOT
@@ -720,8 +720,8 @@ resource "sg_workflow" "terraform_module_update" {
         1. One `read_notes` at stage entry (§3a); parse predecessor loop-gate JSON. `max iterations reached` → **blocked** (post Template E with partial progress + operator next steps).
         2. **Infra BLOCKED path** (`module_quality_summary: BLOCKED` or any `quality_check_*: BLOCKED`): spawn ONE `create-pr-comment` (Template E, GitHub path only) explaining Ubuntu sidecar failure and what was scaffolded; do NOT spawn `create-pr-runner` or `create-pr-register`. `submit_evidence` with blocked quality items.
         2b. **Push auth BLOCKED path** (`module_quality_summary: PASS` but `push_requires_token=true`, `pr_blocker=auth`, or `clone_auth_mode=anonymous`): spawn ONE `create-pr-comment` (Template E) — module validated locally but PAT missing for push/PR; include `module_paths` and validation summary; operator binds Provider/github PAT to ubuntu `secret_ref_ids` and re-triggers.
-        3. **Happy path** requires `module_quality_summary: PASS`, all `quality_check_*: PASS`, non-empty `module_paths`, no `stage_summary:*` starting with `blocked:`, and `push_requires_token` not `true`.
-        4. Happy + no `pr_url`: spawn ONE `create-pr-runner` — ONE Ubuntu series (embedded COMMIT_PR block from spawn context, not stage-runner heredoc) then ONE GitHub series (issue comment with PR link). If runner returns `pr_blocker=auth`, fall back to §2b push-auth path — do not retry commit-pr in a loop.
+        3. **Happy path** requires `module_quality_summary: PASS`, all `quality_check_*: PASS`, non-empty `module_paths`, no `stage_summary:*` starting with `blocked:`, and `push_requires_token` not `true`. If `pr_url` already in notes/snapshot from validate-and-test → skip `create-pr-runner`; comment on issue only.
+        4. Happy + no `pr_url`: spawn ONE `create-pr-runner` — ONE Ubuntu series (embedded COMMIT_PR block) then ONE GitHub series (issue comment). If runner returns `pr_blocker=auth`, fall back to §2b — do not retry commit-pr in a loop.
         5. Happy + discovery: optionally spawn `create-pr-register` when `STACKGEN_TOKEN` present; else `registration_skipped=missing_stackgen_token` in snapshot.
         6. **Evidence gate (§3f):** `submit_evidence` for checklist `${local.evidence_checklist_name}` before happy-path comment.
         7. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:create-pr` with `pr_url` or blocker. Echo critical keys in final message.

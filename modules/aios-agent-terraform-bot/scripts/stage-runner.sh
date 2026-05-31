@@ -5,7 +5,7 @@
 # Commands: clone | validate | commit-pr | resolve-paths | discovery-check
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.7}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.8}"
 
 require_embedded_invocation() {
   if [ "${TFBOT_EMBEDDED:-}" = "1" ]; then

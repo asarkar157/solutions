@@ -86,33 +86,66 @@ if [ "$mq" = "PASS" ]; then
       git config --global user.name "stackgen-terraform-bot"
       git config --global user.email "terraform-bot@stackgen.local"
       repo_dir="$WORK_ROOT/repo"
+      if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
+        _walk="$MODULE_PATH"
+        while [ "$_walk" != "/" ] && [ -n "$_walk" ]; do
+          if [ -d "$_walk/.git" ] || [ -e "$_walk/.git" ]; then
+            repo_dir="$_walk"
+            break
+          fi
+          _walk="$(dirname "$_walk")"
+        done
+      fi
       if [ -d "$repo_dir/.git" ] || [ -e "$repo_dir/.git" ]; then
         cd "$repo_dir"
         git add -A
-        if ! git diff --cached --quiet; then
-          module_relpath="$${MODULE_PATH#"$repo_dir"/}"
-          module_relpath="$${module_relpath#/}"
-          provider="$${module_relpath%%/*}"
-          module_name="$(basename "$module_relpath")"
-          module_slug="$${module_name//_/-}"
-          branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
-          pr_title="feat($${provider}): add $${module_name} module"
+        module_relpath="$${MODULE_PATH#"$repo_dir"/}"
+        module_relpath="$${module_relpath#/}"
+        provider="$${module_relpath%%/*}"
+        module_name="$(basename "$module_relpath")"
+        module_slug="$${module_name//_/-}"
+        branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
+        pr_title="feat($${provider}): add $${module_name} module"
+        if [ -n "$(git status --porcelain)" ]; then
           git switch -c "$branch" 2>/dev/null || git switch "$branch"
           git commit -m "$${pr_title}
 
-Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}" || true
+Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
+        else
+          echo "push_skipped=no_worktree_changes repo_dir=$repo_dir module_path=$MODULE_PATH"
+        fi
+        if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
           if git push -u origin HEAD 2>"$work_dir/push.err"; then
             echo "working_branch=$branch"
             echo "pr_prepushed=true"
             echo "pr_title=$pr_title"
+            pr_body_file="$work_dir/pr-body.md"
+            {
+              printf '%s\n' "## Summary" "" "Discovery module scaffold (validate stage)." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
+            } >"$pr_body_file"
+            pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$branch" --json url -q '.[0].url' 2>/dev/null || true)"
+            if [ -z "$pr_url" ] || [ "$pr_url" = "null" ]; then
+              pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
+                --title "$pr_title" --body-file "$pr_body_file" 2>"$work_dir/pr-create.err")"
+            fi
+            if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
+              echo "pr_url=$pr_url"
+            else
+              echo "pr_blocker=pr_create_failed"
+              cat "$work_dir/pr-create.err" >&2 || true
+            fi
           else
             echo "pr_blocker=push_failed"
             cat "$work_dir/push.err" >&2 || true
           fi
         fi
+      else
+        echo "push_skipped=no_repo_dir module_path=$MODULE_PATH work_root=$WORK_ROOT"
       fi
     else
       echo "push_skipped=no_token"
     fi
+  else
+    echo "push_skipped=missing_repo_or_issue"
   fi
 fi
