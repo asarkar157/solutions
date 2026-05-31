@@ -214,7 +214,8 @@ Production traces **`9771916a56b3`** and **`1e0ebb22`** showed architect/runner 
 
 **Hard rules:**
 1. **`WORK_ROOT=$HOME/.<workflow_run_id>/`** — from stagerunner `[Workflow execution]` header. **WORK_ROOT may not exist yet** — `cmd_preflight` creates it; never treat a missing directory as a hard blocker or run standalone `mkdir` probes.
-2. **Architect never runs Ubuntu tools** (except `cat …/notes.json` at stage entry). Spawn exactly one `<stage_id>-runner` subagent; wait; `note` handoff keys.
+2. **`execute_series` `working_dir` MUST be `/` or `/home/integration`** — never `WORK_ROOT` before preflight (trace `5740880b`: chdir fails).
+3. **Architect never runs Ubuntu tools** (except `cat …/notes.json` at stage entry). Spawn exactly one `<stage_id>-runner` subagent; wait; `note` handoff keys.
 3. **One `execute_series` per runner turn** — sequence: write `allocate_manifest.py` → export env → `_embed_dbsplit_run` via **`bash -s << 'DBSPLIT_STAGE_RUNNER'`** (never `/bin/sh` — `set -o pipefail` requires bash). Never split across tool calls.
 4. **`DBSPLIT_EMBEDDED=1` is mandatory** — stage-runner rejects direct `$WORK_ROOT/scripts/stage-runner.sh` invocation.
 5. **`DBSPLIT_ALLOCATE_SHA256=${script_pack_allocate_sha256}`** — sha256 gate for `allocate_manifest.py` (script pack version **${script_pack_version}**).

@@ -28,7 +28,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = local.subagent_budgets.script_runner_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series only: export MONOLITH_URI='<uri>' then run bash script between BEGIN/END INGEST_EXECUTE_SERIES from context (copy verbatim). Use ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}} — never /root. Forbidden: create_files, second execute_series, inline python, search_skill. note handoff keys from stdout unchanged. Final line must include count_reconciliation_ok and script_pack_verify_ok. Parent architect must STOP after success — no respawn."
+      goal                = "read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series only: working_dir MUST be / or /home/integration — NEVER WORK_ROOT (preflight creates it; chdir fails trace 5740880b). Single command body: export MONOLITH_URI='<uri>' then paste INGEST_EXECUTE_SERIES between BEGIN/END from context verbatim. Use ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}} in script paths — never /root. Forbidden: create_files, second execute_series, inline python. note handoff keys from stdout unchanged. Final line must include count_reconciliation_ok and script_pack_verify_ok."
       context             = local.dbsplit_spawn_context
     },
   ]
