@@ -72,7 +72,8 @@ locals {
 
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   allocate_manifest_script    = trimspace(file("${path.module}/scripts/allocate_manifest.py"))
-  script_pack_version         = "20260531.3"
+  ubuntu_integration_home     = "/home/integration"
+  script_pack_version         = "20260531.4"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)
 
@@ -115,6 +116,7 @@ locals {
     script_pack_version                 = local.script_pack_version
     script_pack_allocate_sha256         = local.script_pack_allocate_sha256
     script_pack_runner_sha256           = local.script_pack_runner_sha256
+    ubuntu_integration_home             = local.ubuntu_integration_home
     stackgen_project_name_default       = trimspace(var.stackgen_project_name)
     subagent_budgets                    = local.subagent_budgets
     bulk_add_resources_max_per_call     = 100
@@ -122,6 +124,11 @@ locals {
     bulk_resources_chunk_size           = 80
     bulk_connections_chunk_size         = 50
   }
+
+  ingest_execute_series_body = templatefile(
+    "${path.module}/templates/ingest-execute-series-embedded.sh.tftpl",
+    local.template_vars,
+  )
 
   rendered_persona = templatefile("${path.module}/personas/db-state-split-architect.md.tftpl", local.template_vars)
 
@@ -511,7 +518,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Step 0 — normalize inputs (mandatory before spawn):** Resolve `monolith_state_uri` from workflow inputs (`monolith_state_uri`, `tfstate_file`), nested JSON in the user message (`{"tfstate_file":"…"}` or `{"monolith_state_uri":"…"}` inside prose), or bare `s3://` / `https://` / `drive.google.com` URLs. `monolith_state_uri = inputs.monolith_state_uri // inputs.tfstate_file // parsed_json // prose_url`. `note("monolith_state_uri", resolved_uri)` when non-empty. **`iac_repository_url = inputs.iac_repository_url // inputs.iac_repo_url`** — missing repo URL → `repo_clone_path=skipped_no_iac_repository_url_provided` (non-blocking). If URI is still empty → `ask_clarifying_question` **once** for `monolith_state_uri` only; `note stage_summary:ingest-and-split=blocked:missing_input`; emit final line **`blocked:missing_monolith_state_uri: "true"`**; **do NOT spawn** `ingest-and-split-runner` (`split-input-gate` skips to final-gate).
         **Architect = coordinator only:** when URI is resolved, spawn **exactly one** `ingest-and-split-runner` (`task_type="terminal_calling"`). **Max 1 runner re-spawn** after failure — second attempt must use **hardcoded absolute paths** from spawn contract context (`WORK_ROOT: …` line), never `$WORK_ROOT` / `$HOME` inside `execute_series` command strings. After **two failed runner attempts**, emit **`blocked:three_runner_attempts_failed: "true"`** and **`blocked:ingest_script_pack_failed: "true"`**; do **NOT** spawn `ingest-and-split-direct-runner`, inline python splitters, or `*-build-seeds` thrash names. Forbidden: `*-script-prep`, `*-notes-mirror`, `*-scripts`, `*-v2`, `discover-db-anchors-script-prep`, `allocate-script-writer`. Host applies `spawn_contracts` budgets/tools — do NOT re-specify create_agent fields. **Do NOT** include `create_files` on the ingest runner.
         **StackGen project (mirror at ingest):** `stackgen_project_name = inputs.stackgen_project_name // "${trimspace(var.stackgen_project_name)}"` — when non-empty, `note("stackgen_project_name", …)` before spawning the runner so `materialize-stackgen-appstacks` never calls MCP with empty `project_name`.
-        **Script pack (mandatory):** ONE `${local.resolved_ubuntu_integration_name}_execute_series` that (1) writes verified `allocate_manifest.py` via heredoc, (2) exports `DBSPLIT_EMBEDDED=1` + `DBSPLIT_ALLOCATE_SHA256=${local.script_pack_allocate_sha256}`, (3) invokes `_embed_dbsplit_run ingest-and-split …` via **`bash -s << 'DBSPLIT_STAGE_RUNNER'`** (never `/bin/sh` — `set -o pipefail` requires bash). Spawn contract resolves **`WORK_ROOT={{work_root}}`** to the absolute scratch path — pass that literal path as the ingest-and-split argument (never unexpanded shell variables in tool JSON). **Never** `bash $WORK_ROOT/scripts/stage-runner.sh` without the embed wrapper. **Never** `search_skill` / `find` / standalone `mkdir` probes — `cmd_preflight` creates WORK_ROOT. See orchestration SOP § *Script pack*.
+        **Script pack (mandatory):** spawn contract context includes **INGEST_EXECUTE_SERIES** (terraform-rendered canonical bash). Runner: `read_notes monolith_state_uri` → ONE `${local.resolved_ubuntu_integration_name}_execute_series` whose body is `export MONOLITH_URI='<uri>'` then the INGEST_EXECUTE_SERIES block verbatim (uses **`ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}}`** — never `/root`, never `$HOME` in tool JSON). **Never** split embed across tool calls. **Never** `bash $WORK_ROOT/scripts/stage-runner.sh` without `_embed_dbsplit_run`. See orchestration SOP § *Script pack*.
         **Success criteria:** final line MUST include `count_reconciliation_ok: "true"` or `"false"` (quoted), `script_pack_version: "${local.script_pack_version}"`, and `script_pack_verify_ok: "true"` when reconcile succeeded. If `logical_group_count` is 1 and group id is `ungrouped` with `monolith_resource_count > 5000`, emit **`script_pack_drift_possible: "true"`** (non-blocking warning — likely non-canonical inline python recovery).
         **Outputs:** `monolith_state_local_path`, `logical_group_manifest`, `group_state_paths`, `count_reconciliation_ok`, `logical_group_count`, `script_pack_version`, DB anchor inventory paths. Echo group count + shared group ids in final message. **Loop gate sentinel:** final line MUST include `count_reconciliation_ok: "true"` or `count_reconciliation_ok: "false"` (quoted strings) for `split-loop-gate`.
         `note` `stage_summary:ingest-and-split` AND mirror all handoff keys to `$HOME/.<workflow_run_id>/notes.json`. Never `load_skill` / `submit_evidence` here.

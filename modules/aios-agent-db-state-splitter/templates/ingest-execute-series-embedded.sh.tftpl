@@ -1,0 +1,19 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+WORK_ROOT="${ubuntu_integration_home}/.{{workflow_run_id}}"
+if [ -z "$${MONOLITH_URI:-}" ]; then
+  echo "error=MONOLITH_URI_unset"
+  exit 1
+fi
+mkdir -p "$WORK_ROOT/scripts"
+cat > "$WORK_ROOT/scripts/allocate_manifest.py" << 'ALLOCATE_MANIFEST_PY'
+${allocate_manifest_script}
+ALLOCATE_MANIFEST_PY
+export DBSPLIT_EMBEDDED=1
+export DBSPLIT_ALLOCATE_SHA256="${script_pack_allocate_sha256}"
+_embed_dbsplit_run() {
+  bash -s "$$@" << 'DBSPLIT_STAGE_RUNNER'
+${stage_runner_script}
+DBSPLIT_STAGE_RUNNER
+}
+_embed_dbsplit_run ingest-and-split "$WORK_ROOT" "$MONOLITH_URI"

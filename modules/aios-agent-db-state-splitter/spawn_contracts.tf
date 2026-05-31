@@ -4,8 +4,15 @@
 locals {
   dbsplit_spawn_context = <<-EOT
 workflow_run_id: {{workflow_run_id}}
-WORK_ROOT: {{work_root}}
-module_prefix: ${local.module_prefix}
+WORK_ROOT: /home/integration/.{{workflow_run_id}}
+ABS_WORK_ROOT: /home/integration/.{{workflow_run_id}}
+ubuntu_integration_home: ${local.ubuntu_integration_home}
+DBSPLIT_ALLOCATE_SHA256: ${local.script_pack_allocate_sha256}
+script_pack_version: ${local.script_pack_version}
+
+---BEGIN INGEST_EXECUTE_SERIES---
+${local.ingest_execute_series_body}
+---END INGEST_EXECUTE_SERIES---
 EOT
 
   spawn_contracts_ingest_and_split = [
@@ -21,7 +28,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = local.subagent_budgets.script_runner_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series: mkdir -p {{work_root}}/scripts; heredoc allocate_manifest.py; export DBSPLIT_EMBEDDED=1 DBSPLIT_ALLOCATE_SHA256={{stage_note_var:DBSPLIT_ALLOCATE_SHA256}}; bash -s heredoc _embed_dbsplit_run ingest-and-split {{work_root}} <URI> (bash not /bin/sh). Use literal {{work_root}} in every command — never $WORK_ROOT/$HOME in tool strings. Forbidden: create_files, direct stage-runner.sh, inline python splitters, search_skill. note handoff keys. Final line: count_reconciliation_ok + script_pack_verify_ok + script_pack_version."
+      goal                = "read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series only: export MONOLITH_URI='<uri>' then run bash script between BEGIN/END INGEST_EXECUTE_SERIES from context (copy verbatim). Use ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}} — never /root. Forbidden: create_files, second execute_series, inline python, search_skill. note handoff keys from stdout. Final line must include count_reconciliation_ok and script_pack_verify_ok."
       context             = local.dbsplit_spawn_context
     },
   ]
@@ -39,7 +46,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.registry_codegen_max_llm_calls
       max_tool_iterations = local.subagent_budgets.registry_codegen_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.registry_codegen_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. Registry mapping + HCL scaffold + import blocks only. Read group_state_paths from notes. HCL .tf only — never *.tf.json. Spawn goal ≤ 1000 chars; one bounded execute_series per group batch when possible."
+      goal                = "ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}}. Registry mapping + HCL scaffold + import blocks only. Read group_state_paths from notes. HCL .tf only — never *.tf.json. Spawn goal ≤ 1000 chars; one bounded execute_series per group batch when possible."
       context             = local.dbsplit_spawn_context
     },
   ]
@@ -57,7 +64,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.hcl_hydrate_batch_max_llm_calls
       max_tool_iterations = local.subagent_budgets.hcl_hydrate_batch_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.hcl_hydrate_batch_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. Infra preflight: command -v tofu || command -v terraform — if missing note blocked:ubuntu_infra_tofu_missing and return (do NOT orphan all resources). Per group_id: ONE execute_series tofu init + plan -generate-config-out=generated.tf + verify plan + tofu fmt. Append import_failed_* to orphans_bundle only for real plan failures. Never *.tf.json."
+      goal                = "ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}}. Infra preflight: command -v tofu || command -v terraform — if missing note blocked:ubuntu_infra_tofu_missing and return (do NOT orphan all resources). Per group_id: ONE execute_series tofu init + plan -generate-config-out=generated.tf + verify plan + tofu fmt. Append import_failed_* to orphans_bundle only for real plan failures. Never *.tf.json."
       context             = local.dbsplit_spawn_context
     },
   ]
@@ -99,7 +106,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.plan_convergence_batch_max_llm_calls
       max_tool_iterations = local.subagent_budgets.plan_convergence_batch_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.plan_convergence_batch_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. Run plan convergence matrix per group; note plan_no_changes per group. Decompose into multi-shard-plan-runner-batch-* only when shard count requires it."
+      goal                = "ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}}. Run plan convergence matrix per group; note plan_no_changes per group. Decompose into multi-shard-plan-runner-batch-* only when shard count requires it."
       context             = local.dbsplit_spawn_context
     },
     {
@@ -114,7 +121,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.plan_convergence_batch_max_llm_calls
       max_tool_iterations = local.subagent_budgets.plan_convergence_batch_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.plan_convergence_batch_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. Plan convergence for assigned group_id range only. ≤ 270s per Ubuntu call inside one execute_series per group."
+      goal                = "ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}}. Plan convergence for assigned group_id range only. ≤ 270s per Ubuntu call inside one execute_series per group."
       context             = local.dbsplit_spawn_context
     },
   ]
