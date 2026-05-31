@@ -137,7 +137,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.validate_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.validate_runner_timeout_seconds
-      goal                = "ABS_WORK_ROOT={{work_root}}. Resolve module_paths from read_notes (first path) or architect context. ONE ${local.ubuntu_tool_prefix}_execute_series only: commands.length=1, commands[0].timeout_seconds=600. commands[0].command = export MODULE_PATH='<absolute module dir>' && paste EVERY line between ---BEGIN VALIDATE_EXECUTE_SERIES--- and ---END VALIDATE_EXECUTE_SERIES--- from spawn context (verbatim). Real tofu/terraform required — stdout MUST include fmt_exit= and binary=OpenTofu or Terraform (never binary=/usr/bin/bash). FORBIDDEN: printf fake PASS, quality_check_terraform, load_skill, multiple commands[]. note quality_check_* and module_quality_summary from stdout only."
+      goal                = "ABS_WORK_ROOT={{work_root}}. Resolve MODULE_PATH plus REPO_FULL_NAME, ISSUE_OR_PR, BASE_BRANCH from read_notes, architect context, or TRIGGER_JSON. ONE ${local.ubuntu_tool_prefix}_execute_series only: commands.length=1, commands[0].timeout_seconds=600. commands[0].command = export MODULE_PATH='…' REPO_FULL_NAME='…' ISSUE_OR_PR='…' optional TRIGGER_JSON='…' && paste ---BEGIN VALIDATE_EXECUTE_SERIES--- through ---END--- verbatim. On PASS the embedded script commits+pushes branch (pr_prepushed=true) — note working_branch, pr_prepushed, pr_title. stdout MUST include fmt_exit= and binary=OpenTofu. FORBIDDEN: printf fake PASS, load_skill."
       context             = local.terraform_spawn_context
     },
   ]
@@ -157,7 +157,7 @@ EOT
       max_llm_calls       = local.create_pr_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds + local.subagent_budgets.github_comment_timeout_seconds
-      goal                = "ABS_WORK_ROOT={{work_root}}. Resolve REPO_FULL_NAME, ISSUE_OR_PR, BASE_BRANCH from read_notes, architect context, or TRIGGER_JSON. (1) ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 300: export REPO_FULL_NAME=… ISSUE_OR_PR=… BASE_BRANCH=… optional TRIGGER_JSON=… && paste ---BEGIN COMMIT_PR_EXECUTE_SERIES--- through ---END--- from spawn context verbatim. note working_branch, pr_url, pr_title from stdout (must include pr_url=https). (2) ONE ${local.github_tool_prefix}_execute_series: gh issue comment with PR link. FORBIDDEN: load_skill, stage-runner heredoc, _embed_tfbot_run(){ , multiple Ubuntu commands[]. Stop after PR + comment."
+      goal                = "ABS_WORK_ROOT={{work_root}}. read_notes working_branch, pr_title, repository_full_name, issue_or_pr_number. (1) ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 120: export REPO_FULL_NAME=… ISSUE_OR_PR=… WORKING_BRANCH='…' PR_TITLE='…' optional TRIGGER_JSON=… && paste ---BEGIN COMMIT_PR_EXECUTE_SERIES--- through ---END--- (opens PR for branch already pushed by validate; gh-only when WORKING_BRANCH set). note pr_url from stdout. (2) ONE ${local.github_tool_prefix}_execute_series: gh issue comment with PR link. FORBIDDEN: load_skill, re-clone unless WORKING_BRANCH empty. Stop after PR + comment."
       context             = local.terraform_spawn_context
     },
     {

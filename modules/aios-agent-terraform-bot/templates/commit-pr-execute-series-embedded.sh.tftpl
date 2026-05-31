@@ -6,6 +6,7 @@ WORK_ROOT="{{work_root}}"
 REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
 ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
 BASE_BRANCH="$${BASE_BRANCH:-main}"
+WORKING_BRANCH="$${WORKING_BRANCH:-}"
 
 parse_trigger_json() {
   local raw="$${TRIGGER_JSON:-}"
@@ -26,7 +27,6 @@ if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
 fi
 if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
   echo "error=missing_commit_pr_params"
-  echo "hint=export REPO_FULL_NAME ISSUE_OR_PR BASE_BRANCH from read_notes or TRIGGER_JSON"
   exit 1
 fi
 
@@ -38,12 +38,35 @@ if [ -z "$git_token" ]; then
 fi
 export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
 gh auth setup-git 2>/dev/null || true
-git config --global user.name "stackgen-terraform-bot"
-git config --global user.email "terraform-bot@stackgen.local"
+
+pr_title="$${PR_TITLE:-feat: discovery module for issue $ISSUE_OR_PR}"
+
+if [ -n "$WORKING_BRANCH" ]; then
+  pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$WORKING_BRANCH" --json url -q '.[0].url' 2>/dev/null || true)"
+  if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
+    echo "working_branch=$WORKING_BRANCH"
+    echo "pr_url=$pr_url"
+    echo "pr_title=$pr_title"
+    exit 0
+  fi
+  mkdir -p "$WORK_ROOT/.work"
+  pr_body_file="$WORK_ROOT/.work/pr-body.md"
+  {
+    printf '%s\n' "## Summary" "" "Discovery module scaffold (pushed from validate stage)." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
+  } >"$pr_body_file"
+  pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$WORKING_BRANCH" \
+    --title "$pr_title" --body-file "$pr_body_file")"
+  echo "working_branch=$WORKING_BRANCH"
+  echo "pr_url=$pr_url"
+  echo "pr_title=$pr_title"
+  echo "script_pack_version=${script_pack_version}"
+  exit 0
+fi
 
 repo_dir="$WORK_ROOT/repo"
 if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
   echo "pr_error=no_clone"
+  echo "hint=validate stage should push branch (pr_prepushed=true) before create-pr; pass WORKING_BRANCH from notes"
   exit 1
 fi
 
@@ -57,42 +80,26 @@ fi
 first_file="$(git diff --cached --name-only | head -1)"
 module_relpath="$(dirname "$first_file")"
 module_relpath="$${module_relpath#./}"
-if [ "$module_relpath" = "." ]; then
-  module_relpath="$(basename "$first_file")"
-fi
 provider="$${module_relpath%%/*}"
 module_name="$(basename "$module_relpath")"
 module_slug="$${module_name//_/-}"
 branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
 pr_title="feat($${provider}): add $${module_name} module"
-if ! git diff --cached --diff-filter=A --quiet; then
-  pr_title="feat($${provider}): add $${module_name} module"
-fi
-
 git switch -c "$branch" 2>/dev/null || git switch "$branch"
-commit_body="$${pr_title}
+git commit -m "$${pr_title}
 
 Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
-git commit -m "$commit_body"
-
 mkdir -p "$WORK_ROOT/.work"
-if ! git push -u origin HEAD 2>"$WORK_ROOT/.work/push.err"; then
+git push -u origin HEAD 2>"$WORK_ROOT/.work/push.err" || {
   echo "pr_blocker=push_failed"
-  cat "$WORK_ROOT/.work/push.err" >&2 || true
   exit 1
-fi
-
+}
 pr_body_file="$WORK_ROOT/.work/pr-body.md"
 {
-  printf '%s\n' "## Summary" "" "Automated discovery-module scaffold for \`$module_relpath\`." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
+  printf '%s\n' "## Summary" "" "Automated discovery-module scaffold." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
 } >"$pr_body_file"
-
-pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$branch" --json url -q '.[0].url' 2>/dev/null || true)"
-if [ -z "$pr_url" ] || [ "$pr_url" = "null" ]; then
-  pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
-    --title "$pr_title" --body-file "$pr_body_file")"
-fi
-
+pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
+  --title "$pr_title" --body-file "$pr_body_file")"
 echo "working_branch=$branch"
 echo "pr_url=$pr_url"
 echo "pr_title=$pr_title"
