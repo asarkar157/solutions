@@ -115,7 +115,7 @@ At **`ingest-and-split`** the architect is a **coordinator only**:
 
 1. **`agent_name` MUST be exactly `ingest-and-split-runner`** — never suffix variants (`ingest-and-split-split-runner`, `ingest-and-split-verify-*`, `ingest-and-split-disk-probe`).
 2. **Architect tools on this stage:** `read_notes`, `note`, `create_agent` only — **never** `${ubuntu_tool_prefix}_execute_*` (runner owns shell).
-3. **INGEST STOP RULE:** when runner output or notes show `count_reconciliation_ok: "true"` and `logical_group_count >= 10`: confirm keys via `read_notes` → `note stage_summary:ingest-and-split=ok` without overwriting handoff keys → final line echoing `count_reconciliation_ok: "true"` → **return**. No verification subagents, no disk probes.
+3. **INGEST STOP RULE:** when `read_notes` shows `count_reconciliation_ok: "true"` AND `logical_group_count >= 10` AND `logical_group_manifest_path` present → `note stage_summary:ingest-and-split=ok` → final line → **return**. Runner must `note()` every handoff key from stdout first (trace `437e7c10`).
 4. **Max 2 runner spawns** (initial + one retry on failure). Trace `d0bb9462`: thrashed past 107-group success — do not repeat.
 
 ### create_agent goal template — `ingest-and-split-runner`

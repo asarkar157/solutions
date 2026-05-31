@@ -28,7 +28,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = local.subagent_budgets.script_runner_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series only: working_dir MUST be / or /home/integration — NEVER WORK_ROOT (preflight creates it; chdir fails trace 5740880b). Single command body: export MONOLITH_URI='<uri>' then paste INGEST_EXECUTE_SERIES between BEGIN/END from context verbatim. Use ABS_WORK_ROOT=/home/integration/.{{workflow_run_id}} in script paths — never /root. Forbidden: create_files, second execute_series, inline python. note handoff keys from stdout unchanged. Final line must include count_reconciliation_ok and script_pack_verify_ok."
+      goal                = "read_notes monolith_state_uri. ONE ${local.resolved_ubuntu_integration_name}_execute_series: working_dir=/ ONLY (never WORK_ROOT — trace 5740880b/437e7c10 chdir fail). Command: export MONOLITH_URI='<uri>' then paste INGEST_EXECUTE_SERIES from context verbatim. After execute_series: parse stdout for logical_group_count=, logical_group_manifest_path=, group_state_paths=, monolith_resource_count=, aggregate_group_resource_count=, monolith_state_local_path=, count_reconciliation_ok=, script_pack_verify_ok=, script_pack_version= and call note(key,value) for EACH. Final line echoes count_reconciliation_ok and logical_group_count. Forbidden: create_files, second execute_series, inline python."
       context             = local.dbsplit_spawn_context
     },
   ]

@@ -180,7 +180,7 @@ if ! grep -q 'ingest-and-split-runner' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'working_dir MUST be /' "${ROOT}/spawn_contracts.tf"; then
+if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: ingest runner spawn contract must forbid WORK_ROOT working_dir" >&2
   exit 1
 fi
