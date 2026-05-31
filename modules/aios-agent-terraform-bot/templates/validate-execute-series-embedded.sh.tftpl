@@ -1,3 +1,4 @@
+/bin/bash <<'TFBOT_VALIDATE_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
@@ -153,3 +154,4 @@ Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
     echo "push_skipped=missing_repo_or_issue"
   fi
 fi
+TFBOT_VALIDATE_EXECUTE

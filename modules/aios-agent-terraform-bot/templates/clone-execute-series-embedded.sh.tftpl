@@ -1,3 +1,4 @@
+/bin/bash <<'TFBOT_CLONE_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export GIT_TERMINAL_PROMPT=0
@@ -56,3 +57,4 @@ sha="$(git -C "$repo_dir" rev-parse HEAD)"
 echo "repo_clone_path=$repo_dir"
 echo "repo_head_sha=$sha"
 echo "script_pack_version=${script_pack_version}"
+TFBOT_CLONE_EXECUTE

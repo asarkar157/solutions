@@ -55,7 +55,7 @@ locals {
   stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
   ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.10"
+  script_pack_version       = "20260531.11"
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(

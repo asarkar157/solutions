@@ -1,3 +1,4 @@
+/bin/bash <<'TFBOT_COMMIT_PR_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
@@ -112,3 +113,4 @@ echo "working_branch=$branch"
 echo "pr_url=$pr_url"
 echo "pr_title=$pr_title"
 echo "script_pack_version=${script_pack_version}"
+TFBOT_COMMIT_PR_EXECUTE

@@ -1,3 +1,4 @@
+/bin/bash <<'TFBOT_DISCOVERY_SCAFFOLD'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
@@ -99,3 +100,4 @@ echo "scaffold_summary=copied_sibling=$(basename "$sibling")"
 echo "discovery_provider=$PROVIDER_ROOT"
 echo "discovery_module_dir=$MODULE_DIR"
 echo "script_pack_version=${script_pack_version}"
+TFBOT_DISCOVERY_SCAFFOLD

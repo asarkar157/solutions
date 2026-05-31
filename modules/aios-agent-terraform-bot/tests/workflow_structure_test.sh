@@ -224,6 +224,11 @@ if ! awk '/BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES/,/END DISCOVERY_SCAFFOLD_EXEC
   exit 1
 fi
 
+if ! grep -q "bin/bash <<'TFBOT_DISCOVERY_SCAFFOLD'" "${ROOT}/templates/discovery-scaffold-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: discovery scaffold embedded template must self-wrap in /bin/bash heredoc" >&2
+  exit 1
+fi
+
 if awk '/sub_agent_name = "implement-module-discovery-scaffold"/,/^    },/' "${ROOT}/spawn_contracts.tf" | grep -q '"load_skill"'; then
   echo "FAIL: implement-module-discovery-scaffold must not include load_skill" >&2
   exit 1
