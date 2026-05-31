@@ -51,16 +51,16 @@ else
   echo "test_skipped=no_tftest_files" >"$work_dir/tf-test.out"
 fi
 
-summary="binary=${tf_version}; fmt=$([ "$fmt_rc" -eq 0 ] && echo PASS || echo FAIL); init=$([ "$init_rc" -eq 0 ] && echo PASS || echo FAIL); validate=$([ "$valid_rc" -eq 0 ] && echo PASS || echo FAIL); test=$([ "$test_rc" -eq 0 ] && echo PASS || echo FAIL)"
+summary="binary=$${tf_version}; fmt=$([ "$fmt_rc" -eq 0 ] && echo PASS || echo FAIL); init=$([ "$init_rc" -eq 0 ] && echo PASS || echo FAIL); validate=$([ "$valid_rc" -eq 0 ] && echo PASS || echo FAIL); test=$([ "$test_rc" -eq 0 ] && echo PASS || echo FAIL)"
 if [ "$fmt_rc" -eq 0 ] && [ "$valid_rc" -eq 0 ] && [ "$test_rc" -eq 0 ]; then
   mq="PASS"
 else
   mq="NEEDS_REVISION"
 fi
 
-echo "fmt_exit=${fmt_rc}"
-echo "init_exit=${init_rc}"
-echo "validate_exit=${valid_rc}"
-echo "test_exit=${test_rc}"
+echo "fmt_exit=$${fmt_rc}"
+echo "init_exit=$${init_rc}"
+echo "validate_exit=$${valid_rc}"
+echo "test_exit=$${test_rc}"
 echo "$summary"
 echo "module_quality_summary=$mq"
