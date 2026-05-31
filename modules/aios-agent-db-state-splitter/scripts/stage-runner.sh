@@ -5,6 +5,8 @@
 set -euo pipefail
 
 SCRIPT_PACK_VERSION="20260531.8"
+DBSPLIT_DEFAULT_STRATEGY="${DBSPLIT_DEFAULT_STRATEGY:-tag_seeded_connectivity}"
+DBSPLIT_DEFAULT_CAP="${DBSPLIT_DEFAULT_CAP:-0}"
 REQUIRED_ALLOCATE_MARKER="def merge_small_by_seed"
 
 mirror_note() {

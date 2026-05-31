@@ -136,13 +136,15 @@ goal: |
 When **`monolith_resource_count > 5000`** AND the workflow did **not** supply `grouping_strategy` / `max_resources_per_appstack`, the architect MUST during **`ingest-and-split`** (via `download-state` auto-promote or explicit `note`):
 
 ```
-note("grouping_strategy", "tag_seeded_connectivity_capped")
-note("max_resources_per_appstack", "120")
+note("grouping_strategy", "${default_grouping_strategy}")
+note("max_resources_per_appstack", "${default_max_resources_per_appstack}")
 ```
 
-and include "auto-promoted to `tag_seeded_connectivity_capped` due to monolith_resource_count=<N>" in `stage_summary:ingest-and-split`.
+and include "auto-promoted to `${default_grouping_strategy}` due to monolith_resource_count=<N>" in `stage_summary:ingest-and-split`.
 
-Rationale: bare **`connectivity_capped` @ 80** on 12 K+ flat monoliths maximizes AppStack count (~159) and plan/MCP fan-out cost while **`policy_first`** produces type hairballs that break zero-diff plans (observed: trace `9771916a56b3`, 12 726 AWS resources). **`tag_seeded_connectivity_capped`** keeps dependency-connected subgraphs intact (zero-diff), uses operator tags (`adsk:moniker`, `adsk:service`, …) to guide cap-splits, and caps at **120** to reduce group count ~30% vs 80 without sacrificing connectivity. Operators override with `connectivity_capped` / `type_chunk` when needed.
+Rationale: **`tag_seeded_connectivity` with cap `0` (unlimited)** keeps dependency-connected subgraphs intact (zero-diff) without artificial BFS cap-splits. Use **`max_resources_per_appstack=120`** + **`tag_seeded_connectivity_capped`** only when operators need smaller AppStacks for plan/MCP fan-out. **`policy_first`** produces type hairballs that break zero-diff plans (observed: trace `9771916a56b3`, 12 726 AWS resources).
+
+**Module defaults (when webhook omits fields):** `iac_repository_url` → `${default_iac_repository_url}` (if set); `default_branch` → `${default_branch}`; `stackgen_project_name` → `${stackgen_project_name_default}`.
 
 ## Evidence gate at `final-gate-and-memory`
 

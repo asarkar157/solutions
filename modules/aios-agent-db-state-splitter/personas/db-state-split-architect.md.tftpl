@@ -78,7 +78,7 @@ After `${stackgen_mcp_tool_prefix}_get_appstacks`, `note` **`stackgen_appstack_l
 
 ### Large-state auto-promote heuristic
 
-When `monolith_resource_count > 5000` and no operator `grouping_strategy` / `max_resources_per_appstack`, `note grouping_strategy="tag_seeded_connectivity_capped"` and `max_resources_per_appstack="120"` before allocation.
+When `monolith_resource_count > 5000` and no operator `grouping_strategy` / `max_resources_per_appstack`, `note grouping_strategy="${default_grouping_strategy}"` and `max_resources_per_appstack="${default_max_resources_per_appstack}"` before allocation (`0` = unlimited).
 
 ### Attributes + connections are part of the deliverable
 

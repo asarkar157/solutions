@@ -11,6 +11,8 @@ ${allocate_manifest_script}
 ALLOCATE_MANIFEST_PY
 export DBSPLIT_EMBEDDED=1
 export DBSPLIT_ALLOCATE_SHA256="${script_pack_allocate_sha256}"
+export DBSPLIT_DEFAULT_STRATEGY="${default_grouping_strategy}"
+export DBSPLIT_DEFAULT_CAP="${default_max_resources_per_appstack}"
 _embed_dbsplit_run() {
   bash -s "$$@" << 'DBSPLIT_STAGE_RUNNER'
 ${stage_runner_script}

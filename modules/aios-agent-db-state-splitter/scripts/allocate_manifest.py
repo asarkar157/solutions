@@ -41,6 +41,22 @@ SHARED_TYPE_MARKERS = (
 HUB_INDEGREE_THRESHOLD = 10
 HUB_MIN_TYPE_FANIN = 5
 
+# cap <= 0 means no artificial per-AppStack size limit (connectivity-only partitioning).
+UNLIMITED_CAP_SENTINEL = 0
+
+
+def normalize_cap(cap: int, resource_count: int) -> int:
+    """Map operator cap to an effective ceiling used by merge/split helpers."""
+    if cap <= UNLIMITED_CAP_SENTINEL:
+        return max(resource_count, 1)
+    return cap
+
+
+def cap_label(cap: int) -> str:
+    if cap <= UNLIMITED_CAP_SENTINEL:
+        return "unlimited"
+    return str(cap)
+
 
 def cloud_hint(rtype: str) -> str:
     if rtype.startswith("aws_"):
@@ -304,6 +320,7 @@ def load_state_index(state_path: str) -> Tuple[dict, Dict[str, dict], Dict[str, 
 def allocate(state_path: str, strategy: str, cap: int) -> Tuple[dict, dict, dict]:
     state, meta, deps_map, _inst_index = load_state_index(state_path)
     all_addrs = set(meta.keys())
+    eff_cap = normalize_cap(cap, len(all_addrs))
     seed_keys = {a: meta[a]["seed_key"] for a in all_addrs}
     by_cloud: Dict[str, Set[str]] = defaultdict(set)
     for addr, m in meta.items():
@@ -322,7 +339,7 @@ def allocate(state_path: str, strategy: str, cap: int) -> Tuple[dict, dict, dict
             addrs = sorted(by_cloud[cloud])
             if not addrs:
                 continue
-            for chunk in type_chunk_split(addrs, cap, meta):
+            for chunk in type_chunk_split(addrs, eff_cap, meta):
                 gid = next_gid(cloud, "chunk")
                 manifest[gid] = {
                     "cloud_hint": cloud,
@@ -363,16 +380,21 @@ def allocate(state_path: str, strategy: str, cap: int) -> Tuple[dict, dict, dict
         work_sets: List[Set[str]] = []
 
         for comp in components:
-            if use_tag_seed and len(comp) > cap and can_tag_subdivide(comp, seed_keys, adj):
+            if (
+                use_tag_seed
+                and cap > UNLIMITED_CAP_SENTINEL
+                and len(comp) > eff_cap
+                and can_tag_subdivide(comp, seed_keys, adj)
+            ):
                 work_sets.extend(tag_subdivide(comp, seed_keys))
             else:
                 work_sets.append(comp)
 
         if use_tag_seed:
-            work_sets = merge_small_by_seed(work_sets, cap, seed_keys)
+            work_sets = merge_small_by_seed(work_sets, eff_cap, seed_keys)
 
         for comp in work_sets:
-            if len(comp) <= cap:
+            if len(comp) <= eff_cap:
                 gid = next_gid(cloud, "group")
                 notes = {"grouping": strategy, "partition": "connectivity-component"}
                 external = sorted(
@@ -387,7 +409,7 @@ def allocate(state_path: str, strategy: str, cap: int) -> Tuple[dict, dict, dict
                 }
                 continue
 
-            for chunk in cap_split_bfs(comp, adj, cap, seed_keys):
+            for chunk in cap_split_bfs(comp, adj, eff_cap, seed_keys):
                 gid = next_gid(cloud, "shard")
                 notes: dict = {"grouping": strategy, "partition": "bfs-cap-split"}
                 cut_hubs = sorted(
@@ -536,7 +558,7 @@ def cmd_allocate(work_root: str, state_path: str, strategy: str, cap: int) -> in
     print(f"aggregate_group_resource_count={sum(per_group.values())}")
     print(f"monolith_resource_count={stats['monolith_resource_count']}")
     print(f"grouping_strategy={strategy}")
-    print(f"max_resources_per_appstack={cap}")
+    print(f"max_resources_per_appstack={cap_label(cap)}")
     return 0
 
 
@@ -552,10 +574,10 @@ def main() -> int:
     if cmd == "allocate":
         work_root, state_path, strategy, cap_s = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
         try:
-            cap = int(cap_s) if cap_s else 120
+            cap = int(cap_s) if cap_s else UNLIMITED_CAP_SENTINEL
         except ValueError:
-            cap = 120
-        return cmd_allocate(work_root, state_path, strategy, max(cap, 1))
+            cap = UNLIMITED_CAP_SENTINEL
+        return cmd_allocate(work_root, state_path, strategy, cap)
 
     if cmd == "reconcile":
         state_path, manifest_path = sys.argv[2], sys.argv[3]
@@ -585,12 +607,11 @@ def main() -> int:
     if cmd == "split":
         work_root, state_path = sys.argv[2], sys.argv[3]
         strategy = sys.argv[4] if len(sys.argv) > 4 else "tag_seeded_connectivity_capped"
-        cap_s = sys.argv[5] if len(sys.argv) > 5 else "120"
+        cap_s = sys.argv[5] if len(sys.argv) > 5 else str(UNLIMITED_CAP_SENTINEL)
         try:
             cap = int(cap_s)
         except ValueError:
-            cap = 120
-        cap = max(cap, 1)
+            cap = UNLIMITED_CAP_SENTINEL
         write_inventory(state_path, work_root)
         manifest, per_group, stats = allocate(state_path, strategy, cap)
         manifest_path = os.path.join(work_root, "logical_group_manifest.json")
@@ -610,7 +631,7 @@ def main() -> int:
         print(f"aggregate_group_resource_count={sum(per_group.values())}")
         print(f"monolith_resource_count={stats['monolith_resource_count']}")
         print(f"grouping_strategy={strategy}")
-        print(f"max_resources_per_appstack={cap}")
+        print(f"max_resources_per_appstack={cap_label(cap)}")
         print(f"reconcile_result_path={result_path}")
         print(f"count_reconciliation_ok={str(result['count_reconciliation_ok']).lower()}")
         return 0 if result["count_reconciliation_ok"] else 1

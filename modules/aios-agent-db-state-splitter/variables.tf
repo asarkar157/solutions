@@ -212,6 +212,62 @@ variable "max_convergence_iterations" {
   }
 }
 
+variable "default_grouping_strategy" {
+  description = <<-EOT
+    Default `grouping_strategy` when workflow inputs omit it. Use `tag_seeded_connectivity` for
+    connectivity-first splits without an artificial per-AppStack size cap (pair with
+    `default_max_resources_per_appstack = 0`). Large monoliths (>5000 resources) auto-promote to
+    these defaults when the operator does not override grouping in the webhook payload.
+  EOT
+  type        = string
+  default     = "tag_seeded_connectivity"
+
+  validation {
+    condition = contains(
+      [
+        "policy_first",
+        "connectivity",
+        "connectivity_capped",
+        "tag_seeded_connectivity",
+        "tag_seeded_connectivity_capped",
+        "type_chunk",
+      ],
+      var.default_grouping_strategy,
+    )
+    error_message = "default_grouping_strategy must be a supported allocate_manifest.py strategy."
+  }
+}
+
+variable "default_max_resources_per_appstack" {
+  description = <<-EOT
+    Default per-AppStack resource ceiling when workflow inputs omit `max_resources_per_appstack`.
+    **0 means unlimited** (no BFS cap-split or seed-bin chunking beyond natural connectivity).
+    Positive integers cap shard size (e.g. 120 for smaller plan matrices).
+  EOT
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.default_max_resources_per_appstack >= 0 && var.default_max_resources_per_appstack <= 100000
+    error_message = "default_max_resources_per_appstack must be between 0 (unlimited) and 100000."
+  }
+}
+
+variable "default_iac_repository_url" {
+  description = <<-EOT
+    Fallback clone URL when workflow/webhook inputs omit `iac_repository_url`. Empty means the
+    architect must receive `iac_repository_url` in the trigger payload (schedule JSON includes it).
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "default_branch" {
+  description = "Fallback git branch for IaC push when workflow inputs omit `default_branch`."
+  type        = string
+  default     = "main"
+}
+
 variable "stackgen_project_name" {
   description = <<-EOT
     Default StackGen project name or UUID for AppStack MCP calls (`get_appstacks`, `create_appstack`, …).

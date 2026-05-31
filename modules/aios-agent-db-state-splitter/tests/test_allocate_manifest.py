@@ -108,6 +108,28 @@ class AllocateIntegrationTests(unittest.TestCase):
             self.assertEqual(set(addrs), {"aws_vpc.main", "aws_subnet.a"})
 
 
+class UnlimitedCapTests(unittest.TestCase):
+    def test_cap_zero_keeps_connected_pair_single_group(self) -> None:
+        resources = [
+            _managed("aws_vpc", "main"),
+            _managed("aws_subnet", "a", deps=["aws_vpc.main"]),
+        ]
+        state = _minimal_state(resources)
+        with tempfile.TemporaryDirectory() as td:
+            state_path = os.path.join(td, "terraform.tfstate")
+            with open(state_path, "w", encoding="utf-8") as fh:
+                json.dump(state, fh)
+            manifest, _, _ = am.allocate(state_path, "tag_seeded_connectivity", 0)
+            workload = [
+                g for g, e in manifest.items() if e.get("notes", {}).get("partition") != "shared-hub"
+            ]
+            self.assertEqual(len(workload), 1)
+
+    def test_cap_label_unlimited(self) -> None:
+        self.assertEqual(am.cap_label(0), "unlimited")
+        self.assertEqual(am.cap_label(120), "120")
+
+
 class BigStateSmokeTest(unittest.TestCase):
     BIG_STATE = Path("/Users/sabithks/Downloads/big_terraform.tfstate")
 
