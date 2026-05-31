@@ -5,7 +5,7 @@ WORK_ROOT="{{work_root}}"
 mkdir -p "$WORK_ROOT"
 
 parse_trigger_json() {
-  local raw="${TRIGGER_JSON:-}"
+  local raw="$${TRIGGER_JSON:-}"
   [ -n "$raw" ] || return 1
   REPO_CLONE_URL="$(printf '%s' "$raw" | jq -r 'if (.repository.clone_url // "") != "" then .repository.clone_url else "https://github.com/" + .repository.full_name + ".git" end')"
   DEFAULT_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
