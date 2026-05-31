@@ -73,7 +73,7 @@ locals {
   stage_runner_script         = trimspace(file("${path.module}/scripts/stage-runner.sh"))
   allocate_manifest_script    = trimspace(file("${path.module}/scripts/allocate_manifest.py"))
   ubuntu_integration_home     = "/home/integration"
-  script_pack_version         = "20260531.9"
+  script_pack_version         = "20260531.10"
   script_pack_git_ref         = "main"
   script_pack_allocate_sha256 = sha256(local.allocate_manifest_script)
   script_pack_runner_sha256   = sha256(local.stage_runner_script)

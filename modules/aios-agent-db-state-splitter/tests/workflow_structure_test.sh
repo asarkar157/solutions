@@ -185,8 +185,8 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'raw.githubusercontent.com/appcd-dev/solutions' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must curl scripts from GitHub raw (avoid tool-arg truncation)" >&2
+if ! grep -q 'api.github.com/repos/appcd-dev/solutions' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must fetch scripts via GitHub API (private repo; raw URLs 404)" >&2
   exit 1
 fi
 

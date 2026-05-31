@@ -11,6 +11,15 @@ mkdir -p "$WORK_ROOT/scripts"
 fetch_script() {
   local name="$1"
   local dest="$2"
+  local token="$${GITHUB_TOKEN:-$${GH_TOKEN:-}}"
+  if [ -n "$token" ]; then
+    curl -fsSL \
+      -H "Authorization: Bearer $token" \
+      -H "Accept: application/vnd.github.raw" \
+      "https://api.github.com/repos/appcd-dev/solutions/contents/modules/aios-agent-db-state-splitter/scripts/$${name}?ref=${script_pack_git_ref}" \
+      -o "$dest"
+    return
+  fi
   curl -fsSL "$${SCRIPT_BASE}/$${name}" -o "$dest"
 }
 fetch_script "allocate_manifest.py" "$WORK_ROOT/scripts/allocate_manifest.py"
