@@ -14,7 +14,7 @@ Other StackGen deployments **may** register additional tools (policies, git expo
 
 | Base name | Role |
 |-----------|------|
-| `me` | Caller / org context; pair with workflow `stackgen_project_name` (UUID) for `project_name` on other calls |
+| `me` | Caller / org context; lists `projects[]` — pick human-readable **`name`** for MCP `project_name` on other calls |
 | `get_appstacks` | List/filter stacks; `labels: ["template"]` for template UUIDs |
 | `create_appstack` | `name`, `project_name` (UUID), optional `cloud_provider`, `description`, `labels`, `appstack_ref_id` (template) |
 | `get_appstack_resources` | Inventory resources on a stack |

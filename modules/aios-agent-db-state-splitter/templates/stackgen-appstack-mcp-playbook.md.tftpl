@@ -5,7 +5,7 @@ Keywords: create_appstack, bulk_add_resources_to_appstack, bulk_connect_resource
 ## Preconditions (discoverable — do not ask the operator)
 
 - **MCP attached?** Detect via **`search_tools`** for `*_create_appstack` / `*_get_appstacks` (Guild prefixes the integration name). If absent, this stage is a no-op: `note` `stackgen_appstack_map=skipped: no_mcp` and `stackgen_appstack_membership_report=skipped: no_mcp`. Do **not** `notify` the operator to confirm — the integration list is in your tool surface.
-- **Project UUID:** read **`stackgen_project_name`** from `read_notes` first (mirrored at `ingest-and-split` from workflow input or module default **`${stackgen_project_name_default}`**). **Never** call `get_appstacks` / `create_appstack` with empty `project_name`. If still empty, call **`me`** once, `note` the resolved UUID, then proceed. Do not ask the operator.
+- **Project name (human-readable):** read **`stackgen_project_name`** from `read_notes` first (mirrored at `ingest-and-split` from workflow input or module default **`${stackgen_project_name_default}`**). Pass it verbatim as MCP **`project_name`** on `get_appstacks`, `create_appstack`, `bulk_add_resources_to_appstack`, and `bulk_connect_resources_in_appstack` — integrations resolves name → UUID via `me`. **Never** pass a UUID or Guild `project_id` here. **Never** call those tools with empty `project_name`. If still empty, call **`me`** once, pick a `projects[].name`, `note` it as `stackgen_project_name`, then proceed. Do not ask the operator.
 - **Inputs from `read_notes`:** `logical_group_manifest` (or legacy `shard_manifest`), `repo_clone_path`, `reverse_iac_summary`, `registry_mapping_report`, `orphans_bundle`. If any required note is missing, recover via the Stage entry protocol in **db-state-split-orchestration-sop** before escalating.
 - **Per-group `cloud_provider`** ∈ {`aws`,`azure`,`gcp`} is inferred from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*`); mixed-provider groups must be split upstream.
 - For the **canonical tool matrix** shared with repo-to-iac flows, load **`stackgen-mcp-consumer-tool-catalog-sop`** from `aios-agent-repo-to-iac` — it is aligned with the **user** MCP catalog (not every hypothetical StackGen extension).
@@ -25,7 +25,7 @@ These names match the **integrations / AppStack** MCP server (`streamable_http` 
 
 **Identity**
 
-- `me` — caller / org context; use with workflow notes / `stackgen_project_name` for **`project_name`** (UUID) on other calls.
+- `me` — caller / org context; lists `projects[]` with `{ id, name }`. Use when `stackgen_project_name` is missing — pick the human-readable **`name`** for **`project_name`** on other calls.
 
 **AppStacks & resources**
 

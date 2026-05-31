@@ -270,13 +270,22 @@ variable "default_branch" {
 
 variable "stackgen_project_name" {
   description = <<-EOT
-    Default StackGen project name or UUID for AppStack MCP calls (`get_appstacks`, `create_appstack`, …).
+    Default **human-readable** StackGen project name for AppStack MCP calls (`get_appstacks`,
+    `create_appstack`, `bulk_add_resources_to_appstack`, …). Must match the project `name` field from
+    the StackGen UI or MCP `me` (e.g. `guild-demo`) — **not** the Guild provider `project_id` UUID.
     Mirrored to workflow notes at `ingest-and-split` when the workflow input omits `stackgen_project_name`.
-    Pass the StackGen **project UUID** (same value as Guild provider `project_id`) when project display name
-    is unknown. Empty means the materialize stage must resolve via MCP `me`.
+    When empty, the materialize stage calls MCP `me` and picks a project from `projects[]`.
   EOT
   type        = string
   default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.stackgen_project_name) == ""
+      || !can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", trimspace(var.stackgen_project_name)))
+    )
+    error_message = "stackgen_project_name must be the human-readable StackGen project name (e.g. guild-demo), not a UUID. Guild provider project_id is a separate identifier."
+  }
 }
 
 variable "subagent_budgets" {

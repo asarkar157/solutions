@@ -103,7 +103,7 @@ module "db_state_splitter" {
 
 Primary workflow **required input**: `monolith_state_uri` (cron/webhook alias: `tfstate_file`).  
 **Optional:** `iac_repository_url` (alias `iac_repo_url`) — omit for state-only analysis; per-group TF scaffolds land under `$HOME/.<workflow_run_id>`.  
-Notable **optional inputs**: `grouping_policy_json`, `grouping_strategy` (`policy_first` \| `connectivity` \| `connectivity_capped`), `max_resources_per_appstack` (e.g. `80`), `stackgen_project_name`, `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
+Notable **optional inputs**: `grouping_policy_json`, `grouping_strategy` (`policy_first` \| `connectivity` \| `connectivity_capped`), `max_resources_per_appstack` (e.g. `80`), `stackgen_project_name` (human-readable StackGen project name for MCP — e.g. `guild-demo`), `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
 
 ### Workflow shape (3-way parallel after registry-and-import-codegen)
 

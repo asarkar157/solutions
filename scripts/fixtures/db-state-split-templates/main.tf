@@ -69,7 +69,7 @@ variable "script_pack_runner_sha256" {
 
 variable "stackgen_project_name_default" {
   type    = string
-  default = "74301888-bab0-4af5-a882-2de0a491651f"
+  default = "guild-demo"
 }
 
 # Server caps from integrations PR #349 (bulk_add_resources_to_appstack /
