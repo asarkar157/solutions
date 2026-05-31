@@ -219,6 +219,11 @@ if ! grep -q 'BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES' "${ROOT}/spawn_contracts.
   exit 1
 fi
 
+if ! awk '/BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES/,/END DISCOVERY_SCAFFOLD_EXECUTE_SERIES/' "${ROOT}/spawn_contracts.tf" | grep -q "bin/bash -s <<'TFBOT_DISCOVERY_SCAFFOLD_EXECUTE_SERIES'"; then
+  echo "FAIL: discovery scaffold execute series must be wrapped in /bin/bash -s heredoc (sh lacks pipefail)" >&2
+  exit 1
+fi
+
 if awk '/sub_agent_name = "implement-module-discovery-scaffold"/,/^    },/' "${ROOT}/spawn_contracts.tf" | grep -q '"load_skill"'; then
   echo "FAIL: implement-module-discovery-scaffold must not include load_skill" >&2
   exit 1

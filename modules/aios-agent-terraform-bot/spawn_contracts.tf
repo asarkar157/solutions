@@ -11,19 +11,27 @@ TFBOT_CLONE_PACK_SHA256: ${local.script_pack_clone_sha256}
 script_pack_version: ${local.script_pack_version}
 
 ---BEGIN CLONE_EXECUTE_SERIES---
+/bin/bash -s <<'TFBOT_CLONE_EXECUTE_SERIES'
 ${local.clone_execute_series_body}
+TFBOT_CLONE_EXECUTE_SERIES
 ---END CLONE_EXECUTE_SERIES---
 
 ---BEGIN VALIDATE_EXECUTE_SERIES---
+/bin/bash -s <<'TFBOT_VALIDATE_EXECUTE_SERIES'
 ${local.validate_execute_series_body}
+TFBOT_VALIDATE_EXECUTE_SERIES
 ---END VALIDATE_EXECUTE_SERIES---
 
 ---BEGIN COMMIT_PR_EXECUTE_SERIES---
+/bin/bash -s <<'TFBOT_COMMIT_PR_EXECUTE_SERIES'
 ${local.commit_pr_execute_series_body}
+TFBOT_COMMIT_PR_EXECUTE_SERIES
 ---END COMMIT_PR_EXECUTE_SERIES---
 
 ---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES---
+/bin/bash -s <<'TFBOT_DISCOVERY_SCAFFOLD_EXECUTE_SERIES'
 ${local.discovery_scaffold_execute_series_body}
+TFBOT_DISCOVERY_SCAFFOLD_EXECUTE_SERIES
 ---END DISCOVERY_SCAFFOLD_EXECUTE_SERIES---
 EOT
 
@@ -89,7 +97,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.hcl_author_max_llm_calls
       max_tool_iterations = 48
       timeout_seconds     = local.subagent_budgets.hcl_author_timeout_seconds
-      goal                = "ABS_WORK_ROOT={{work_root}}. Greenfield discovery ONLY. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 600: optional export TRIGGER_JSON='…' MODULE_DIR='…' && paste ---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES--- through ---END--- verbatim (copies sibling aws_ecs_service layout with basic.tftest.hcl). note module_paths, scaffold_summary from stdout. FORBIDDEN: load_skill, _embed_tfbot_run, tests/ subdir, discovery-check.tf junk files, multiple execute_series."
+      goal                = "ABS_WORK_ROOT={{work_root}}. Greenfield discovery ONLY. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 600: optional export TRIGGER_JSON='…' MODULE_DIR='…' && paste ---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES--- through ---END--- verbatim (includes /bin/bash -s heredoc — never strip it). note module_paths, scaffold_summary from stdout. FORBIDDEN: load_skill, _embed_tfbot_run, tests/ subdir, discovery-check.tf junk files, multiple execute_series, raw set -euo pipefail without bash."
       context             = local.terraform_spawn_context
     },
     {
