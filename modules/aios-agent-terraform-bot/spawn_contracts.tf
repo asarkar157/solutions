@@ -52,7 +52,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. read_notes repository_clone_url, repository_default_branch, issue_or_pr_number. ONE ${local.ubuntu_tool_prefix}_execute_series via bash -s (never bash -lc alone): export TFBOT_EMBEDDED=1 TFBOT_STAGE_RUNNER_SHA256={{stage_note_var:TFBOT_STAGE_RUNNER_SHA256}}; define _embed_tfbot_run(){ bash -s \"\\$@\" << 'TFBOT_STAGE_RUNNER' then paste the FULL stage-runner.sh body from skill ${local.sop_workflow_script_pack} §0–§1 (identical to load_skill output), TFBOT_STAGE_RUNNER }; _embed_tfbot_run clone {{work_root}} \"<url>\" \"<branch>\" \"<issue#>\" \"\" \"\". Use literal {{work_root}} in tool JSON — never $HOME/$WORK_ROOT/unexpanded vars. Forbidden: load_skill, bare _embed_tfbot_run without prior heredoc function def in the SAME series (exit 127), /root paths, ad hoc git clone, separate tool calls. note repo_clone_path, repo_head_sha. Final line: script_pack_version=${local.script_pack_version}."
+      goal                = "WORK_ROOT={{work_root}}. read_notes repository_clone_url, repository_default_branch, issue_or_pr_number. ONE ${local.ubuntu_tool_prefix}_execute_series with commands.length=1. commands[0].command MUST be script-pack §2.1: /bin/bash -s clone {{work_root}} \"<url>\" \"<branch>\" \"<issue#>\" \"\" \"\" <<'TFBOT_CLONE_PACK' then paste §1a clone-pack body from skill ${local.sop_workflow_script_pack}, TFBOT_CLONE_PACK. Literal {{work_root}} only — never $HOME/$WORK_ROOT. FORBIDDEN: _embed_tfbot_run(){ , bash -lc, multiple commands[], function syntax, load_skill, ad hoc git clone. note repo_clone_path, repo_head_sha from stdout. Expect script_pack_version=${local.script_pack_version}."
       context             = local.terraform_spawn_context
     },
   ]
@@ -71,7 +71,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.hcl_author_max_llm_calls
       max_tool_iterations = 48
       timeout_seconds     = local.subagent_budgets.hcl_author_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. load_skill ${local.sop_workflow_script_pack} AND ${local.sop_discovery_modules_layout}. ONE bash -lc execute_series: script-pack §2.5 discovery-check with repo_clone_path=$WORK_ROOT/repo, then write ALL discovery layout files in the SAME series (provider/<module_dir>/ only — one path). FORBIDDEN: implement-module-clone, implement-module-scaffold, second subagent, tests/ subdir, main.tf as primary file, repo_clone ad hoc path. note module_paths (single absolute path), scaffold_summary. Stop — defer validate to validate-and-test."
+      goal                = "WORK_ROOT={{work_root}}. load_skill ${local.sop_workflow_script_pack} AND ${local.sop_discovery_modules_layout}. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1: script-pack §2.5 /bin/bash -s <<'TFBOT_SCAFFOLD_SERIES' with discovery-check + ALL layout file writes in same heredoc. FORBIDDEN: _embed_tfbot_run(){ , multiple commands[], implement-module-clone, tests/ subdir, main.tf as primary. note module_paths (single absolute path), scaffold_summary."
       context             = local.terraform_spawn_context
     },
     {
@@ -122,7 +122,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.validate_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.validate_runner_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. read_notes module_paths. ONE ${local.ubuntu_tool_prefix}_execute_series via bash -s: export TFBOT_EMBEDDED=1 TFBOT_STAGE_RUNNER_SHA256={{stage_note_var:TFBOT_STAGE_RUNNER_SHA256}}; define _embed_tfbot_run(){ bash -s \"\\$@\" << 'TFBOT_STAGE_RUNNER' paste FULL stage-runner.sh from ${local.sop_workflow_script_pack}, TFBOT_STAGE_RUNNER }; for _p in $(echo module_paths | tr ',' ' '); do _embed_tfbot_run validate {{work_root}} \"\\$_p\"; done. Literal {{work_root}} only in tool JSON. FORBIDDEN: load_skill, bare _embed_tfbot_run, printf/echo fake PASS, quality_check_terraform, quality_check_module_layout, second series. stdout MUST include fmt_exit= and binary=. note workflow_notes_snapshot from tool output only."
+      goal                = "WORK_ROOT={{work_root}}. read_notes module_paths. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1. Use script-pack §2.2: /bin/bash -s validate {{work_root}} \"<path>\" <<'TFBOT_STAGE_RUNNER' export TFBOT_EMBEDDED=1 + §1b stage-runner body, TFBOT_STAGE_RUNNER (or §2.2 multi-path bash -s <<'TFBOT_VALIDATE_SERIES' loop). FORBIDDEN: _embed_tfbot_run(){ , multiple commands[], printf fake PASS, quality_check_terraform, quality_check_module_layout. stdout MUST include fmt_exit= and binary=. note workflow_notes_snapshot from tool output only."
       context             = local.terraform_spawn_context
     },
   ]
@@ -143,7 +143,7 @@ EOT
       max_llm_calls       = local.create_pr_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds + local.subagent_budgets.github_comment_timeout_seconds
-      goal                = "load_skill ${local.sop_workflow_script_pack}. (1) ONE ${local.ubuntu_tool_prefix}_execute_series: script-pack §2.3 commit-pr, WORK_ROOT={{work_root}} — note working_branch, pr_url, pr_title. (2) ONE ${local.github_tool_prefix}_execute_series: post outcome comment on PR or issue. Batch workflow_notes_snapshot. Stop — no extra probes."
+      goal                = "WORK_ROOT={{work_root}}. (1) ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1: script-pack §2.3 /bin/bash -s commit-pr {{work_root}} … <<'TFBOT_STAGE_RUNNER' — note working_branch, pr_url, pr_title. (2) ONE ${local.github_tool_prefix}_execute_series: post outcome comment. FORBIDDEN: _embed_tfbot_run(){ , multiple Ubuntu commands[]. Stop after PR + comment."
       context             = local.terraform_spawn_context
     },
     {

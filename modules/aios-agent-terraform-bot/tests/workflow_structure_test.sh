@@ -61,15 +61,15 @@ if ! grep -q 'sop_workflow_script_pack' "${ROOT}/main.tf"; then
   exit 1
 fi
 
-for script in stage-runner.sh clone-and-notes.sh validate-module.sh; do
+for script in stage-runner.sh clone-pack.sh clone-and-notes.sh validate-module.sh; do
   if [ ! -f "${ROOT}/scripts/${script}" ]; then
     echo "FAIL: missing scripts/${script}" >&2
     exit 1
   fi
 done
 
-if ! grep -q '$HOME/.<workflow_run_id>' "${ROOT}/templates/workflow-script-pack.md.tftpl"; then
-  echo "FAIL: workflow-script-pack missing stagerunner-aligned WORK_ROOT" >&2
+if ! grep -qE 'WORK_ROOT=|<WORK_ROOT>|work_root' "${ROOT}/templates/workflow-script-pack.md.tftpl"; then
+  echo "FAIL: workflow-script-pack missing WORK_ROOT handoff" >&2
   exit 1
 fi
 
@@ -155,6 +155,21 @@ fi
 
 if ! grep -q 'printf.*fake PASS' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: validate spawn contract must forbid printf fake PASS" >&2
+  exit 1
+fi
+
+if ! grep -q '/bin/bash -s clone' "${ROOT}/templates/workflow-script-pack.md.tftpl"; then
+  echo "FAIL: workflow-script-pack must use /bin/bash -s clone heredoc pattern" >&2
+  exit 1
+fi
+
+if ! grep -q 'sh -c' "${ROOT}/templates/workflow-script-pack.md.tftpl"; then
+  echo "FAIL: workflow-script-pack must document sh -c execute_series behavior" >&2
+  exit 1
+fi
+
+if grep -q 'define _embed_tfbot_run' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn contracts must not instruct define _embed_tfbot_run wrappers" >&2
   exit 1
 fi
 
