@@ -1,21 +1,30 @@
+/bin/bash <<'DBSPLIT_INGEST_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 WORK_ROOT="${ubuntu_integration_home}/.{{workflow_run_id}}"
+SCRIPT_BASE="https://raw.githubusercontent.com/appcd-dev/solutions/${script_pack_git_ref}/modules/aios-agent-db-state-splitter/scripts"
 if [ -z "$${MONOLITH_URI:-}" ]; then
   echo "error=MONOLITH_URI_unset"
   exit 1
 fi
 mkdir -p "$WORK_ROOT/scripts"
-cat > "$WORK_ROOT/scripts/allocate_manifest.py" << 'ALLOCATE_MANIFEST_PY'
-${allocate_manifest_script}
-ALLOCATE_MANIFEST_PY
+fetch_script() {
+  local name="$1"
+  local dest="$2"
+  curl -fsSL "$${SCRIPT_BASE}/$${name}" -o "$dest"
+}
+fetch_script "allocate_manifest.py" "$WORK_ROOT/scripts/allocate_manifest.py"
+fetch_script "stage-runner.sh" "$WORK_ROOT/scripts/stage-runner.sh"
+chmod +x "$WORK_ROOT/scripts/stage-runner.sh"
+expected="${script_pack_allocate_sha256}"
+actual="$(sha256sum "$WORK_ROOT/scripts/allocate_manifest.py" | awk '{print $1}')"
+if [ "$actual" != "$expected" ]; then
+  echo "script_pack_error=allocate_sha256_mismatch expected=$expected actual=$actual" >&2
+  exit 1
+fi
 export DBSPLIT_EMBEDDED=1
 export DBSPLIT_ALLOCATE_SHA256="${script_pack_allocate_sha256}"
 export DBSPLIT_DEFAULT_STRATEGY="${default_grouping_strategy}"
 export DBSPLIT_DEFAULT_CAP="${default_max_resources_per_appstack}"
-_embed_dbsplit_run() {
-  bash -s "$$@" << 'DBSPLIT_STAGE_RUNNER'
-${stage_runner_script}
-DBSPLIT_STAGE_RUNNER
-}
-_embed_dbsplit_run ingest-and-split "$WORK_ROOT" "$MONOLITH_URI"
+bash -s ingest-and-split "$WORK_ROOT" "$MONOLITH_URI" < "$WORK_ROOT/scripts/stage-runner.sh"
+DBSPLIT_INGEST_EXECUTE

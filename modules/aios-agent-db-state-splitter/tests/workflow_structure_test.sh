@@ -185,6 +185,21 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
+if ! grep -q 'raw.githubusercontent.com/appcd-dev/solutions' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must curl scripts from GitHub raw (avoid tool-arg truncation)" >&2
+  exit 1
+fi
+
+if grep -q 'ALLOCATE_MANIFEST_PY' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must not inline allocate_manifest.py heredoc" >&2
+  exit 1
+fi
+
+if ! grep -q "/bin/bash <<'DBSPLIT_INGEST_EXECUTE'" "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must use /bin/bash heredoc (sh -c incompatible)" >&2
+  exit 1
+fi
+
 pack_main="$(grep -E 'script_pack_version[[:space:]]*=' "${MAIN}" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 pack_runner="$(grep -E '^SCRIPT_PACK_VERSION=' "${ROOT}/scripts/stage-runner.sh" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 if [ -z "$pack_main" ] || [ -z "$pack_runner" ] || [ "$pack_main" != "$pack_runner" ]; then
