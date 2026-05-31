@@ -67,7 +67,7 @@ fi
 
 readme="$target/README.md"
 {
-  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for ECS blue/green internet-facing deployments (issue #${issue_num:-9})." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
+  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for ECS blue/green internet-facing deployments (issue #$${issue_num:-9})." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
 } >"$readme"
 
 if [ -f "$target/.stackgen/stackgen.yaml" ]; then
