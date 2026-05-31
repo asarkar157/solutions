@@ -125,14 +125,18 @@ Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
             } >"$pr_body_file"
             pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$branch" --json url -q '.[0].url' 2>/dev/null || true)"
             if [ -z "$pr_url" ] || [ "$pr_url" = "null" ]; then
+              set +e
               pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
                 --title "$pr_title" --body-file "$pr_body_file" 2>"$work_dir/pr-create.err")"
+              pr_create_rc=$?
+              set -e
+              if [ "$pr_create_rc" -ne 0 ]; then
+                echo "pr_blocker=pr_create_failed rc=$pr_create_rc"
+                cat "$work_dir/pr-create.err" >&2 || true
+              fi
             fi
             if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
               echo "pr_url=$pr_url"
-            else
-              echo "pr_blocker=pr_create_failed"
-              cat "$work_dir/pr-create.err" >&2 || true
             fi
           else
             echo "pr_blocker=push_failed"

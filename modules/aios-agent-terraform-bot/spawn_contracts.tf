@@ -21,6 +21,10 @@ ${local.validate_execute_series_body}
 ---BEGIN COMMIT_PR_EXECUTE_SERIES---
 ${local.commit_pr_execute_series_body}
 ---END COMMIT_PR_EXECUTE_SERIES---
+
+---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES---
+${local.discovery_scaffold_execute_series_body}
+---END DISCOVERY_SCAFFOLD_EXECUTE_SERIES---
 EOT
 
   spawn_contract_create_pr_comment = {
@@ -79,14 +83,13 @@ EOT
       tool_names = [
         "${local.ubuntu_tool_prefix}_execute_command",
         "${local.ubuntu_tool_prefix}_execute_series",
-        "load_skill",
         "note",
         "read_notes",
       ]
       max_llm_calls       = local.subagent_budgets.hcl_author_max_llm_calls
       max_tool_iterations = 48
       timeout_seconds     = local.subagent_budgets.hcl_author_timeout_seconds
-      goal                = "WORK_ROOT={{work_root}}. load_skill ${local.sop_workflow_script_pack} AND ${local.sop_discovery_modules_layout}. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1: script-pack §2.5 /bin/bash -s <<'TFBOT_SCAFFOLD_SERIES' with discovery-check + ALL layout file writes in same heredoc. FORBIDDEN: _embed_tfbot_run(){ , multiple commands[], implement-module-clone, tests/ subdir, main.tf as primary. note module_paths (single absolute path), scaffold_summary."
+      goal                = "ABS_WORK_ROOT={{work_root}}. Greenfield discovery ONLY. ONE ${local.ubuntu_tool_prefix}_execute_series commands.length=1 timeout 600: optional export TRIGGER_JSON='…' MODULE_DIR='…' && paste ---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES--- through ---END--- verbatim (copies sibling aws_ecs_service layout with basic.tftest.hcl). note module_paths, scaffold_summary from stdout. FORBIDDEN: load_skill, _embed_tfbot_run, tests/ subdir, discovery-check.tf junk files, multiple execute_series."
       context             = local.terraform_spawn_context
     },
     {

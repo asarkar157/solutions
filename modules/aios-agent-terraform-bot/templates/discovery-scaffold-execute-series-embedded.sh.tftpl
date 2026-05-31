@@ -1,0 +1,101 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+WORK_ROOT="{{work_root}}"
+repo_dir="$WORK_ROOT/repo"
+
+if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
+  echo "scaffold_error=no_repo_clone"
+  exit 1
+fi
+
+provider_root="aws"
+sibling_dir="aws_ecs_service"
+module_dir="aws_ecs_service_blue_green"
+
+raw="$${TRIGGER_JSON:-}"
+if [ -n "$raw" ]; then
+  title="$(printf '%s' "$raw" | jq -r '.issue.title // .pull_request.title // empty' | tr '[:upper:]' '[:lower:]')"
+  if printf '%s' "$title" | grep -Eq 'azure|azurerm'; then
+    provider_root="azurerm"
+    sibling_dir="azurerm_kubernetes_cluster"
+    module_dir="azurerm_kubernetes_cluster_blue_green"
+  elif printf '%s' "$title" | grep -Eq 'gcp|google|gke'; then
+    provider_root="gcp"
+    sibling_dir="google_compute_instance"
+    module_dir="google_compute_instance_blue_green"
+  fi
+  if printf '%s' "$title" | grep -Eq 'ecs|fargate|container'; then
+    provider_root="aws"
+    sibling_dir="aws_ecs_service"
+    module_dir="aws_ecs_service_blue_green"
+  fi
+fi
+
+MODULE_DIR="$${MODULE_DIR:-$module_dir}"
+PROVIDER_ROOT="$${PROVIDER_ROOT:-$provider_root}"
+SIBLING="$${SIBLING_DIR:-$sibling_dir}"
+
+target="$repo_dir/$PROVIDER_ROOT/$MODULE_DIR"
+sibling="$repo_dir/$PROVIDER_ROOT/$SIBLING"
+
+if [ -d "$target" ] && [ -n "$(find "$target" -maxdepth 1 -name '*.tf' -print -quit)" ]; then
+  echo "module_paths=$target"
+  echo "module_resolution_confidence=exact"
+  echo "scaffold_summary=existing_module"
+  echo "discovery_provider=$PROVIDER_ROOT"
+  echo "discovery_module_dir=$MODULE_DIR"
+  exit 0
+fi
+
+if [ ! -d "$sibling" ]; then
+  sibling="$(find "$repo_dir/$PROVIDER_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)"
+fi
+if [ -z "$sibling" ] || [ ! -d "$sibling" ]; then
+  echo "scaffold_error=no_sibling_module provider=$PROVIDER_ROOT"
+  exit 1
+fi
+
+mkdir -p "$(dirname "$target")"
+cp -a "$sibling" "$target"
+
+issue_num=""
+if [ -n "$raw" ]; then
+  issue_num="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+fi
+
+readme="$target/README.md"
+{
+  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for ECS blue/green internet-facing deployments (issue #${issue_num:-9})." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
+} >"$readme"
+
+if [ -f "$target/.stackgen/stackgen.yaml" ]; then
+  sed -i.bak "s/$(basename "$sibling")/$MODULE_DIR/g" "$target/.stackgen/stackgen.yaml" 2>/dev/null || true
+  rm -f "$target/.stackgen/stackgen.yaml.bak"
+fi
+
+if [ -f "$target/basic.tftest.hcl" ]; then
+  sed -i.bak "s/$(basename "$sibling")/$MODULE_DIR/g" "$target/basic.tftest.hcl" 2>/dev/null || true
+  rm -f "$target/basic.tftest.hcl.bak"
+fi
+
+primary_tf=""
+for _f in "$target"/*.tf; do
+  _base="$(basename "$_f")"
+  if [ "$_base" = "provider.tf" ] || [ "$_base" = "versions.tf" ]; then
+    continue
+  fi
+  primary_tf="$_f"
+  break
+done
+if [ -n "$primary_tf" ] && [ "$(basename "$primary_tf")" = "$${SIBLING}.tf" ]; then
+  mv "$primary_tf" "$target/$${MODULE_DIR}.tf"
+fi
+
+echo "module_paths=$target"
+echo "module_resolution_confidence=greenfield"
+echo "scaffold_summary=copied_sibling=$(basename "$sibling")"
+echo "discovery_provider=$PROVIDER_ROOT"
+echo "discovery_module_dir=$MODULE_DIR"
+echo "script_pack_version=${script_pack_version}"

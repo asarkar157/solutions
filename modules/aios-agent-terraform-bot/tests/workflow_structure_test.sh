@@ -214,6 +214,16 @@ if ! grep -q 'BEGIN COMMIT_PR_EXECUTE_SERIES' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
+if ! grep -q 'BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must embed discovery scaffold body between BEGIN/END DISCOVERY_SCAFFOLD_EXECUTE_SERIES markers" >&2
+  exit 1
+fi
+
+if awk '/sub_agent_name = "implement-module-discovery-scaffold"/,/^    },/' "${ROOT}/spawn_contracts.tf" | grep -q '"load_skill"'; then
+  echo "FAIL: implement-module-discovery-scaffold must not include load_skill" >&2
+  exit 1
+fi
+
 if awk '/sub_agent_name = "create-pr-runner"/,/^    },/' "${ROOT}/spawn_contracts.tf" | grep -q '"load_skill"'; then
   echo "FAIL: create-pr-runner spawn contract must not include load_skill" >&2
   exit 1
