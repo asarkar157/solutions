@@ -12,14 +12,15 @@ Keywords: workflow scripts, execute_series, heredoc, stage-runner, bootstrap, cl
 1. **`WORK_ROOT=$HOME/.<workflow_run_id>`** — copy `workflow_run_id` verbatim from the stagerunner `[Workflow execution]` header (e.g. `wf-terraform-module-update-157b399eacdc402c`). Do **not** guess from trace_id or Temporal workflow id.
 2. **Never** `${ubuntu_tool_prefix}_create_files` for workflow scripts or for module files that must be validated in a **later** tool call. **Forbidden:** materialize scripts under `$WORK_ROOT/scripts/`, then run a second tool call.
 3. **Exactly ONE** `${ubuntu_tool_prefix}_execute_series` per Ubuntu subagent turn. That single series must include bootstrap, clone (if needed), all file writes (printf/python/heredoc), fmt/init/validate/test, and commit/push when the subagent owns that scope.
-4. Subagent loads this skill (`load_skill`), copies the §2 block for its stage, substitutes placeholders, runs it as the **sole** series entry.
+4. **Spawn-contract runners:** export `TFBOT_EMBEDDED=1` before calling `_embed_tfbot_run`. Define `_embed_tfbot_run(){ bash -s "$@" << 'TFBOT_STAGE_RUNNER' … }` **inside the same execute_series** — never call `_embed_tfbot_run` alone (exit 127). Paste the §1 stage-runner body into the heredoc; do not split `load_skill` and execute_series across tool calls.
 5. After stdout `key=value` lines, mirror keys in-shell to `$WORK_ROOT/notes.json` (orchestration §3b). The planner batches them into one `workflow_notes_snapshot` note at stage end (§3i).
 
-**Embed helper** (prefix every §2 block — runner body is §1):
+**Embed helper** (prefix every §2 block — runner body is §1). **Mandatory:** `export TFBOT_EMBEDDED=1` before the first `_embed_tfbot_run` call.
 
 ```bash
 WORK_ROOT="$HOME/.<workflow_run_id>"
 mkdir -p "$WORK_ROOT"
+export TFBOT_EMBEDDED=1
 
 _embed_tfbot_run() {
   bash -s "$@" << 'TFBOT_STAGE_RUNNER'

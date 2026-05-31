@@ -153,8 +153,29 @@ if ! grep -q 'resolve_repo_dir' "${ROOT}/scripts/stage-runner.sh"; then
   exit 1
 fi
 
-if ! grep -q 'FORBIDDEN: printf' "${ROOT}/spawn_contracts.tf"; then
+if ! grep -q 'printf.*fake PASS' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: validate spawn contract must forbid printf fake PASS" >&2
+  exit 1
+fi
+
+if ! grep -q 'TFBOT_EMBEDDED' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must require TFBOT_EMBEDDED invocation" >&2
+  exit 1
+fi
+
+if ! grep -q 'TFBOT_STAGE_RUNNER_SHA256' "${MAIN}"; then
+  echo "FAIL: main.tf must expose TFBOT_STAGE_RUNNER_SHA256 in stage binding notes" >&2
+  exit 1
+fi
+
+if awk '/sub_agent_name = "check-info-and-clone-clone"/,/^    },/' "${ROOT}/spawn_contracts.tf" | grep -q '"load_skill"'; then
+  echo "FAIL: clone spawn contract tool_names must not include load_skill (split tool calls break embed)" >&2
+  exit 1
+fi
+
+if grep -q 'spawn_contract_create_pr_comment' "${ROOT}/spawn_contracts.tf" \
+  && awk '/spawn_contracts_check_info_and_clone/,/\]/' "${ROOT}/spawn_contracts.tf" | grep -q 'spawn_contract_create_pr_comment'; then
+  echo "FAIL: check-info spawn contracts must not include create-pr-comment (blocked gate owns notify)" >&2
   exit 1
 fi
 

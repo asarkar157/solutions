@@ -52,7 +52,9 @@ locals {
     for name in local.workflow_script_names :
     name => trimspace(file("${path.module}/scripts/${name}"))
   }
-  stage_runner_script = trimspace(file("${path.module}/scripts/stage-runner.sh"))
+  stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
+  script_pack_version       = "20260531.1"
+  script_pack_runner_sha256 = sha256(local.stage_runner_script)
   workflow_script_pack_body = trimspace(templatefile("${path.module}/templates/workflow-script-pack.md.tftpl", {
     ubuntu_tool_prefix  = local.ubuntu_tool_prefix
     stage_runner_script = local.stage_runner_script
@@ -557,18 +559,19 @@ resource "sg_workflow" "terraform_module_update" {
       )
       spawn_contracts = local.spawn_contracts_check_info_and_clone
       note            = <<-EOT
+        TFBOT_STAGE_RUNNER_SHA256=${local.script_pack_runner_sha256}
         Budget contract: ≤ 2 subagents, ≤ $1.00, ≤ 3 minutes.
 
         **Step 1 — check info + clone**
-        0. Read `[Workflow execution]` → `workflow_run_id`; set `WORK_ROOT=$HOME/.<workflow_run_id>`.
+        0. Read `[Workflow execution]` → `workflow_run_id`; spawn contract resolves `WORK_ROOT={{work_root}}` to the absolute scratch path (Ubuntu home is often `/home/integration`, not `/root`).
         1. Extract trigger fields into notes (no subagents before label gate): parse webhook JSON from stage Input per orchestration §0b — `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`, `event_type`, `issue_labels`, `pr_head_ref`, `pr_head_clone_url`. Missing repo or issue # → §8(a) blocked notify and STOP.
         2. Discovery label gate (when `discovery_repo=true`): evaluate `${local.sop_discovery_modules_layout}` §1. On `missing_label` → spawn ONE `create-pr-comment` (Template E, GitHub path only), STOP.
         3. Build `issue_details` JSON from parsed webhook fields (§0b step 3) when `issue.title` or `pull_request.title` is present — **do NOT** spawn `check-info-and-clone-fetch`. Fetch ONLY when title is absent after JSON parse.
-        4. If `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone` (Template A). Pass `max_llm_calls=${local.subagent_budgets.script_runner_max_llm_calls}`, `task_type=terminal_calling`, `max_tool_iterations=45`. ONE execute_series only — no separate create_files.
-        5. **Clone outcome (not token probe alone):** BLOCKED only when `clone_blocker=*` OR `repo_clone_path` still empty after the clone series — note `stage_summary:check-info-and-clone=blocked: <reason>`. If `gh_env_present=false` but `repo_clone_path` is set (public anonymous clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue** (implement/validate can proceed; create-pr needs PAT for push). Do NOT spawn `create-pr-comment` on intake clone failure — `check-info-blocked-gate` → `create-pr` owns notify.
+        4. If `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone` (`task_type=terminal_calling`). Host applies spawn_contracts — do NOT re-specify create_agent fields. **Script pack (mandatory):** ONE `${local.ubuntu_tool_prefix}_execute_series` that (1) exports `TFBOT_EMBEDDED=1` + `TFBOT_STAGE_RUNNER_SHA256=${local.script_pack_runner_sha256}`, (2) defines `_embed_tfbot_run` with heredoc body from `${local.sop_workflow_script_pack}`, (3) calls `_embed_tfbot_run clone {{work_root}} …` with **literal absolute {{work_root}}** — never `$HOME`/`$WORK_ROOT` in tool JSON. **Never** bare `_embed_tfbot_run` (exit 127). **Never** spawn `create-pr-comment` on clone failure here — `check-info-blocked-gate` → `create-pr` owns notify.
+        5. **Clone outcome (not token probe alone):** BLOCKED only when `clone_blocker=*` OR `repo_clone_path` still empty after the clone series — note `stage_summary:check-info-and-clone=blocked: <reason>`. If `gh_env_present=false` but `repo_clone_path` is set (public anonymous clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue**.
         6. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:check-info-and-clone` + echo handoff keys (§3b).
 
-        Forbidden: `graph_query`, org-wide `gh repo list`, `gh api /user/repos`, auth-verify-only subagents, spawning `check-info-and-clone-fetch` when webhook already has `issue.labels` + `issue.title`, spawning `create-pr-comment` on clone auth failure, raw PAT in goals, pasting full clone bash into subagent goals, `{}` execute_series payloads.
+        Forbidden: `graph_query`, org-wide `gh repo list`, `gh api /user/repos`, auth-verify-only subagents, spawning `check-info-and-clone-fetch` when webhook already has `issue.labels` + `issue.title`, spawning `create-pr-comment` on clone auth failure, raw PAT in goals, `{}` execute_series payloads, `/root/.wf-*` paths.
       EOT
     },
     {
@@ -577,7 +580,7 @@ resource "sg_workflow" "terraform_module_update" {
       stage_depends_on = ["check-info-and-clone"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "(?m)stage_summary:check-info-and-clone[=:\"\\s]+blocked:|clone_blocker=(auth|auth_or_network|network|404|branch)"
+        match     = "(?m)stage_summary:check-info-and-clone[=:\"\\s]+blocked:|clone_blocker=(auth|auth_or_network|network|404|branch)|_embed_tfbot_run.*command not found|script_pack_error="
         skip_to   = "create-pr"
         reason    = "Clone/auth failed at intake — skip implement/validate; create-pr posts operator-facing blocker comment"
       }

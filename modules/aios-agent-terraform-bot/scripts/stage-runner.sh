@@ -5,6 +5,19 @@
 # Commands: clone | validate | commit-pr | resolve-paths | discovery-check
 set -euo pipefail
 
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.1}"
+
+require_embedded_invocation() {
+  if [ "${TFBOT_EMBEDDED:-}" = "1" ]; then
+    return 0
+  fi
+  if [ "${TFBOT_ALLOW_DIRECT:-}" = "1" ]; then
+    return 0
+  fi
+  echo "script_pack_error=invoke_via_embed_tfbot_run_set_TFBOT_EMBEDDED=1" >&2
+  return 1
+}
+
 mirror_note() {
   local work_root="${1:?WORK_ROOT}"
   local key="${2:?KEY}"
@@ -739,6 +752,8 @@ cmd_discovery_check() {
   echo "discovery_provider=$provider"
   echo "discovery_module_dir=$module_dir"
 }
+
+require_embedded_invocation || exit 1
 
 cmd="${1:?command required}"
 shift

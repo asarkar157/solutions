@@ -92,6 +92,7 @@ EOF
 WORK4="${TMP}/work4"
 mkdir -p "$WORK4/.work"
 echo '{}' >"$WORK4/notes.json"
+export TFBOT_ALLOW_DIRECT=1
 if command -v tofu >/dev/null 2>&1 || command -v terraform >/dev/null 2>&1; then
   OUT="$(bash "$RUNNER" validate "$WORK4" "$MOD" 2>/dev/null || true)"
   if ! grep -q 'fmt_exit=' <<<"$OUT"; then
@@ -110,6 +111,7 @@ fi
 if command -v git >/dev/null 2>&1; then
   WORK="${TMP}/work"
   unset GIT_TOKEN GITHUB_TOKEN GH_TOKEN
+  export TFBOT_ALLOW_DIRECT=1
   if bash "$RUNNER" clone "$WORK" \
     'https://github.com/stackgenhq/discovery-modules.git' \
     main 9 '' '' 2>"${TMP}/clone-public.err"; then
@@ -141,6 +143,7 @@ WORK2="${TMP}/work2"
 mkdir -p "$WORK2/repo/.git" "$WORK2/.work"
 echo '{}' >"$WORK2/notes.json"
 unset GIT_TOKEN GITHUB_TOKEN GH_TOKEN
+export TFBOT_ALLOW_DIRECT=1
 if bash "$RUNNER" commit-pr "$WORK2" 'org/repo' 9 2>"${TMP}/commit.err"; then
   echo "FAIL: commit-pr should fail without token" >&2
   exit 1
@@ -151,6 +154,17 @@ if ! grep -q 'pr_blocker=auth' "${TMP}/commit.err" && ! bash "$RUNNER" commit-pr
     echo "FAIL: commit-pr should emit pr_blocker=auth without token" >&2
     exit 1
   fi
+fi
+
+# --- require_embedded_invocation rejects direct invoke ---
+unset TFBOT_ALLOW_DIRECT TFBOT_EMBEDDED
+if bash "$RUNNER" validate "$WORK4" "$MOD" 2>"${TMP}/embed.err"; then
+  echo "FAIL: direct stage-runner invoke should fail without TFBOT_EMBEDDED" >&2
+  exit 1
+fi
+if ! grep -q 'script_pack_error=invoke_via_embed_tfbot_run' "${TMP}/embed.err"; then
+  echo "FAIL: missing embed guard error message" >&2
+  exit 1
 fi
 
 echo "OK: stage-runner logic checks passed"

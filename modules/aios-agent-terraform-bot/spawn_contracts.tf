@@ -1,5 +1,5 @@
 # Per-stage create_agent contracts (Guild StageBinding.spawn_contracts).
-# Runtime resolves {{workflow_run_id}} and {{work_root}} at execution time.
+# Runtime resolves {{workflow_run_id}}, {{work_root}}, and {{stage_note_var:NAME}} from binding notes.
 
 locals {
   terraform_spawn_context = <<-EOT
@@ -46,17 +46,15 @@ EOT
       tool_names = [
         "${local.ubuntu_tool_prefix}_execute_command",
         "${local.ubuntu_tool_prefix}_execute_series",
-        "load_skill",
         "note",
         "read_notes",
       ]
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE execute_series: copy script-pack §2.1 clone block verbatim (bash -lc + _embed_tfbot_run clone). WORK_ROOT={{work_root}}. Clone MUST land at $WORK_ROOT/repo via stage-runner — FORBIDDEN: ad hoc git clone to repo_clone, mkdir+clone without _embed_tfbot_run, directory listing. note repo_clone_path and repo_head_sha from stdout. Stop."
+      goal                = "WORK_ROOT={{work_root}}. read_notes repository_clone_url, repository_default_branch, issue_or_pr_number. ONE ${local.ubuntu_tool_prefix}_execute_series via bash -s (never bash -lc alone): export TFBOT_EMBEDDED=1 TFBOT_STAGE_RUNNER_SHA256={{stage_note_var:TFBOT_STAGE_RUNNER_SHA256}}; define _embed_tfbot_run(){ bash -s \"\\$@\" << 'TFBOT_STAGE_RUNNER' then paste the FULL stage-runner.sh body from skill ${local.sop_workflow_script_pack} §0–§1 (identical to load_skill output), TFBOT_STAGE_RUNNER }; _embed_tfbot_run clone {{work_root}} \"<url>\" \"<branch>\" \"<issue#>\" \"\" \"\". Use literal {{work_root}} in tool JSON — never $HOME/$WORK_ROOT/unexpanded vars. Forbidden: load_skill, bare _embed_tfbot_run without prior heredoc function def in the SAME series (exit 127), /root paths, ad hoc git clone, separate tool calls. note repo_clone_path, repo_head_sha. Final line: script_pack_version=${local.script_pack_version}."
       context             = local.terraform_spawn_context
     },
-    local.spawn_contract_create_pr_comment,
   ]
 
   spawn_contracts_implement_module = [
@@ -118,14 +116,13 @@ EOT
       tool_names = [
         "${local.ubuntu_tool_prefix}_execute_command",
         "${local.ubuntu_tool_prefix}_execute_series",
-        "load_skill",
         "note",
         "read_notes",
       ]
       max_llm_calls       = local.subagent_budgets.validate_runner_max_llm_calls
       max_tool_iterations = 45
       timeout_seconds     = local.subagent_budgets.validate_runner_timeout_seconds
-      goal                = "load_skill ${local.sop_workflow_script_pack}. ONE ${local.ubuntu_tool_prefix}_execute_series only: copy script-pack §2.2 validate block verbatim (bash -lc + _embed_tfbot_run validate for-loop over module_paths). WORK_ROOT={{work_root}}. FORBIDDEN: printf/echo fake PASS, quality_check_terraform, quality_check_module_layout, skipping tofu fmt/init/validate/test, execute_command file probes, second series. Real stdout MUST include fmt_exit= and binary= lines. note workflow_notes_snapshot from tool output only — never invent sentinels."
+      goal                = "WORK_ROOT={{work_root}}. read_notes module_paths. ONE ${local.ubuntu_tool_prefix}_execute_series via bash -s: export TFBOT_EMBEDDED=1 TFBOT_STAGE_RUNNER_SHA256={{stage_note_var:TFBOT_STAGE_RUNNER_SHA256}}; define _embed_tfbot_run(){ bash -s \"\\$@\" << 'TFBOT_STAGE_RUNNER' paste FULL stage-runner.sh from ${local.sop_workflow_script_pack}, TFBOT_STAGE_RUNNER }; for _p in $(echo module_paths | tr ',' ' '); do _embed_tfbot_run validate {{work_root}} \"\\$_p\"; done. Literal {{work_root}} only in tool JSON. FORBIDDEN: load_skill, bare _embed_tfbot_run, printf/echo fake PASS, quality_check_terraform, quality_check_module_layout, second series. stdout MUST include fmt_exit= and binary=. note workflow_notes_snapshot from tool output only."
       context             = local.terraform_spawn_context
     },
   ]
