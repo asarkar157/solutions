@@ -170,4 +170,14 @@ if ! grep -q 'count_reconciliation_ok: \\\"false\\\"' "${MAIN}"; then
   exit 1
 fi
 
+if ! grep -q 'INGEST STOP RULE' "${MAIN}"; then
+  echo "FAIL: ingest stage must define INGEST STOP RULE to prevent post-success thrash" >&2
+  exit 1
+fi
+
+if ! grep -q 'ingest-and-split-runner' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must register ingest-and-split-runner" >&2
+  exit 1
+fi
+
 echo "OK: db-state-splitter workflow structure checks passed"
