@@ -185,18 +185,13 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'write_embedded_script' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must base64-embed scripts (private repo; raw/API fetch unreliable)" >&2
+if ! grep -q 'gh api' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must fetch scripts via gh api (private repo)" >&2
   exit 1
 fi
 
-if ! grep -q 'script_pack_allocate_b64' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must reference script_pack_allocate_b64" >&2
-  exit 1
-fi
-
-if grep -q 'raw.githubusercontent.com' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must not use raw.githubusercontent.com (private repo 404)" >&2
+if grep -q 'write_embedded_script\|script_pack_allocate_b64\|raw.githubusercontent.com' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must not base64-embed or use raw.githubusercontent.com" >&2
   exit 1
 fi
 
