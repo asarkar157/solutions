@@ -66,14 +66,16 @@ These names match the **integrations / AppStack** MCP server (`streamable_http` 
 
 For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in order**. **Do not** start step 4 (`connect_resources`) or step 6 (`create_appstack_action_run`) for a group until step 3.5 (**Membership verification**) returns `ok=true` for that group.
 
+**Atomic create + bulk-add (mandatory):** AppStack creation and resource assignment are **one per-group unit of work**. Build the full `resources[]` payload first, then `create_appstack`, then **`bulk_add_resources_to_appstack` in the same group iteration** before touching the next group. Never run a "create all AppStacks" wave followed by a separate bulk-add wave — that leaves empty stacks and is the dominant failure mode in production traces.
+
 1. **Pin the group** — read `logical_group_manifest[group_id]`. Treat `resource_addresses[]` as the **closed set** of Terraform addresses for this AppStack. Infer **one** `cloud_provider` from resource type prefixes (`aws_*`, `azurerm_*`, `google_*`, `azapi_*` → map to aws/azure/gcp heuristics). Mixed-provider groups → split the group first; do **not** flatten.
-2. `create_appstack` with a stable sanitized **name** (`<repo>-<group_key>`), **labels** echoing source tags (e.g. `split-from:monolith`, `group:<key>`); optional **`appstack_ref_id`** from a template id discovered via `get_appstacks` + `labels: ["template"]`. **Persist** `stackgen_appstack_map[group_id] = { appstack_id, appstack_name, cloud_provider, project_name }` immediately so a retry can resume against the same stack.
-3. **Build the expected identifier table and bulk-add payload** (deterministic Terraform-address → identifier mapping):
+2. **Build the expected identifier table and bulk-add payload** (deterministic Terraform-address → identifier mapping) **before** any MCP write:
    - For each `addr` in `group.resource_addresses`, derive `identifier = sanitize_identifier(addr)` (lowercase snake; replace `.`, `[`, `]`, `"`, `/`, `-`, spaces with `_`; collapse repeats; strip leading digits/underscores per server rules). Keep a JSON map `identifier_for_address: { addr -> identifier }`.
    - For each `addr`, map Terraform `resource_type` → StackGen **`resource_type`** via `get_supported_resource_types` (call once per wave, cache in notes). Resources with **no** mapping go to **`orphans_bundle`** with `reason: "no_supported_resource_type"` — they **must not** be silently dropped.
    - Assemble `resources[]` in **deterministic address order** — each entry: `{ resource_type, identifier, configuration?, tf_vars?, template_id? }`. Include **`configuration`** when the registry mapping or `terraform show -json` supplies attributes (bulk-add applies them in the same round trip).
-   - Call **`bulk_add_resources_to_appstack`** with `appstack_name` = `stackgen_appstack_map[group_id].appstack_id` (or `appstack_id` per schema), `project_name`, and the full `resources[]` array. **Chunk** when `len(resources) > ${bulk_resources_chunk_size}`: slices of ≤ **${bulk_resources_chunk_size}** (never exceed **${bulk_add_resources_max_per_call}** per call). Read the response **`needs_attention`** array — for each index, fix validation errors in one follow-up bulk call (validate-all-then-execute returns every issue at once) or fall back to singular **`add_resource_to_appstack`** / **`update_resource`** for that item only. On **5xx** for the whole bulk call, retry the same payload once before logging to `stackgen_mcp_errors`.
-3.5. **Membership verification gate** — **MANDATORY** before any `connect_resources` or Plan call for this group:
+3. `create_appstack` with a stable sanitized **name** (`<repo>-<group_key>`), **labels** echoing source tags (e.g. `split-from:monolith`, `group:<key>`); optional **`appstack_ref_id`** from a template id discovered via `get_appstacks` + `labels: ["template"]`. **Persist** `stackgen_appstack_map[group_id] = { appstack_id, appstack_name, cloud_provider, project_name }` immediately so a retry can resume against the same stack.
+4. **Immediately bulk-add** — call **`bulk_add_resources_to_appstack`** with `appstack_name` = `stackgen_appstack_map[group_id].appstack_id` (or `appstack_id` per schema), `project_name`, and the full pre-built `resources[]` array from step 2. **Chunk** when `len(resources) > ${bulk_resources_chunk_size}`: slices of ≤ **${bulk_resources_chunk_size}** (never exceed **${bulk_add_resources_max_per_call}** per call). Read the response **`needs_attention`** array — for each index, fix validation errors in one follow-up bulk call (validate-all-then-execute returns every issue at once) or fall back to singular **`add_resource_to_appstack`** / **`update_resource`** for that item only. On **5xx** for the whole bulk call, retry the same payload once before logging to `stackgen_mcp_errors`. **Do not** proceed to the next group until this step completes for the current group.
+5. **Membership verification gate** — **MANDATORY** before any `connect_resources` or Plan call for this group:
    - Call **`get_appstack_resources(appstack_id)`** **once** for this group; collect `actual_identifiers[]`.
    - Compare with `expected_identifiers[]` (values of `identifier_for_address`). Compute:
      - `missing = expected − actual`
@@ -84,10 +86,10 @@ For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in or
      - For each `id` in `missing`: re-call **`bulk_add_resources_to_appstack`** with only the missing entries (one-item bulk is fine) or singular **`add_resource_to_appstack`**; if the server returns "identifier already exists" treat as already-present.
      - For each `id` in `unexpected` **not** in `cross_group_bleed`: **`delete_resource(appstack_id, identifier=id)`** (after confirming with `get_appstack_resources` that the identifier truly does not appear in `expected_identifiers`).
      - For each `id` in `cross_group_bleed`: **stop** and write **`stackgen_mcp_errors`** with `reason: "cross_group_bleed"`, `bleed_source_group: <other group_id>`, `addresses_affected`. Do **not** auto-delete from another group’s AppStack — escalate via `notify` and re-enter Loop B.
-   - After reconciliation, re-call `get_appstack_resources` and rewrite the same `stackgen_appstack_membership:<group_id>` note. Only proceed to step 4 when `ok=true`.
-4. **Intra-group wiring** — `get_possible_resource_connections` for the resource types on this stack, then build `connections[]` from `terraform show -json` / manifest `cross_shard_refs` (intra-group only). Prefer **`bulk_connect_resources_in_appstack`** with **`source_identifier`** / **`target_identifier`** matching step 3 identifiers (no need to hold UUIDs). Chunk when `len(connections) > ${bulk_connections_chunk_size}` (max **${bulk_connect_resources_max_per_call}** per call). Process **`needs_attention`** like bulk-add; fall back to singular **`connect_resources`** only for stubborn edges. **Never** connect across `appstack_id`s.
+   - After reconciliation, re-call `get_appstack_resources` and rewrite the same `stackgen_appstack_membership:<group_id>` note. Only proceed to step 6 when `ok=true`.
+6. **Intra-group wiring** — `get_possible_resource_connections` for the resource types on this stack, then build `connections[]` from `terraform show -json` / manifest `cross_shard_refs` (intra-group only). Prefer **`bulk_connect_resources_in_appstack`** with **`source_identifier`** / **`target_identifier`** matching step 2 identifiers (no need to hold UUIDs). Chunk when `len(connections) > ${bulk_connections_chunk_size}` (max **${bulk_connect_resources_max_per_call}** per call). Process **`needs_attention`** like bulk-add; fall back to singular **`connect_resources`** only for stubborn edges. **Never** connect across `appstack_id`s.
 
-5. **Env profile (OPTIONAL).** Project environments (e.g. `dev`, `prod`) must already exist in **Project Settings** — this MCP cannot create them. Behavior:
+7. **Env profile (OPTIONAL).** Project environments (e.g. `dev`, `prod`) must already exist in **Project Settings** — this MCP cannot create them. Behavior:
    - `read_notes` for **`stackgen_target_environment`** (workflow input; default unset) and **`stackgen_environments_required`** (default `"false"`).
    - If `stackgen_target_environment` is **unset** → skip env profile creation entirely; `note` `stackgen_env_profile:<group_id>` = `{ skipped: "no_target_env_input" }`.
    - If set, call **`get_env_profiles(appstack_id)`** first. If a profile already exists for that environment, optionally `update_env_profile`; otherwise call `create_env_profile` with **`profile_name`** referencing the target env (and **`topology_id`** if `appstack_name` is absent in the schema; `state_backend_raw_hcl` for per-AppStack remote state).
@@ -97,12 +99,12 @@ For **each** `group_id` in `logical_group_manifest`, perform steps 1–4 **in or
      - Do **not** retry; do **not** stop the stage; do **not** `notify` the operator unless `stackgen_environments_required="true"`.
    - When `stackgen_environments_required="true"` **and** the env is missing, write a single `notify` summarising the missing env across all AppStacks (one message, not per-group), then continue with the rest of the stage so other AppStacks still get materialized.
 
-6. **StackGen Plan action run (OPTIONAL).** Behavior:
-   - Skip when step 5 was skipped or soft-failed for this group: `note` `stackgen_plan_run:<group_id>` = `{ skipped: "no_env_profile" }` and rely on **Ubuntu `tofu plan`** in the convergence stage for parity.
+8. **StackGen Plan action run (OPTIONAL).** Behavior:
+   - Skip when step 7 was skipped or soft-failed for this group: `note` `stackgen_plan_run:<group_id>` = `{ skipped: "no_env_profile" }` and rely on **Ubuntu `tofu plan`** in the convergence stage for parity.
    - Otherwise call **`create_appstack_action_run`** with **`action_type`** = **Plan** per AppStack; capture **`get_action_run`** / **`get_action_run_logs`**. For parity with Ubuntu `tofu plan`, diff **Terraform roots** you already materialized under **`repo_clone_path`** — there is **no** `download-iac` on this server.
    - On the same `env_not_in_project_settings` error class, soft-fail (same `stackgen_mcp_errors` log + skip note) and continue with the next group.
 
-7. Before risky deletes, use **`create_snapshot`**; use **`get_current_violations`** when debugging policy blocks.
+9. Before risky deletes, use **`create_snapshot`**; use **`get_current_violations`** when debugging policy blocks.
 
 After **all** groups complete, write a single **`stackgen_appstack_membership_report`** note (JSON):
 
@@ -141,6 +143,7 @@ If the workflow passes **`cloud_discovery_id`**, treat it as an **operator corre
 ## Anti-patterns
 
 - Passing **resource pack name** to `add_resource_pack_to_appstack` (must be UUID from `get_supported_resource_types`).
+- Creating all AppStacks in one wave then bulk-adding resources in a second wave (leaves empty stacks — **forbidden**).
 - Per-group loops of singular **`add_resource_to_appstack`** when the group fits in one or two **`bulk_add_resources_to_appstack`** calls (dominant wall-time regression before bulk tools).
 - Calling bulk-add or singular add with invalid **`identifier`** (must match server rules — typically lowercase snake).
 - Ignoring bulk response **`needs_attention`** and re-walking the entire group with singular tools.

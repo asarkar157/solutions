@@ -4,7 +4,7 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
 
 ## Requirements
 
-- **StackGen provider** `>= 0.1.20` (requires `sg_agent.auto_approve_tools` object blocks for MCP wildcards; also includes `sg_agent.remote_runners`, `data.sg_remote_runner`, the `env` attribute on `sg_guild_integration`, and adopt-on-conflict for `sg_policy_bundle`, `sg_guild_model_provider`, `sg_guild_model`, and already-approved `sg_workflow`).
+- **StackGen provider** `>= 0.1.23` (this module; includes `sg_remote_runner` install commands via nested `aios-remote-runner`, `sg_agent.auto_approve_tools`, `sg_agent.remote_runners`, and adopt-on-conflict for bundles/models/workflows).
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops` (typical stack).
 - **`modules/aios-integration-github`**, **`modules/aios-integration-ubuntu`**, and **`modules/aios-integration-aws`** (or any equivalent `sg_guild_integration` of `type = "aws"`) are all **required**. Pass their `integration_name` outputs as `integration_names.github`, `integration_names.ubuntu_cli`, and `integration_names.aws`.
 - **StackGen MCP Guild integration is required** (same pattern as `aios-agent-repo-to-iac`) — pass `stackgen_mcp_integration_name`. This enables AppStack tools (`create_appstack`, `bulk_add_resources_to_appstack`, `bulk_connect_resources_in_appstack`, `create_appstack_action_run`, env profiles, snapshots, etc.; see **`stackgen-appstack-mcp-playbook-sop`**). **`db-state-split-architect`** uses **`sg_agent.auto_approve_tools`** with **`tool = "<integration_name>_*"`** (for example **`stackgen-mcp_*`**) for Consumer MCP tools, plus intervention policy **`db-state-split-stackgen-mcp-auto-approve`** (`policies/stackgen-mcp-auto-approve.rego`). Lookup tools (`web_search`, `note`, `read_notes`) stay in **`hitl.always_allowed`**. The `materialize-stackgen-appstacks` stage and the `db-monorepo-state-split-evidence` checklist both assume StackGen MCP is attached — there is no longer a TF-only mode.
@@ -57,7 +57,7 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
   For SSH-key auth instead of HTTPS tokens, mount `GIT_SSH_PRIVATE_KEY` (PEM body) and `GIT_SSH_KNOWN_HOSTS` and the agent will write them to `~/.ssh/` with `chmod 600` before cloning. For multi-host setups (mixed GitHub + GitLab + internal git), repeat the secret with per-host metadata (e.g. `GIT_TOKEN_GITHUB`, `GIT_HOST_GITHUB`, `GIT_TOKEN_GITLAB`, `GIT_HOST_GITLAB`) — the SOPs match on the host parsed from `iac_repository_url`.
 
   Wire the secret in the same two ways as the AWS one: (a) define the Ubuntu `sg_guild_integration` in your root with `secret_ref_ids = [sg_secret.ubuntu_git.id, sg_secret.ubuntu_aws_readonly.id]`, or (b) extend `modules/aios-integration-ubuntu` with an `extra_secret_ref_ids` variable that fans both in. If the repo also needs to be written back to (PR creation for `orphan-iac-module-authoring`), the token must have `repo:write` (or equivalent) — but the **primary** split workflow only needs read.
-- **`remote_runner_name` + `remote_runner_attach_to_agent`** only select an existing Guild runner and attach it on `sg_agent`; they do **not** install tools or secrets on the runner image. When a remote runner is configured for plan fan-out, the same AWS read-only **and git** credentials must be available there too.
+- **Remote runners (on-prem).** Set `create_remote_runner = true` and `remote_runner_name` to register `sg_remote_runner` and read **`remote_runner_cli_start_command`** / **`remote_runner_helm_install_command`** from module outputs (aiden-runner connects **outbound-only** to mothership — no inbound firewall rules). After the runner is **online**, set `remote_runner_attach_to_agent = true`. The module does **not** install `tofu`, `jq`, or cloud/git secrets on the runner host — mirror the Ubuntu credential guidance above on the runner image.
 
 ## Security & privacy
 
@@ -85,9 +85,10 @@ module "db_state_splitter" {
   # Required: Guild integration name for the StackGen Consumer MCP (e.g. "stackgen-mcp").
   stackgen_mcp_integration_name = sg_guild_integration.stackgen_mcp.name
 
-  # Optional: Guild remote runner — documents in SOPs; set attach to bind on the agent (runner must exist at plan).
-  # remote_runner_name             = "org-tofu-runner"
-  # remote_runner_attach_to_agent  = true
+  # On-prem runner: create + install commands in outputs; attach when runner is online.
+  # create_remote_runner            = true
+  # remote_runner_name              = "org-tofu-runner"
+  # remote_runner_attach_to_agent   = true
 
   # Optional: GitHub ingress to primary workflow (default false to avoid duplicate webhooks).
   # enable_github_webhook = true
@@ -105,22 +106,19 @@ Primary workflow **required input**: `monolith_state_uri` (cron/webhook alias: `
 **Optional:** `iac_repository_url` (alias `iac_repo_url`) — omit for state-only analysis; per-group TF scaffolds land under `$HOME/.<workflow_run_id>`.  
 Notable **optional inputs**: `grouping_policy_json`, `grouping_strategy` (`policy_first` \| `connectivity` \| `connectivity_capped`), `max_resources_per_appstack` (e.g. `80`), `stackgen_project_name` (human-readable StackGen project name for MCP — e.g. `guild-demo`), `cloud_discovery_id` (opaque correlation id for operators — **not** wired to MCP discovery import on the default user MCP).
 
-### Workflow shape (3-way parallel after registry-and-import-codegen)
+### Workflow shape (lean v2 — 7 stages, script-heavy)
 
 ```
-ingest-monolith
- → discover-db-anchors
-   → allocate-related-resources
-     → count-reconcile-loop
-       → registry-and-import-codegen          (fast: registry + scaffold + import {} blocks)
-         ├→ hcl-hydrate-per-group             (slow: tofu plan -generate-config-out loop; per-group parallel children)
-         ├→ materialize-stackgen-appstacks    (StackGen MCP: create_appstack + bulk_add + membership gate + bulk_connect; per-group parallel batch children)
-         └→ orphans-secondary-pipeline        (kick off orphan-iac-module-authoring)
-                                              └→ multi-shard-plan-convergence    (3-way fan-in)
-                                                  → final-gate-and-memory
+ingest-and-split
+ → ingest-blocked-gate                    (conditional_skip — no GO_BACK loop gates)
+ → registry-and-import-codegen            (script: scaffold + prepare-parallel-artifacts + IaC PR via cp sync)
+   ├→ shell-converge-matrix               (script: hydrate-and-plan-matrix over sample groups)
+   ├→ materialize-appstacks-coordinator   (4× appstack-materialize-runner-batch-<NN> in one parallel fan-out)
+   └→ orphans-secondary-pipeline          (optional orphan workflow kickoff)
+                                          → final-gate-and-memory
 ```
 
-HCL hydration (`tofu plan -generate-config-out`) and StackGen MCP materialization have **no real data dependency** on each other — MCP `bulk_add_resources_to_appstack` only needs `identifier` + `resource_type` from the registry mapping, not the hydrated `generated.tf` bodies. Splitting `reverse-engineer-and-registry-map` into a fast `registry-and-import-codegen` + a slow `hcl-hydrate-per-group` (which then runs alongside MCP materialization and the orphan handoff) collapses the dominant serial dependency for large states. Per-group `tofu init` + `tofu plan -generate-config-out` is fully independent across groups, so the hydration stage uses **per-group parallel subagent fan-out** (`hcl-hydrate-runner-batch-<NN>`). Per-group AppStack MCP (create → add → membership gate → connect) is equally independent, so **`materialize-stackgen-appstacks`** uses the same pattern (`appstack-materialize-runner-batch-<NN>` with `flow_type:"parallel"`).
+Registry stage writes **`batch_payloads.json`** and **`sample_group_ids.json`** so parallel coordinators never spawn payload-extraction probe agents. HCL hydration and plan zero-diff run deterministically in **`shell-converge-matrix`** (not per-group LLM children). See [`docs/execution-post-mortem-7b78ad9d.md`](docs/execution-post-mortem-7b78ad9d.md) for the production trace that motivated this refactor.
 
 ## AppStack membership integrity
 
@@ -144,14 +142,14 @@ Guild traces on long runs showed **skill-search noise**, **`/workspace` read-onl
 | `multi-shard-plan-convergence` + `final-gate-and-memory` emitting "all SKIPPED" markdown reports on cold-start | **No-vacuous-gate** hard rule: empty notes + empty disk-mirror + missing `$HOME/.<workflow_run_id>/` → single `notify({error:'cold_start_no_upstream'})` + return; final-gate has an explicit **evidence gate** requiring `submit_evidence` for every required item. |
 | Architect ran shell tools directly (7× `execute_command`, 2× `load_skill`, premature `submit_evidence`) instead of one `ingest-monolith-runner` | **Script pack** (`stage-runner.sh`) + **coordinator-only architect** — Ubuntu work only inside runner subagents via one embedded `execute_series`; `submit_evidence` only at `final-gate-and-memory`. |
 | Thrash subagent `discover-db-anchors-script-prep` | **Forbidden names** list in discover stage + orchestration SOP; only `discover-db-anchors-runner` or re-plan `…-build-seeds` / `…-build-inventory`. |
-| Cron payload uses `tfstate_file` not `monolith_state_uri` | **`tfstate_file` input alias** + ingest **Step 0 normalization** parses nested JSON / prose URLs; `split-input-gate` skips downstream when URI still missing |
+| Cron payload uses `tfstate_file` not `monolith_state_uri` | **`tfstate_file` input alias** + ingest **Step 0 normalization**; `ingest-blocked-gate` skips downstream when URI still missing |
 | Sub-agent used `/bin/sh` and failed on `set -o pipefail` | Script pack mandates **`bash -s` heredoc** with `_embed_dbsplit_run` (never `/bin/sh`) |
 | `$WORK_ROOT` not expanded in `execute_series` (trace `09ff14b8ad27`) | Spawn contract passes literal **`{{work_root}}`** — never `$WORK_ROOT` in tool JSON |
-| Ingest failed 3× but registry still ran (~10 min) | **`split-input-gate`** (early blockers) + **`split-ingest-blocked-gate`** fan-in **`ingest-and-split` + `split-loop-gate`** outputs — skips on script-pack failure, `count_reconciliation_ok: "false"`, or `"action":"GO_BACK"` (DAG mode does not honor GO_BACK re-runs) |
-| `split-ingest-blocked-gate` never matched (loop output is JSON only) | Gate **`stage_depends_on`** includes **`ingest-and-split`** so `conditional_skip` regex sees script_pack / reconcile sentinels in merged predecessor text |
-| Loop FINISH after max iterations with bad reconcile | **`split-ingest-blocked-gate`** matches `count_reconciliation_ok: "false"` in fan-in ingest output even when loop_stage emitted FINISH |
-| `tofu` missing → GO_BACK loop forever | **`blocked:ubuntu_infra_tofu_missing`** + **`multi-shard-plan-infra-gate`** skip to final-gate (no orphan dump) |
-| Missing URI burned downstream GO_BACK stages | **`split-input-gate` conditional_skip** to `final-gate-and-memory` + upstream blocked guards on parallel stages |
+| Ingest failed but registry still ran | **`ingest-blocked-gate`** matches blocked/reconcile/script_pack sentinels — skips registry + parallel layer |
+| False GO_BACK from loop gates poisoned fan-in (trace `7b78ad9d`) | **Removed** `split-loop-gate` / `split-ingest-blocked-gate` — single `ingest-blocked-gate` without `"action":"GO_BACK"` match |
+| `rsync` missing in Ubuntu sidecar blocked IaC PR | Script pack uses **`cp -a` only** (`sync-groups-to-repo`); Ubuntu image also ships `rsync` as belt-and-suspenders |
+| Architect probe thrash (51 subagents, max-iter failures) | Coordinator **hard caps** (max 1–2 `create_agent` per stage); script-driven `hydrate-and-plan-matrix` + pre-built `batch_payloads.json` |
+| `tofu` missing → plan loop forever | **`blocked:ubuntu_infra_tofu_missing`** in script output — final-gate reads notes (no plan loop gates) |
 
 The persona and runbooks continue to steer the agent toward: **`/tmp` preflight**, **trusting prepended `[Runbook Context]` / `### Runbook:` text** (Guild injects runbook summaries per stage — avoid redundant **`search_skill`**), **`[Skills]` vs `load_skill`** (skip redundant loads when the runbook block already inlined the same name), **per-subgoal subagent delegation** (one stable `<stage_id>-runner` per stage, parallel children for fan-out, no retry-thrash), **`stackgen_appstack_list_cache`**, **one shard per plan step** (or remote-runner fan-out), **MCP list caching** during AppStack materialization, and **redacted `note` discipline** for state secrets.
 

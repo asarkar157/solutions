@@ -4,23 +4,42 @@ export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export GIT_TERMINAL_PROMPT=0
 export TFBOT_EMBEDDED=1
-WORK_ROOT="{{work_root}}"
-MODULE_PATH="$${MODULE_PATH:-}"
-REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
-ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
-BASE_BRANCH="$${BASE_BRANCH:-main}"
+export TFBOT_ALLOW_DIRECT=1
+: "$${WORK_ROOT:?export WORK_ROOT before validate one-liner}"
+export DEFER_PR_UNTIL_PASS="${defer_pr_until_quality_pass}"
+export MODULE_PATH="$${MODULE_PATH:-}"
+export REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
+export ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
+export BASE_BRANCH="$${BASE_BRANCH:-main}"
+STAGE_RUNNER="$WORK_ROOT/.pack/stage-runner.sh"
+
+materialize_stage_runner() {
+  mkdir -p "$WORK_ROOT/.pack"
+  printf '%s' "${script_pack_runner_b64}" | base64 -d > "$STAGE_RUNNER"
+  chmod +x "$STAGE_RUNNER"
+  local runner_actual
+  runner_actual="$(sha256sum "$STAGE_RUNNER" | awk '{print $1}')"
+  if [ "$runner_actual" != "${script_pack_runner_sha256}" ]; then
+    echo "script_pack_error=runner_sha256_mismatch expected=${script_pack_runner_sha256} actual=$runner_actual"
+    exit 1
+  fi
+  echo "stage_runner_sha256=$runner_actual"
+}
 
 parse_trigger_json() {
   local raw="$${TRIGGER_JSON:-}"
   [ -n "$raw" ] || return 1
   if [ -z "$REPO_FULL_NAME" ]; then
     REPO_FULL_NAME="$(printf '%s' "$raw" | jq -r '.repository.full_name // empty')"
+    export REPO_FULL_NAME
   fi
   if [ -z "$ISSUE_OR_PR" ]; then
     ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+    export ISSUE_OR_PR
   fi
   if [ "$BASE_BRANCH" = "main" ]; then
     BASE_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
+    export BASE_BRANCH
   fi
 }
 
@@ -32,38 +51,20 @@ if [ ! -d "$MODULE_PATH" ]; then
   echo "validation_error=module_path_missing path=$MODULE_PATH"
   exit 1
 fi
+
+materialize_stage_runner
 parse_trigger_json || true
 
-validate_out="$WORK_ROOT/.work/validate.out"
-mkdir -p "$WORK_ROOT/.work"
-/bin/bash -s validate "$WORK_ROOT" "$MODULE_PATH" <<'TFBOT_STAGE_RUNNER' | tee "$validate_out"
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-TFBOT_STAGE_RUNNER
-
-if ! grep -qE '^fmt_exit=' "$validate_out"; then
-  echo "validation_error=missing_fmt_exit_marker"
+if ! command -v tofu >/dev/null 2>&1 && ! command -v terraform >/dev/null 2>&1; then
+  echo "validation_error=no_iac_binary"
+  echo "fmt_exit=1"
   echo "module_quality_summary=BLOCKED"
   exit 1
 fi
 
-if ! grep -qE '^module_quality_summary=PASS' "$validate_out"; then
-  echo "module_quality_rework=true"
-  exit 0
-fi
-
-if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
-  echo "push_skipped=missing_repo_or_issue"
-  echo "script_pack_version=${script_pack_version}"
-  exit 0
-fi
-
-commit_out="$WORK_ROOT/.work/commit-pr.out"
-/bin/bash -s commit-pr "$WORK_ROOT" "$REPO_FULL_NAME" "$ISSUE_OR_PR" "" "$BASE_BRANCH" <<'TFBOT_STAGE_RUNNER' | tee "$commit_out" || true
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-TFBOT_STAGE_RUNNER
-
-grep -E '^(pr_url|working_branch|pr_title|pr_blocker|pr_error|pr_prepushed)=' "$commit_out" || true
-echo "script_pack_version=${script_pack_version}"
+set +e
+/bin/bash -s validate-and-pr "$WORK_ROOT" "$MODULE_PATH" < "$STAGE_RUNNER"
+validate_rc=$?
+set -e
+exit "$validate_rc"
 TFBOT_VALIDATE_EXECUTE

@@ -28,6 +28,7 @@ This site is reorganized around **three jobs solutions engineers actually have**
 |----------|-------------|
 | [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) | Prospect-question → scenario map, demo runbook, office hours. **Start here if you are a solutions engineer.** |
 | [Module Catalog]({% include doc_url.html path="module-catalog.md" %}) | Interactive module discovery with tag filtering and copy-paste snippets. |
+| [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}) | Customer situation → agent + integration modules (SaaS, PrivateSaaS, multi-tenant, self-hosted). |
 | [Onboarding]({% include doc_url.html path="onboarding/index.md" %}) | Guided steps (start here if you are composing your own root). |
 | [Architecture]({% include doc_url.html path="architecture.md" %}) | Layer diagram and how modules relate. |
 | [Repository README]({{ site.github.repository_url }}/blob/main/README.md) | Full reference: modules table, CI, `Makefile`, prerequisites. |

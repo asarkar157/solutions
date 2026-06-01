@@ -1,137 +1,48 @@
-Skill: Canonical workflow shell scripts for terraform-module-update. **Single-command protocol** — embed scripts in ONE `${ubuntu_tool_prefix}_execute_series` via `/bin/bash -s` heredoc. Pair with orchestration-sop §3d/§3h.
+Skill: Canonical workflow shell protocol for terraform-module-update. **Single-command protocol** — paste spawn-contract script blocks into ONE `${ubuntu_tool_prefix}_execute_series`. Pair with orchestration-sop §3d/§3h.
 
-Keywords: workflow scripts, execute_series, heredoc, stage-runner, bootstrap, clone, validate, commit, pr, discovery.
+Keywords: workflow scripts, execute_series, heredoc, stage-runner, clone, validate, commit, pr, discovery.
 
 ========================================================================
 0) Single-command protocol (mandatory)
 ========================================================================
 
-**Problem:** Guild `${ubuntu_tool_prefix}_execute_series` runs **each** command via `sh -c` (see stackgen-guild `pkg/shellutils/exec.go`). `/bin/sh` does **not** support bash function syntax — `_embed_tfbot_run(){` causes `Syntax error: "(" unexpected`. Separate commands in the array also do **not** share shell state.
+**Problem:** Guild `${ubuntu_tool_prefix}_execute_series` runs **each** command via `sh -c`. `/bin/sh` does **not** support bash function syntax. Separate commands do **not** share shell state.
 
 **Hard rules:**
-1. **`WORK_ROOT={{work_root}}`** — use the absolute path from spawn contract context / `[Workflow execution]` (Ubuntu home is often `/home/integration`, not `/root`).
-2. **Exactly ONE** element in `execute_series.commands[]`. That sole command MUST start with **`/bin/bash -s`** (or `/bin/bash -s clone … <<'HEREDOC'`).
-3. **Never** `_embed_tfbot_run(){ … }` wrappers, `bash -lc`, multiple commands in the array, or bare function calls.
-4. **Never** `${ubuntu_tool_prefix}_create_files` then a second tool call for the same stage — MCP container may reset between tool calls.
-5. After stdout `key=value` lines, mirror keys in-shell to `$WORK_ROOT/notes.json` (orchestration §3b).
+1. **`WORK_ROOT={{work_root}}`** — export in the command string; the one-liner creates the directory. Do **not** set `working_dir` to WORK_ROOT.
+2. **`working_dir`** — set to `${ubuntu_integration_home}` (spawn context `execute_series_working_dir`) or **omit**. NEVER `$HOME/.wf-*` or `{{work_root}}` — MCP chdirs before the command runs.
+3. **Exactly ONE** element in `execute_series.commands[]`. **Clone:** spawn-context line with inline pack ensure (TFBOT_* integration env) + `${tfbot_pack_dir}/clone-pack.sh`. **Discovery:** `${tfbot_pack_dir}/stage-runner.sh discovery-scaffold '{{work_root}}'` (never `"$WORK_ROOT/.pack/stage-runner.sh"`). **Validate:** `${tfbot_pack_dir}/stage-runner.sh validate-and-pr` with MODULE_PATH/REPO_FULL_NAME/ISSUE_OR_PR exports (never `VALIDATE_ONE_LINER` or inline `TRIGGER_JSON`).
+4. **Never** `_embed_tfbot_run(){ … }`, `bash -lc`, multiple commands, or `${ubuntu_tool_prefix}_create_files` for the same stage.
+5. **Never** reconstruct scripts from this skill — use spawn-context one-liners / `---BEGIN …---` blocks only.
+6. **tftpl / goal safety:** in `.tftpl` embed scripts, double shell `$` signs (`$$` in tftpl → `$` in rendered bash). Never paste sed auth URLs into goals. **Clone:** never paste base64 one-liners.
+7. After stdout `key=value` lines, mirror keys to `$WORK_ROOT/notes.json` (orchestration §3b).
 
-**MCP invoke shape (clone example):**
-```json
-{
-  "commands": [
-    {
-      "command": "/bin/bash -s clone \"/home/integration/.wf-…\" \"https://github.com/org/repo.git\" \"main\" \"9\" \"\" \"\" <<'TFBOT_CLONE_PACK'\n…clone-pack body…\nTFBOT_CLONE_PACK",
-      "timeout_seconds": 300
-    }
-  ],
-  "stop_on_error": true
-}
-```
+**Stage-runner on disk:** `check-info-and-clone-clone` writes `$WORK_ROOT/.pack/stage-runner.sh`. Later stages call that file — do **not** re-embed the 24KB script in validate/discovery commands.
 
 ========================================================================
-1) Script bodies (embedded in heredocs)
+1) Spawn-contract blocks (authoritative — not this skill)
 ========================================================================
 
-### §1a clone-pack (intake — smaller than full stage-runner)
+| Stage subagent | Spawn context block | Stdout sentinels |
+|----------------|---------------------|------------------|
+| `check-info-and-clone-clone` | `${tfbot_pack_dir}/clone-pack.sh clone …` | `repo_clone_path=`, `stage_runner_path=`, `repo_head_sha=` (40 chars), `script_pack_version=${script_pack_version}` |
+| `implement-module-discovery-scaffold` | `${tfbot_pack_dir}/stage-runner.sh discovery-scaffold` + `TRIGGER_JSON_B64` | `module_paths=`, `fmt_exit=`, `discovery_greenfield_validated=true` |
+| `validate-and-test-runner` | `---BEGIN VALIDATE_EXECUTE_SERIES---` | `fmt_exit=`, `module_quality_summary=`, `validate_markers_file=`, `test_summary_file=`, `test_summary_tail=` (when `test_exit=1`), `pr_url=`, `pr_draft=true` when tests fail |
+| `implement-module-discovery-scaffold` | `${tfbot_pack_dir}/stage-runner.sh discovery-scaffold` | same validate markers + `test_summary_*` on inline validate failure |
+| `create-pr-runner` | `---BEGIN COMMIT_PR_EXECUTE_SERIES---` | `pr_url=`, `working_branch=` |
 
-```bash
-${clone_pack_script}
-```
-
-### §1b stage-runner.sh (validate, commit-pr, resolve-paths, discovery-check)
-
-```bash
-${stage_runner_script}
-```
+**FORBIDDEN:** `printf` fake PASS, `load_skill` on clone/validate/create-pr runners, skill §1 script bodies (removed — too large for auto-summarization).
 
 ========================================================================
-2) Stage single-command blocks (ONE execute_series each)
+2) Stage → block mapping (planner)
 ========================================================================
 
-Substitute literal absolute `WORK_ROOT`, `<repository_clone_url>`, etc. Paste each block as the **only** `commands[0].command` string.
+| Stage | Subagent | Action |
+|-------|----------|--------|
+| `check-info-and-clone` | `check-info-and-clone-clone` | Architect notes webhook keys **first**; spawn with spawn_contract goal; runner exports `REPO_CLONE_URL` / `DEFAULT_BRANCH` / `ISSUE_OR_PR` from read_notes (never inline `TRIGGER_JSON='{…}'`) |
+| `implement-module` (greenfield) | `implement-module-discovery-scaffold` | Paste spawn-context Discovery command (pack `stage-runner.sh`, real `TRIGGER_JSON_B64`) |
+| `implement-module` (quality rework) | Template J — same subagent on discovery | Gap fixes in shell inside ONE series, then spawn-context Validate — planner goal ≤800 chars |
+| `validate-and-test` | `validate-and-test-runner` | Paste VALIDATE block + `MODULE_PATH` export |
+| `create-pr` | `create-pr-runner` | Paste COMMIT_PR block if `pr_url` missing |
 
-### §2.1 clone (Template A — check-info-and-clone-clone)
-
-Stage-runner sets `clone_auth_mode=token|anonymous` and `push_requires_token=true|false`. Public repos may clone without PAT. **Canonical clone directory:** `$WORK_ROOT/repo`.
-
-```bash
-/bin/bash -s clone "<WORK_ROOT>" "<repository_clone_url>" "<repository_default_branch>" "<issue_or_pr_number>" "<pr_head_ref>" "<pr_head_clone_url>" <<'TFBOT_CLONE_PACK'
-${clone_pack_script}
-TFBOT_CLONE_PACK
-```
-
-Stdout MUST include `repo_clone_path=`, `repo_head_sha=`, `script_pack_version=${script_pack_version}`.
-
-### §2.2 validate (Template C — one module path per invocation; loop inside ONE bash -s when multiple paths)
-
-Real validation MUST invoke stage-runner `validate` — never `printf` PASS sentinels. Stdout MUST include `fmt_exit=`, `init_exit=`, `validate_exit=`, `test_exit=`, and `binary=`.
-
-**Single path:**
-```bash
-/bin/bash -s validate "<WORK_ROOT>" "<module_path>" <<'TFBOT_STAGE_RUNNER'
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-TFBOT_STAGE_RUNNER
-```
-
-**Multiple paths (still ONE commands[] entry):**
-```bash
-/bin/bash -s <<'TFBOT_VALIDATE_SERIES'
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-WORK_ROOT="<WORK_ROOT>"
-for _p in "<path1>" "<path2>"; do
-  cmd_validate "$WORK_ROOT" "$_p"
-done
-TFBOT_VALIDATE_SERIES
-```
-
-**FORBIDDEN:** `quality_check_terraform`, `quality_check_module_layout`, echo-only PASS without tofu/terraform output.
-
-### §2.3 commit-pr (Template D — create-pr-open)
-
-```bash
-/bin/bash -s commit-pr "<WORK_ROOT>" "<repository_full_name>" "<issue_or_pr_number>" "" "<repository_default_branch>" <<'TFBOT_STAGE_RUNNER'
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-TFBOT_STAGE_RUNNER
-```
-
-### §2.4 resolve-paths (implement-module)
-
-```bash
-/bin/bash -s resolve-paths "<WORK_ROOT>" "<repo_clone_path>" "<repository_default_branch>" "<hint1,hint2>" <<'TFBOT_STAGE_RUNNER'
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-TFBOT_STAGE_RUNNER
-```
-
-### §2.5 discovery-check + scaffold (Template I — implement-module-discovery-scaffold)
-
-ONE `/bin/bash -s <<'TFBOT_SCAFFOLD_SERIES'` block: run discovery-check, then write all layout files under `$REPO/<provider>/<module_dir>/` in the **same** heredoc script.
-
-```bash
-/bin/bash -s <<'TFBOT_SCAFFOLD_SERIES'
-export TFBOT_EMBEDDED=1
-${stage_runner_script}
-WORK_ROOT="<WORK_ROOT>"
-REPO="$WORK_ROOT/repo"
-cmd_discovery_check "$WORK_ROOT" "$REPO" "<provider>" "<module_dir>"
-# printf/heredoc discovery layout files under $REPO/<provider>/<module_dir>/
-# mock_provider "aws" {} in basic.tftest.hcl at module root
-TFBOT_SCAFFOLD_SERIES
-```
-
-========================================================================
-3) Stage → block mapping (planner)
-========================================================================
-
-| Stage | Subagent | Script-pack block |
-|-------|----------|-------------------|
-| `check-info-and-clone` | `check-info-and-clone-clone` | §2.1 clone (`/bin/bash -s clone … <<'TFBOT_CLONE_PACK'`) |
-| `implement-module` | `implement-module-discovery-scaffold` | §2.5 discovery-check + writes in one bash -s |
-| `implement-module` | other | §2.4 resolve-paths → edit files in `$WORK_ROOT/repo` |
-| `validate-and-test` | `validate-and-test-runner` | §2.2 validate |
-| `create-pr` | `create-pr-open` | §2.3 commit-pr |
-
-Subagent goals: copy the §2 block verbatim into ONE `execute_series` — **never** `$WORK_ROOT/scripts/*.sh` paths or `_embed_tfbot_run(){` wrappers.
+Subagent goals: ONE `execute_series` — **never** `$WORK_ROOT/scripts/*.sh` paths or reconstructed heredocs from memory. Planner spawn goal ≤ ~800 chars — host replaces with spawn contract; never paste fix scripts into the goal (orchestration §5d/§5i).

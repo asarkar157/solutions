@@ -1,0 +1,1 @@
+Start a named Azure Automation runbook in the configured account to remediate a single-tenant SaaS incident. Requires Confluence runbook match output and passing remediation-safety-gate (non-P1). Scoped to one subscription/resource group; HITL approval required for destructive actions.

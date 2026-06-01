@@ -1,0 +1,49 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  prefix_ok
+  environment_ok
+  not is_blocked_stack
+}
+
+# --- Stack name prefix allowlist (skipped when empty) ---
+prefix_ok if { not ${prefixes_gate_enabled} }
+prefix_ok if {
+  some p in [${prefixes_rego_literals}]
+  contains(_text, p)
+}
+
+# --- Environment tag allowlist (skipped when empty) ---
+environment_ok if { not ${environments_gate_enabled} }
+environment_ok if {
+  some e in [${environments_rego_literals}]
+  contains(_text, e)
+}
+
+# --- Blocked stack names (skipped when list empty) ---
+is_blocked_stack if {
+  ${blocked_gate_enabled}
+  some b in [${blocked_stack_names_rego_literals}]
+  contains(_text, b)
+}
+
+deny contains msg if {
+  not prefix_ok
+  msg := "CloudFormation stack name prefix not in allowed ingest list"
+}
+
+deny contains msg if {
+  not environment_ok
+  msg := "CloudFormation stack environment tag not in allowed ingest list"
+}
+
+deny contains msg if {
+  is_blocked_stack
+  msg := "CloudFormation stack name matches blocked ingest rule"
+}

@@ -3,11 +3,13 @@ set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export PATH="${ubuntu_integration_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export GIT_TERMINAL_PROMPT=0
-WORK_ROOT="{{work_root}}"
+export TFBOT_EMBEDDED=1
+: "$${WORK_ROOT:?export WORK_ROOT before commit-pr one-liner}"
 REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
 ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
 BASE_BRANCH="$${BASE_BRANCH:-main}"
 WORKING_BRANCH="$${WORKING_BRANCH:-}"
+STAGE_RUNNER="$WORK_ROOT/.pack/stage-runner.sh"
 
 parse_trigger_json() {
   local raw="$${TRIGGER_JSON:-}"
@@ -31,86 +33,14 @@ if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
   exit 1
 fi
 
-git_token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
-if [ -z "$git_token" ]; then
-  echo "pr_blocker=auth"
-  echo "gh_env_present=false"
-  exit 1
-fi
-export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
-gh auth setup-git 2>/dev/null || true
-
-pr_title="$${PR_TITLE:-feat: discovery module for issue $ISSUE_OR_PR}"
-
-if [ -z "$WORKING_BRANCH" ]; then
-  WORKING_BRANCH="$(gh api "repos/$REPO_FULL_NAME/branches" --paginate -q '.[].name' 2>/dev/null \
-    | grep '^terraform-bot/' | sort -r | head -1 || true)"
-  if [ -n "$WORKING_BRANCH" ]; then
-    echo "working_branch_recovered=$WORKING_BRANCH"
-  fi
-fi
-
-if [ -n "$WORKING_BRANCH" ]; then
-  pr_url="$(gh pr list --repo "$REPO_FULL_NAME" --head "$WORKING_BRANCH" --json url -q '.[0].url' 2>/dev/null || true)"
-  if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
-    echo "working_branch=$WORKING_BRANCH"
-    echo "pr_url=$pr_url"
-    echo "pr_title=$pr_title"
-    exit 0
-  fi
-  mkdir -p "$WORK_ROOT/.work"
-  pr_body_file="$WORK_ROOT/.work/pr-body.md"
-  {
-    printf '%s\n' "## Summary" "" "Discovery module scaffold (pushed from validate stage)." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
-  } >"$pr_body_file"
-  pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$WORKING_BRANCH" \
-    --title "$pr_title" --body-file "$pr_body_file")"
-  echo "working_branch=$WORKING_BRANCH"
-  echo "pr_url=$pr_url"
-  echo "pr_title=$pr_title"
+if [ -x "$STAGE_RUNNER" ]; then
+  export WORKING_BRANCH
+  /bin/bash "$STAGE_RUNNER" commit-pr "$WORK_ROOT" "$REPO_FULL_NAME" "$ISSUE_OR_PR" "" "$BASE_BRANCH"
   echo "script_pack_version=${script_pack_version}"
   exit 0
 fi
 
-repo_dir="$WORK_ROOT/repo"
-if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
-  echo "pr_error=no_clone"
-  echo "hint=validate stage should push branch (pr_prepushed=true) before create-pr; pass WORKING_BRANCH from notes"
-  exit 1
-fi
-
-cd "$repo_dir"
-git add -A
-if git diff --cached --quiet; then
-  echo "pr_error=nothing_to_commit"
-  exit 1
-fi
-
-first_file="$(git diff --cached --name-only | head -1)"
-module_relpath="$(dirname "$first_file")"
-module_relpath="$${module_relpath#./}"
-provider="$${module_relpath%%/*}"
-module_name="$(basename "$module_relpath")"
-module_slug="$${module_name//_/-}"
-branch="terraform-bot/$${provider}-$${module_slug}-$$(date +%Y%m%d%H%M%S)"
-pr_title="feat($${provider}): add $${module_name} module"
-git switch -c "$branch" 2>/dev/null || git switch "$branch"
-git commit -m "$${pr_title}
-
-Closes $${REPO_FULL_NAME}#$${ISSUE_OR_PR}"
-mkdir -p "$WORK_ROOT/.work"
-git push -u origin HEAD 2>"$WORK_ROOT/.work/push.err" || {
-  echo "pr_blocker=push_failed"
-  exit 1
-}
-pr_body_file="$WORK_ROOT/.work/pr-body.md"
-{
-  printf '%s\n' "## Summary" "" "Automated discovery-module scaffold." "" "## Motivation" "" "Closes $REPO_FULL_NAME#$ISSUE_OR_PR"
-} >"$pr_body_file"
-pr_url="$(gh pr create --repo "$REPO_FULL_NAME" --base "$BASE_BRANCH" --head "$branch" \
-  --title "$pr_title" --body-file "$pr_body_file")"
-echo "working_branch=$branch"
-echo "pr_url=$pr_url"
-echo "pr_title=$pr_title"
-echo "script_pack_version=${script_pack_version}"
+echo "pr_error=missing_stage_runner"
+echo "hint=re-run check-info-and-clone to materialize .pack/stage-runner.sh"
+exit 1
 TFBOT_COMMIT_PR_EXECUTE

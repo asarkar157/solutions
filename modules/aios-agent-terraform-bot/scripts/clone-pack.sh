@@ -6,7 +6,18 @@
 # Guild execute_series runs each command via sh -c; the outer command MUST invoke /bin/bash -s (never bare sh function syntax).
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.12}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.36}"
+
+normalize_work_root() {
+  local wr="${1:?work_root}"
+  if [[ "$wr" == *'$HOME'* ]]; then
+    wr="${wr//\$HOME/${HOME}}"
+  fi
+  if [[ "$wr" == *'${HOME}'* ]]; then
+    wr="${wr//'${HOME}'/${HOME}}"
+  fi
+  printf '%s' "$wr"
+}
 
 mirror_note() {
   local work_root="${1:?WORK_ROOT}"
@@ -69,12 +80,23 @@ remove_stale_clone_dir() {
 }
 
 cmd_clone() {
-  local work_root="${1:?WORK_ROOT}"
+  local work_root
+  work_root="$(normalize_work_root "${1:?WORK_ROOT}")"
+  export WORK_ROOT="$work_root"
   local repo_clone_url="${2:?REPO_CLONE_URL}"
   local default_branch="${3:?DEFAULT_BRANCH}"
   local issue_or_pr="${4:?ISSUE_OR_PR_NUMBER}"
   local pr_head_ref="${5:-}"
   local pr_head_clone_url="${6:-$repo_clone_url}"
+
+  case "$repo_clone_url" in
+    *example.com/example*|*github.com/example/*|*github.com/example.git*)
+      mirror_note "$work_root" "clone_blocker" "placeholder_url"
+      echo "clone_blocker=placeholder_url"
+      echo "hint=never_use_example.com_copy_repository_clone_url_from_webhook"
+      exit 1
+      ;;
+  esac
 
   local gh_ok=false
   if bootstrap_gh; then
@@ -166,9 +188,15 @@ cmd_clone() {
   fi
   mirror_note "$work_root" "repo_clone_path" "$repo_dir"
   mirror_note "$work_root" "repo_head_sha" "$sha"
+  if [ -n "${TFBOT_PACK_DIR:-}" ] && [ -f "${TFBOT_PACK_DIR}/stage-runner.sh" ]; then
+    mkdir -p "$work_root/.pack"
+    cp "${TFBOT_PACK_DIR}/stage-runner.sh" "$work_root/.pack/stage-runner.sh"
+    chmod +x "$work_root/.pack/stage-runner.sh"
+    echo "stage_runner_path=$work_root/.pack/stage-runner.sh"
+  fi
   echo "repo_clone_path=$repo_dir"
   echo "repo_head_sha=$sha"
-  echo "script_pack_version=$SCRIPT_PACK_VERSION"
+  echo "script_pack_version=${SCRIPT_PACK_VERSION:-${TFBOT_SCRIPT_PACK_VERSION:-unknown}}"
 }
 
 cmd="${1:?command required}"

@@ -100,13 +100,13 @@ Subagent name: `implement-module-discovery-scaffold`
 
 When `module_resolution_confidence=not_found` AND greenfield intent AND `repository_full_name` is a discovery repo:
 
-  0. `WORK_ROOT=$HOME/.<workflow_run_id>` (from `[Workflow execution]` header). load_skill workflow-script-pack.
+  0. `WORK_ROOT` = spawn-context absolute path (from `[Workflow execution]` / clone stdout — not literal `$HOME/.wf-*`). Discovery: `${tfbot_pack_dir}/stage-runner.sh discovery-scaffold` + `TRIGGER_JSON_B64`.
   1. ONE execute_series: script-pack §2.5 `discovery-check`, then write **all** scaffold files under `<repo_clone_path>/<provider>/<module_dir>/` via `printf`/heredoc/python **in that same series** (container resets between separate tool calls — trace `157b399eacdc`).
-  2. If confidence is `exact`, note existing `module_paths` and STOP (edit-only path).
-  3. If `not_found`, mirror sibling `variables.tf.json` / `outputs.tf.json` / `.stackgen/stackgen.yaml` from nearest module under the same provider root.
+  2. If confidence is `exact`, run inline validate on existing `module_paths` (emit `scaffold_summary=existing_module_revalidated` and `module_quality_summary` — do not STOP without validate markers; rework loops depend on fresh `init_exit` / `fmt_exit`).
+  3. If `not_found`, mirror sibling `variables.tf.json` / `outputs.tf.json` / `.stackgen/stackgen.yaml` from the **best-matching** module under the same provider root (stage-runner `pick_discovery_sibling_dir` — token overlap with `MODULE_DIR`, then known heuristics e.g. `verifiedaccess` → `aws_ec2_client_vpn_endpoint`; **never** rely on lexicographic `find … -quit` alone — trace 573f84aa9000 copied `aws_iam_role` for `aws_verifiedaccess_trust_provider`).
   4. Write `basic.tftest.hcl` with `command = plan` and `mock_provider` for the cloud provider (required — see `aws/aws_s3_bucket/basic.tftest.hcl`) inside the same execute_series.
   5. Optional inline stackgen.yaml validation (§3) in the **same** execute_series — not a second tool call.
-  6. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `stackgen_yaml_summary`. Defer fmt/init/validate/test to validate-and-test §2.2.
+  6. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `stackgen_yaml_summary`, `discovery_greenfield_validated=true`, `quality_check_*`, `module_quality_summary` from inline validate in the same embed. `validate-greenfield-skip-gate` skips duplicate `validate-and-test`.
 
 DO NOT use Template H (Terraform Registry wrapper) on discovery repos — discovery modules are first-class resource templates, not registry wrappers.
 

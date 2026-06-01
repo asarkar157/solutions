@@ -57,6 +57,11 @@ variable "script_pack_version" {
   default = "20260530.2"
 }
 
+variable "script_pack_git_ref" {
+  type    = string
+  default = "main"
+}
+
 variable "script_pack_allocate_sha256" {
   type    = string
   default = "deadbeef"
@@ -67,14 +72,46 @@ variable "script_pack_runner_sha256" {
   default = "deadbeef"
 }
 
+variable "script_pack_allocate_b64" {
+  type    = string
+  default = "IyBjaS1zb2tlIGFsbG9jYXRlX3N0dWI="
+}
+
+variable "script_pack_runner_b64" {
+  type    = string
+  default = "IyBjaS1zb2tlIHJ1bm5lcl9zdHVi"
+}
+
+variable "ubuntu_integration_home" {
+  type    = string
+  default = "/home/ubuntu"
+}
+
 variable "stackgen_project_name_default" {
   type    = string
   default = "guild-demo"
 }
 
-# Server caps from integrations PR #349 (bulk_add_resources_to_appstack /
-# bulk_connect_resources_in_appstack). Chunk sizes stay at or below
-# max_resources_per_appstack so most groups fit in one bulk_add call.
+variable "default_grouping_strategy" {
+  type    = string
+  default = "tag_seeded_connectivity"
+}
+
+variable "default_max_resources_per_appstack" {
+  type    = number
+  default = 0
+}
+
+variable "default_iac_repository_url" {
+  type    = string
+  default = ""
+}
+
+variable "default_branch" {
+  type    = string
+  default = "main"
+}
+
 variable "bulk_add_resources_max_per_call" {
   type    = number
   default = 100
@@ -139,21 +176,30 @@ variable "subagent_budgets" {
 }
 
 locals {
+  # Mirror modules/aios-agent-db-state-splitter/main.tf locals.template_vars.
   template_vars = {
-    max_iterations                      = var.max_iterations
-    remote_runner_block                 = var.remote_runner_block
     module_prefix                       = var.module_prefix
     suffix                              = var.suffix
     ubuntu_tool_prefix                  = var.ubuntu_tool_prefix
     github_tool_prefix                  = var.github_tool_prefix
     aws_tool_prefix                     = var.aws_tool_prefix
     stackgen_mcp_tool_prefix            = var.stackgen_mcp_tool_prefix
+    max_iterations                      = var.max_iterations
+    remote_runner_block                 = var.remote_runner_block
     stage_runner_script                 = var.stage_runner_script
     allocate_manifest_script            = var.allocate_manifest_script
     script_pack_version                 = var.script_pack_version
+    script_pack_git_ref                 = var.script_pack_git_ref
     script_pack_allocate_sha256         = var.script_pack_allocate_sha256
     script_pack_runner_sha256           = var.script_pack_runner_sha256
+    script_pack_allocate_b64            = var.script_pack_allocate_b64
+    script_pack_runner_b64              = var.script_pack_runner_b64
+    ubuntu_integration_home             = var.ubuntu_integration_home
     stackgen_project_name_default       = var.stackgen_project_name_default
+    default_grouping_strategy           = var.default_grouping_strategy
+    default_max_resources_per_appstack  = var.default_max_resources_per_appstack
+    default_iac_repository_url          = var.default_iac_repository_url
+    default_branch                      = var.default_branch
     subagent_budgets                    = var.subagent_budgets
     bulk_add_resources_max_per_call     = var.bulk_add_resources_max_per_call
     bulk_connect_resources_max_per_call = var.bulk_connect_resources_max_per_call
@@ -170,11 +216,19 @@ locals {
     for filename in fileset("${path.module}/personas", "*.md.tftpl") :
     filename => trimspace(templatefile("${path.module}/personas/${filename}", local.template_vars))
   }
+
+  # Same templatefile() calls as the module (catches unescaped bash ${...} in embeds).
+  rendered_embeds = {
+    ingest   = templatefile("${path.module}/templates/ingest-execute-series-embedded.sh.tftpl", local.template_vars)
+    iac_pr   = templatefile("${path.module}/templates/iac-pr-execute-series-embedded.sh.tftpl", local.template_vars)
+    converge = templatefile("${path.module}/templates/converge-execute-series-embedded.sh.tftpl", local.template_vars)
+  }
 }
 
 output "rendered" {
   value = {
     templates = local.rendered_templates
     personas  = local.rendered_personas
+    embeds    = local.rendered_embeds
   }
 }

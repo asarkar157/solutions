@@ -37,9 +37,11 @@ help:
 
 fmt fix-fmt:
 	$(TF) fmt -recursive
+	@$(MAKE) validate-db-state-split-templates
 
 fmt-check:
 	$(TF) fmt -check -recursive
+	@$(MAKE) validate-db-state-split-templates
 
 opa-fmt:
 	@count=$$(find . -name '*.rego' -not -path './.git/*' 2>/dev/null | wc -l | tr -d ' '); \

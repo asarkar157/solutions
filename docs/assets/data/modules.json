@@ -246,6 +246,402 @@
       "usage": "module \"grafana_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-grafana?ref=main\"\n\n  grafana_server = \"https://grafana.example.com\"\n  grafana_token  = var.grafana_api_token\n}"
     },
     {
+      "id": "aios-integration-datadog",
+      "name": "Datadog Integration",
+      "desc": "Datadog observability integration using the official Datadog MCP server; API and app keys stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "datadog",
+        "observability",
+        "monitoring",
+        "integration",
+        "saas",
+        "multitenant",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🐕",
+      "vars": [
+        {
+          "n": "datadog_api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "datadog_app_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"datadog_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-datadog?ref=main\"\n\n  datadog_api_key = var.datadog_api_key\n  datadog_app_key = var.datadog_app_key\n}"
+    },
+    {
+      "id": "aios-integration-pagerduty",
+      "name": "PagerDuty Integration",
+      "desc": "PagerDuty incident-management integration with REST API token stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "pagerduty",
+        "incident",
+        "on-call",
+        "integration",
+        "saas",
+        "webhook",
+        "sre",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🚨",
+      "vars": [
+        {
+          "n": "api_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"pagerduty_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-pagerduty?ref=main\"\n\n  api_token = var.pagerduty_api_token\n}"
+    },
+    {
+      "id": "aios-integration-firehydrant",
+      "name": "FireHydrant Integration",
+      "desc": "FireHydrant incident management integration with API token and optional API base URL stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "firehydrant",
+        "incident",
+        "itsm",
+        "integration",
+        "privatesaas",
+        "webhook",
+        "sre",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🚒",
+      "vars": [
+        {
+          "n": "api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"firehydrant_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-firehydrant?ref=main\"\n\n  api_key = var.firehydrant_api_key\n}"
+    },
+    {
+      "id": "aios-integration-internal-tool",
+      "name": "Internal Tooling (REST API)",
+      "desc": "Generic internal REST API integration for PrivateSaaS operator consoles and service catalogs (Guild type restapi).",
+      "layer": 1,
+      "tags": [
+        "restapi",
+        "internal",
+        "privatesaas",
+        "integration",
+        "sre",
+        "runbooks",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🛠️",
+      "vars": [
+        {
+          "n": "base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"internal_tool\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-internal-tool?ref=main\"\n\n  base_url = \"https://console.internal.example.com/api/v1\"\n  api_key  = var.internal_console_token\n}"
+    },
+    {
+      "id": "aios-integration-servicenow",
+      "name": "ServiceNow Integration",
+      "desc": "ServiceNow ITSM integration with instance URL and basic-auth credentials stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "servicenow",
+        "itsm",
+        "tickets",
+        "integration",
+        "webhook",
+        "sre",
+        "remediation",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🎫",
+      "vars": [
+        {
+          "n": "instance_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "username",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "password",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"servicenow_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-servicenow?ref=main\"\n\n  instance_url = \"https://your-org.service-now.com\"\n  username     = var.servicenow_username\n  password     = var.servicenow_password\n}"
+    },
+    {
+      "id": "aios-integration-confluence",
+      "name": "Confluence Integration",
+      "desc": "Confluence knowledge-base integration for operational runbooks and postmortem templates.",
+      "layer": 1,
+      "tags": [
+        "confluence",
+        "runbooks",
+        "knowledge-base",
+        "integration",
+        "saas",
+        "sre",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "📘",
+      "vars": [
+        {
+          "n": "base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "email",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "api_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"confluence_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-confluence?ref=main\"\n\n  base_url  = \"https://yourorg.atlassian.net/wiki\"\n  email     = var.confluence_email\n  api_token = var.confluence_api_token\n}"
+    },
+    {
+      "id": "aios-integration-paloalto",
+      "name": "Palo Alto Integration",
+      "desc": "Palo Alto Networks PAN-OS firewall integration with management URL and XML API key stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "paloalto",
+        "pan-os",
+        "firewall",
+        "security",
+        "integration",
+        "privatesaas",
+        "sre",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔒",
+      "vars": [
+        {
+          "n": "management_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"paloalto_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-paloalto?ref=main\"\n\n  management_url = \"https://fw-mgmt.internal.example.com\"\n  api_key      = var.paloalto_api_key\n}"
+    },
+    {
+      "id": "aios-integration-gitlab",
+      "name": "GitLab Integration",
+      "desc": "GitLab SCM integration with instance URL and API token stored in Vault.",
+      "layer": 1,
+      "tags": [
+        "gitlab",
+        "scm",
+        "gitops",
+        "integration",
+        "privatesaas",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🦊",
+      "vars": [
+        {
+          "n": "base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "private_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"gitlab_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-gitlab?ref=main\"\n\n  base_url      = \"https://gitlab.example.com\"\n  private_token = var.gitlab_token\n}"
+    },
+    {
+      "id": "aios-integration-argocd",
+      "name": "Argo CD Integration",
+      "desc": "Argo CD GitOps integration for application health and sync inspection.",
+      "layer": 1,
+      "tags": [
+        "argocd",
+        "gitops",
+        "kubernetes",
+        "integration",
+        "privatesaas",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔄",
+      "vars": [
+        {
+          "n": "server_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "auth_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_type",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"argocd_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-argocd?ref=main\"\n\n  server_url = \"https://argocd.example.com\"\n  auth_token = var.argocd_token\n}"
+    },
+    {
+      "id": "aios-integration-sonarqube",
+      "name": "SonarQube Integration",
+      "desc": "SonarQube integration for quality gates and branch analysis.",
+      "layer": 1,
+      "tags": [
+        "sonarqube",
+        "quality",
+        "gitops",
+        "integration",
+        "privatesaas",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔬",
+      "vars": [
+        {
+          "n": "server_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
+      "usage": "module \"sonarqube_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-sonarqube?ref=main\"\n\n  server_url = \"https://sonar.example.com\"\n  token      = var.sonarqube_token\n}"
+    },
+    {
       "id": "aios-integration-langfuse",
       "name": "Langfuse Integration",
       "desc": "Langfuse LLM observability: traces, cost, and quality scoring. API keys in Vault; containerized Guild integration sidecar.",
@@ -590,6 +986,478 @@
         "workflow_names"
       ],
       "usage": "module \"azure_devops\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-azure-devops?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    azure = module.azure_integration.integration_name\n    slack = module.slack_integration.integration_name\n  }\n}"
+    },
+    {
+      "id": "aios-agent-azure-saas-sre",
+      "name": "Azure SaaS SRE",
+      "desc": "Single-tenant Azure SaaS SRE with PagerDuty webhook ingest, deterministic alert filtering, Datadog+Azure auto-investigation, Confluence runbook lookup, and Azure Automation remediation. 3 agents, 1 workflow, optional sg_webhook.",
+      "layer": 2,
+      "tags": [
+        "azure",
+        "sre",
+        "saas",
+        "pagerduty",
+        "datadog",
+        "confluence",
+        "remediation",
+        "webhook",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔷",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "confluence_space_key",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "alert_ingest_allowed_priorities",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "enable_pagerduty_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "webhook_id",
+        "webhook_token",
+        "webhook_ingress_payload_url"
+      ],
+      "usage": "module \"azure_saas_sre\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-azure-saas-sre?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n  }\n\n  confluence_space_key = \"SRE\"\n  datadog_api_key      = var.datadog_api_key\n  datadog_app_key      = var.datadog_app_key\n  pagerduty_api_token  = var.pagerduty_api_token\n  azure_secret_id      = module.azure_integration.secret_id\n}"
+    },
+    {
+      "id": "aios-agent-privatesaas-devops-sre",
+      "name": "PrivateSaaS DevOps/SRE",
+      "desc": "PrivateSaaS DevOps/SRE with Grafana webhook ingest, deterministic alert filtering, Grafana/AWS/PAN-OS investigation, bounded AWS remediation, and read-only connectivity audit. 3 agents, 2 workflows, optional sg_webhook.",
+      "layer": 2,
+      "tags": [
+        "privatesaas",
+        "sre",
+        "devops",
+        "grafana",
+        "aws",
+        "paloalto",
+        "firewall",
+        "remediation",
+        "webhook",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🏢",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "private_saas_environment_label",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "grafana_server",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "aws_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "paloalto_management_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_grafana_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "grafana_integration_name",
+        "aws_integration_name",
+        "paloalto_integration_name",
+        "webhook_id",
+        "webhook_token",
+        "webhook_ingress_payload_url"
+      ],
+      "usage": "module \"privatesaas_devops_sre\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-privatesaas-devops-sre?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n    prod_write_gate = module.policies.policy_ids.prod_write_gate\n  }\n\n  grafana_server = \"https://grafana.internal.example.com\"\n  grafana_token  = var.grafana_token\n  aws_secret_id  = module.aws_integration.secret_id\n  paloalto_management_url = \"https://fw-mgmt.internal.example.com\"\n  paloalto_api_key        = var.paloalto_api_key\n}"
+    },
+    {
+      "id": "aios-agent-privatesaas-sre",
+      "name": "PrivateSaaS SRE (Aiden for SRE)",
+      "desc": "PrivateSaaS SRE with FireHydrant + Grafana ingest, GCP and internal tooling investigation, multi-source runbook coordinator, RCA synthesis, and document-only prod recommendations. Bifrost LLM via foundation; optional Grafana/FireHydrant webhooks.",
+      "layer": 2,
+      "tags": [
+        "privatesaas",
+        "sre",
+        "firehydrant",
+        "grafana",
+        "gcp",
+        "runbooks",
+        "rca",
+        "bifrost",
+        "webhook",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🚨",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "bifrost_model_names",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "grafana_server",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "firehydrant_api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "internal_tool_base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "external_runbook_catalog",
+          "t": "map(object({url,description?}))",
+          "r": false
+        },
+        {
+          "n": "enable_grafana_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "runbook_names",
+        "grafana_integration_name",
+        "gcp_integration_name",
+        "firehydrant_integration_name",
+        "internal_tool_integration_name",
+        "grafana_webhook_ingress_payload_url",
+        "firehydrant_webhook_ingress_payload_url"
+      ],
+      "usage": "module \"privatesaas_sre\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-privatesaas-sre?ref=main\"\n\n  model_names = [module.foundation.model_names_by_provider.bifrost]\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n  }\n\n  grafana_server         = \"https://grafana.internal.example.com\"\n  grafana_token          = var.grafana_token\n  gcp_credentials_json   = var.gcp_credentials_json\n  gcp_project_id         = var.gcp_project_id\n  firehydrant_api_key    = var.firehydrant_api_key\n  internal_tool_base_url = \"https://console.internal.example.com/api/v1\"\n}"
+    },
+    {
+      "id": "aios-agent-privatesaas-gitops-sre",
+      "name": "PrivateSaaS GitOps SRE",
+      "desc": "Slack /aiden intake for npm/deploy/pipeline failures; GitLab, Argo CD, DynamoDB, SonarQube investigation; optional Ubuntu docker/npm and remote runner; bounded remediation and read-only quality audit.",
+      "layer": 2,
+      "tags": [
+        "privatesaas",
+        "gitops",
+        "sre",
+        "gitlab",
+        "argocd",
+        "sonarqube",
+        "slack",
+        "aws",
+        "dynamodb",
+        "webhook",
+        "remote-runner",
+        "remediation",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔁",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "aws_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "slack_bot_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_ubuntu_cli",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "create_remote_runner",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_slack_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "gitlab_integration_name",
+        "argocd_integration_name",
+        "sonarqube_integration_name",
+        "webhook_ingress_payload_url",
+        "remote_runner_cli_start_command"
+      ],
+      "usage": "module \"gitops_sre\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-privatesaas-gitops-sre?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n  }\n\n  gitlab_base_url = \"https://gitlab.internal.example.com\"\n  gitlab_private_token = var.gitlab_token\n  aws_secret_id = module.aws_integration.secret_id\n  slack_bot_token = var.slack_bot_token\n}"
+    },
+    {
+      "id": "aios-agent-selfhosted-infra",
+      "name": "Self-Hosted Infra",
+      "desc": "Aiden for Infra — CloudFormation stack failure ingest + filter, AWS/CFN read-only investigation, HITL-gated change-set recommendations, drift audit, and pre-deploy review for self-hosted private AWS. 3 agents, 3 workflows, optional sg_webhook, Ubuntu CLI, remote runner, and evidence checklist.",
+      "layer": 2,
+      "tags": [
+        "selfhosted",
+        "cloudformation",
+        "aws",
+        "infra",
+        "iac",
+        "devops",
+        "sre",
+        "webhook",
+        "remote-runner",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🏗️",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "aws_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_aws_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "self_hosted_environment_label",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "cloudformation_stack_prefix_allowlist",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "enable_ubuntu_cli",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "create_remote_runner",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_stack_failure_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "aws_integration_name",
+        "webhook_id",
+        "webhook_token",
+        "webhook_ingress_payload_url",
+        "remote_runner_cli_start_command",
+        "evidence_checklist_name"
+      ],
+      "usage": "module \"selfhosted_infra\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-selfhosted-infra?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n    prod_write_gate = module.policies.policy_ids.prod_write_gate\n  }\n\n  aws_secret_id = module.aws_integration.secret_id\n  self_hosted_environment_label = \"prod-us-east-1-vpc\"\n  cloudformation_stack_prefix_allowlist = [\"prod-\", \"staging-\"]\n}"
+    },
+    {
+      "id": "aios-agent-sre-ticket-resolution",
+      "name": "SRE Ticket Resolution",
+      "desc": "ServiceNow ticket resolution with webhook ingest, deterministic ticket filtering, Grafana/Prometheus + AWS investigation, bounded AWS remediation, and Slack notification. 3 agents, 1 workflow, optional sg_webhook.",
+      "layer": 2,
+      "tags": [
+        "servicenow",
+        "sre",
+        "aws",
+        "grafana",
+        "slack",
+        "remediation",
+        "tickets",
+        "webhook",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🎫",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,sre_remediation?,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "ticket_ingest_allowed_priorities",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "enable_servicenow_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "servicenow_integration_name",
+        "aws_integration_name",
+        "grafana_integration_name",
+        "slack_integration_name",
+        "webhook_id",
+        "webhook_token",
+        "webhook_ingress_payload_url"
+      ],
+      "usage": "module \"sre_ticket_resolution\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-sre-ticket-resolution?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n  }\n\n  servicenow_instance_url = var.servicenow_instance_url\n  servicenow_username     = var.servicenow_username\n  servicenow_password     = var.servicenow_password\n  grafana_server          = var.grafana_server\n  grafana_token           = var.grafana_token\n  aws_secret_id           = module.aws_integration.secret_id\n  slack_bot_token           = var.slack_bot_token\n}"
+    },
+    {
+      "id": "aios-agent-multitenant-sre-rca",
+      "name": "Multi-Tenant SRE RCA",
+      "desc": "Multi-tenant SaaS SRE RCA with Datadog webhook ingest, deterministic alert filtering (priority/tenant allowlist), cross-signal investigation (Datadog/GCP Cloud Logging/AWS ECS+CloudTrail/GitHub), Slack RCA publish, and Slack thread collaboration workflow. 4 agents, 2 workflows, optional sg_evidence_checklist and sg_webhooks.",
+      "layer": 2,
+      "tags": [
+        "datadog",
+        "sre",
+        "saas",
+        "multitenant",
+        "gcp",
+        "aws",
+        "github",
+        "slack",
+        "rca",
+        "webhook",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🔍",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,data_risk_pii?})",
+          "r": true
+        },
+        {
+          "n": "gcp_project_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "alert_ingest_allowed_tenant_ids",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "slack_rca_channel",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_datadog_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_slack_collaboration_webhook",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "datadog_integration_name",
+        "gcp_integration_name",
+        "aws_integration_name",
+        "github_integration_name",
+        "slack_integration_name",
+        "evidence_checklist_name",
+        "webhook_id",
+        "webhook_token",
+        "collaboration_webhook_id",
+        "collaboration_webhook_token",
+        "webhook_ingress_payload_url",
+        "collaboration_webhook_ingress_payload_url"
+      ],
+      "usage": "module \"multitenant_sre_rca\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-multitenant-sre-rca?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops = module.policies.policy_ids.dangerous_ops\n    data_risk_pii = module.policies.policy_ids.data_risk_pii\n  }\n\n  datadog_api_key = var.datadog_api_key\n  datadog_app_key = var.datadog_app_key\n  gcp_secret_id   = module.gcp_integration.secret_id\n  gcp_project_id  = var.gcp_project_id\n  aws_secret_id   = module.aws_integration.secret_id\n  github_token    = var.github_token\n  slack_bot_token = var.slack_bot_token\n  slack_rca_channel = \"#sre-rca\"\n}"
     },
     {
       "id": "aios-agent-grafana-sre",

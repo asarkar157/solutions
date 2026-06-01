@@ -1,41 +1,120 @@
 /bin/bash <<'DBSPLIT_INGEST_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
-WORK_ROOT="${ubuntu_integration_home}/.{{workflow_run_id}}"
-SCRIPT_REF="${script_pack_git_ref}"
-REPO="appcd-dev/solutions"
-SCRIPT_DIR="modules/aios-agent-db-state-splitter/scripts"
-if [ -z "$${MONOLITH_URI:-}" ]; then
+
+# Delivered via create_files (INGEST_EXECUTE_SERIES_B64) + decode command at apply time — workflow_run_id placeholders in embed are NOT substituted at runtime.
+# Resolve WORK_ROOT from the runner's spawn_monolith_uri pre-write (trace 10fc956f).
+dbsplit_resolve_work_root() {
+  local uri_file=""
+  uri_file="$(find /home/integration -maxdepth 4 -path '*/.work/spawn_monolith_uri' -print -quit 2>/dev/null || true)"
+  if [ -n "$uri_file" ] && [ -f "$uri_file" ]; then
+    ABS_WORK_ROOT="$(cd "$(dirname "$(dirname "$uri_file")")" && pwd)"
+    WORK_ROOT="$ABS_WORK_ROOT"
+    echo "WORK_ROOT_source=spawn_monolith_uri_file path=$WORK_ROOT"
+    return 0
+  fi
+  if [ -n "$${WORKFLOW_RUN_ID:-}" ]; then
+    ABS_WORK_ROOT="/home/integration/."$${WORKFLOW_RUN_ID}
+    WORK_ROOT="$ABS_WORK_ROOT"
+    echo "WORK_ROOT_source=WORKFLOW_RUN_ID"
+    return 0
+  fi
+  return 1
+}
+
+if ! dbsplit_resolve_work_root; then
+  echo "error=WORK_ROOT_unset"
+  exit 1
+fi
+
+# Resolve MONOLITH_URI without relying on the model to prepend export (trace 8c7ea4ad).
+dbsplit_resolve_monolith_uri() {
+  local work_root="$${1:?WORK_ROOT}"
+  if [ -n "$${MONOLITH_URI:-}" ]; then
+    return 0
+  fi
+  if [ -n "$${MONOLITH_STATE_URI:-}" ]; then
+    export MONOLITH_URI="$${MONOLITH_STATE_URI}"
+    echo "MONOLITH_URI_source=MONOLITH_STATE_URI"
+    return 0
+  fi
+  if [ -n "$${TFSTATE_FILE:-}" ]; then
+    export MONOLITH_URI="$${TFSTATE_FILE}"
+    echo "MONOLITH_URI_source=TFSTATE_FILE"
+    return 0
+  fi
+  mkdir -p "$work_root/.work"
+  if [ -f "$work_root/.work/spawn_monolith_uri" ]; then
+    export MONOLITH_URI="$(tr -d '\n\r' < "$work_root/.work/spawn_monolith_uri")"
+    echo "MONOLITH_URI_source=spawn_monolith_uri_file"
+    return 0
+  fi
+  if [ -f "$work_root/notes.json" ]; then
+    local raw
+    raw="$(jq -r '.monolith_state_uri // .tfstate_file // empty' "$work_root/notes.json" 2>/dev/null || true)"
+    raw="$${raw#monolith_state_uri=}"
+    if [ -n "$raw" ]; then
+      export MONOLITH_URI="$raw"
+      echo "MONOLITH_URI_source=notes_json_fallback"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+mkdir -p "$WORK_ROOT/scripts" "$WORK_ROOT/state" "$WORK_ROOT/.work"
+[ -f "$WORK_ROOT/notes.json" ] || echo '{}' >"$WORK_ROOT/notes.json"
+chmod 700 "$WORK_ROOT" 2>/dev/null || true
+
+if ! dbsplit_resolve_monolith_uri "$WORK_ROOT"; then
   echo "error=MONOLITH_URI_unset"
   exit 1
 fi
-mkdir -p "$WORK_ROOT/scripts"
-fetch_github_file() {
-  local relpath="$1"
-  local dest="$2"
-  if command -v gh >/dev/null 2>&1; then
-    gh api "repos/$${REPO}/contents/$${relpath}?ref=$${SCRIPT_REF}" --jq .content | tr -d '\n' | base64 -d > "$dest"
-    return 0
+echo "MONOLITH_URI_resolved=true"
+dbsplit_fetch_script_pack() {
+  local ref="${script_pack_git_ref}"
+  local dest="$WORK_ROOT/scripts"
+  local token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
+  local host="$${GIT_HOST:-github.com}"
+  if [ -z "$token" ]; then
+    echo "script_pack_error=missing_git_token" >&2
+    return 1
   fi
-  local token="$${GITHUB_TOKEN:-$${GH_TOKEN:-$${GIT_TOKEN:-}}}"
-  if [ -n "$token" ]; then
-    curl -fsSL \
-      -H "Authorization: Bearer $token" \
-      -H "Accept: application/vnd.github.raw" \
-      "https://api.github.com/repos/$${REPO}/contents/$${relpath}?ref=$${SCRIPT_REF}" \
-      -o "$dest"
-    return 0
+  local tmp clone_url
+  tmp="$(mktemp -d)"
+  clone_url="https://$${GIT_USERNAME:-x-access-token}:$${token}@$${host}/appcd-dev/aios-modules.git"
+  if ! git clone --depth 1 --branch "$${ref}" --filter=blob:none --sparse "$${clone_url}" "$${tmp}/repo" 2>"$WORK_ROOT/.work/git-clone.err"; then
+    if ! git clone --depth 1 --branch main --filter=blob:none --sparse "$${clone_url}" "$${tmp}/repo" 2>>"$WORK_ROOT/.work/git-clone.err"; then
+      echo "script_pack_error=git_clone_failed ref=$${ref}" >&2
+      cat "$WORK_ROOT/.work/git-clone.err" >&2 || true
+      rm -rf "$${tmp}"
+      return 1
+    fi
+    ref="main"
   fi
-  echo "script_pack_error=github_auth_missing_for_private_repo_fetch" >&2
-  exit 1
+  git -C "$${tmp}/repo" sparse-checkout set modules/aios-agent-db-state-splitter/scripts
+  cp "$${tmp}/repo/modules/aios-agent-db-state-splitter/scripts/stage-runner.sh" "$${dest}/"
+  cp "$${tmp}/repo/modules/aios-agent-db-state-splitter/scripts/allocate_manifest.py" "$${dest}/"
+  rm -rf "$${tmp}"
+  echo "script_pack_fetch=git_sparse ref=$${ref}"
+  return 0
 }
-fetch_github_file "$${SCRIPT_DIR}/allocate_manifest.py" "$WORK_ROOT/scripts/allocate_manifest.py"
-fetch_github_file "$${SCRIPT_DIR}/stage-runner.sh" "$WORK_ROOT/scripts/stage-runner.sh"
+if [ ! -f "$WORK_ROOT/scripts/stage-runner.sh" ] || [ ! -f "$WORK_ROOT/scripts/allocate_manifest.py" ]; then
+  if ! dbsplit_fetch_script_pack; then
+    exit 1
+  fi
+fi
 chmod +x "$WORK_ROOT/scripts/stage-runner.sh"
 expected="${script_pack_allocate_sha256}"
 actual="$(sha256sum "$WORK_ROOT/scripts/allocate_manifest.py" | awk '{print $1}')"
 if [ "$actual" != "$expected" ]; then
   echo "script_pack_error=allocate_sha256_mismatch expected=$expected actual=$actual" >&2
+  exit 1
+fi
+runner_actual="$(sha256sum "$WORK_ROOT/scripts/stage-runner.sh" | awk '{print $1}')"
+runner_expected="${script_pack_runner_sha256}"
+if [ "$runner_actual" != "$runner_expected" ]; then
+  echo "script_pack_error=runner_sha256_mismatch expected=$runner_expected actual=$runner_actual" >&2
   exit 1
 fi
 export DBSPLIT_EMBEDDED=1

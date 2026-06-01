@@ -95,6 +95,10 @@ echo '{}' >"$WORK4/notes.json"
 export TFBOT_ALLOW_DIRECT=1
 if command -v tofu >/dev/null 2>&1 || command -v terraform >/dev/null 2>&1; then
   OUT="$(bash "$RUNNER" validate "$WORK4" "$MOD" 2>/dev/null || true)"
+  if ! grep -q 'validate_started=true' <<<"$OUT"; then
+    echo "FAIL: validate should emit validate_started=true marker" >&2
+    exit 1
+  fi
   if ! grep -q 'fmt_exit=' <<<"$OUT"; then
     echo "FAIL: validate should emit fmt_exit= marker" >&2
     exit 1
@@ -192,7 +196,171 @@ if [ "$STICKY" != "PASS" ]; then
   exit 1
 fi
 
-unset TFBOT_ALLOW_DIRECT TFBOT_EMBEDDED
+# --- discovery-scaffold on exact match re-runs validate (no early exit) ---
+WORK6="${TMP}/work6"
+mkdir -p "$WORK6/repo/aws/existing_mod" "$WORK6/.work"
+mkdir -p "$WORK6/repo/.git"
+touch "$WORK6/repo/.git/HEAD"
+echo '{}' >"$WORK6/notes.json"
+cat >"$WORK6/repo/aws/existing_mod/versions.tf" <<'EOF'
+terraform {
+  required_version = ">= 1.5.0"
+}
+EOF
+cat >"$WORK6/repo/aws/existing_mod/main.tf" <<'EOF'
+resource "null_resource" "this" {}
+EOF
+export TFBOT_ALLOW_DIRECT=1
+export MODULE_DIR=existing_mod
+export PROVIDER_ROOT=aws
+export SIBLING_DIR=existing_mod
+OUT_EXACT="$(bash "$RUNNER" discovery-scaffold "$WORK6" 2>/dev/null || true)"
+if ! grep -q 'scaffold_summary=existing_module_revalidated' <<<"$OUT_EXACT"; then
+  echo "FAIL: exact discovery-scaffold should revalidate (got: $OUT_EXACT)" >&2
+  exit 1
+fi
+if ! grep -q 'module_resolution_confidence=exact' <<<"$OUT_EXACT"; then
+  echo "FAIL: exact discovery-scaffold should keep exact confidence" >&2
+  exit 1
+fi
+if ! grep -q 'discovery_greenfield_validated=true' <<<"$OUT_EXACT"; then
+  echo "FAIL: exact discovery-scaffold should emit discovery_greenfield_validated=true" >&2
+  exit 1
+fi
+if command -v tofu >/dev/null 2>&1 || command -v terraform >/dev/null 2>&1; then
+  if ! grep -q 'fmt_exit=' <<<"$OUT_EXACT"; then
+    echo "FAIL: exact discovery-scaffold should emit fmt_exit from inline validate" >&2
+    exit 1
+  fi
+fi
+
+# --- pick_discovery_sibling_dir prefers token overlap over first_subdir ---
+WORK7="${TMP}/work7"
+mkdir -p "$WORK7/repo/aws/aws_alpha_widget" "$WORK7/repo/aws/aws_beta_other" "$WORK7/repo/aws/aws_zeta_iam_role"
+for d in aws_alpha_widget aws_beta_other aws_zeta_iam_role; do
+  mkdir -p "$WORK7/repo/aws/$d"
+  echo 'terraform { required_version = ">= 1.0.0" }' >"$WORK7/repo/aws/$d/versions.tf"
+done
+PICK="$(bash -c 'source "'"$RUNNER"' 2>/dev/null; pick_discovery_sibling_dir "'"$WORK7/repo/aws"'" aws_alpha_widget_extra ""' 2>/dev/null || bash "$RUNNER" 2>/dev/null; true)"
+# pick_discovery_sibling_dir is not exported from runner when sourced - test via discovery-scaffold env
+export TFBOT_ALLOW_DIRECT=1
+export ISSUE_TITLE='Add aws_alpha_widget_extra module'
+export ISSUE_BODY='extra widget'
+export ISSUE_OR_PR=99
+export MODULE_DIR=aws_alpha_widget_extra
+export PROVIDER_ROOT=aws
+OUT_PICK="$(bash "$RUNNER" discovery-scaffold "$WORK7" 2>/dev/null || true)"
+if grep -q 'scaffold_error=no_repo_clone' <<<"$OUT_PICK"; then
+  mkdir -p "$WORK7/repo/.git"
+  touch "$WORK7/repo/.git/HEAD"
+  OUT_PICK="$(bash "$RUNNER" discovery-scaffold "$WORK7" 2>/dev/null || true)"
+fi
+if grep -q 'copied_sibling=aws_zeta_iam_role' <<<"$OUT_PICK"; then
+  echo "FAIL: sibling pick should prefer aws_alpha_widget over aws_zeta_iam_role (got: $OUT_PICK)" >&2
+  exit 1
+fi
+if ! grep -q 'copied_sibling=aws_alpha_widget' <<<"$OUT_PICK"; then
+  echo "FAIL: expected copied_sibling=aws_alpha_widget (got: $OUT_PICK)" >&2
+  exit 1
+fi
+
+# --- validate emits test_summary_tail on failure ---
+WORK8="${TMP}/work8"
+mkdir -p "$WORK8/.work"
+MOD8="$WORK8/mod"
+mkdir -p "$MOD8"
+cat >"$MOD8/versions.tf" <<'EOF'
+terraform {
+  required_version = ">= 1.5.0"
+}
+EOF
+cat >"$MOD8/main.tf" <<'EOF'
+resource "null_resource" "bad" {
+  triggers = { x = 1 }
+}
+EOF
+mkdir -p "$MOD8/tests"
+cat >"$MOD8/tests/fail.tftest.hcl" <<'EOF'
+run "always_fail" {
+  command = plan
+  assert {
+    condition     = false
+    error_message = "intentional test failure for stage-runner"
+  }
+}
+EOF
+OUT_TEST="$(bash "$RUNNER" validate "$WORK8" "$MOD8" 2>/dev/null || true)"
+if command -v tofu >/dev/null 2>&1 || command -v terraform >/dev/null 2>&1; then
+  if ! grep -q 'test_summary_file=' <<<"$OUT_TEST"; then
+    echo "FAIL: validate should emit test_summary_file on test failure (got: $OUT_TEST)" >&2
+    exit 1
+  fi
+  if ! grep -q 'test_summary_tail=' <<<"$OUT_TEST"; then
+    echo "FAIL: validate should emit test_summary_tail on test failure" >&2
+    exit 1
+  fi
+fi
+
+# --- commit-pr reads working_branch from notes (same PR head on rework) ---
+eval "$(sed -n '/^note_val()/,/^}/p' "$RUNNER")"
+WORK_BRANCH="${TMP}/work-branch"
+mkdir -p "$WORK_BRANCH"
+echo '{"working_branch":"terraform-bot/reuse-me"}' >"$WORK_BRANCH/notes.json"
+branch="$(note_val "$WORK_BRANCH" working_branch)"
+assert_eq "$branch" "terraform-bot/reuse-me" "commit-pr should read working_branch from notes"
+
+# --- PR eligibility: fmt+validate pass opens PR even when tests fail ---
+eval "$(sed -n '/^validate_out_fmt_validate_pass()/,/^}/p; /^should_open_pr_after_validate()/,/^}/p' "$RUNNER")"
+VF="${TMP}/validate-pr-eligible.out"
+cat >"$VF" <<'EOF'
+fmt_exit=0
+init_exit=0
+validate_exit=0
+test_exit=1
+module_quality_summary=NEEDS_REVISION
+EOF
+validate_out_fmt_validate_pass "$VF" || {
+  echo "FAIL: fmt+validate pass should be detected with test_exit=1" >&2
+  exit 1
+}
+should_open_pr_after_validate "$VF" "true" || {
+  echo "FAIL: should open PR when fmt+validate pass and defer_pr=true" >&2
+  exit 1
+}
+sed -i.bak 's/^validate_exit=0/validate_exit=1/' "$VF"
+rm -f "${VF}.bak"
+if should_open_pr_after_validate "$VF" "true"; then
+  echo "FAIL: should defer PR when validate_exit=1" >&2
+  exit 1
+fi
+cat >"$VF" <<'EOF'
+fmt_exit=0
+init_exit=1
+validate_exit=1
+test_exit=1
+module_quality_summary=NEEDS_REVISION
+EOF
+if should_open_pr_after_validate "$VF" "true" || should_open_pr_after_validate "$VF" "false"; then
+  echo "FAIL: must not open PR when init/validate failed (defer true or false)" >&2
+  exit 1
+fi
+cat >"$VF" <<'EOF'
+fmt_exit=0
+init_exit=0
+validate_exit=0
+test_exit=1
+module_quality_summary=NEEDS_REVISION
+EOF
+should_open_pr_after_validate "$VF" "true" || {
+  echo "FAIL: defer true should open PR when only tests fail" >&2
+  exit 1
+}
+if should_open_pr_after_validate "$VF" "false"; then
+  echo "FAIL: defer false should wait for PASS when tests fail" >&2
+  exit 1
+fi
+
+unset TFBOT_ALLOW_DIRECT TFBOT_EMBEDDED MODULE_DIR PROVIDER_ROOT SIBLING_DIR ISSUE_TITLE ISSUE_BODY ISSUE_OR_PR
 if bash "$RUNNER" validate "$WORK4" "$MOD" 2>"${TMP}/embed.err"; then
   echo "FAIL: direct stage-runner invoke should fail without TFBOT_EMBEDDED" >&2
   exit 1

@@ -12,7 +12,8 @@ terraform {
       # Align with AIOS modules: 0.1.17 adds integration `env` (consumed by aios-integration-ubuntu and exposed
       # as optional input on other containerized integrations) and adopt-on-conflict for sg_policy_bundle,
       # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow.
-      version = ">= 0.1.20, < 0.2.0"
+      # >= 0.1.23: sg_remote_runner install commands for on-prem aiden-runner (aios-remote-runner).
+      version = ">= 0.1.23, < 0.2.0"
     }
   }
 }
@@ -377,9 +378,11 @@ module "terraform_bot" {
   # existing_github_integration_name = module.github_integration.integration_name
   # existing_ubuntu_integration_name = module.ubuntu_integration.integration_name
 
-  # Optional remote runner: set name + remote_runner_attach_to_agent = true
+  # On-prem runner (provider >= 0.1.23): register + install commands in module outputs, then attach.
+  # create_remote_runner            = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true
+  # After apply: terraform output -raw module.terraform_bot.remote_runner_helm_install_command
 
   # StackGen discovery-modules (https://github.com/stackgenhq/discovery-modules):
   # discovery_modules_repository_full_names = ["stackgenhq/discovery-modules"]
@@ -388,6 +391,7 @@ module "terraform_bot" {
   # stackgen_upload_project_id            = "<stackgen-project-id>"
   # stackgen_token_secret_id              = "<sg_secret id with STACKGEN_TOKEN metadata>"
   # defer_pr_until_quality_pass           = true
+  # draft_pr_on_max_iterations_exhausted  = true  # default; set false for notify-only when loop exhausts
   # module_quality_max_iterations       = 3
 }
 
@@ -439,10 +443,23 @@ module "db_state_splitter" {
   # MCP tool surface — so `tofu plan -generate-config-out` and `tofu plan` can authenticate.
   # See modules/aios-agent-db-state-splitter/README.md "Operator prerequisites".
 
-  # Optional: Guild remote runner — SOP text only unless attach is true (requires runner to exist at plan time).
+  # On-prem runner: create_remote_runner registers sg_remote_runner; outputs include Helm/CLI install strings.
+  # create_remote_runner            = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true
 }
+
+# Standalone on-prem runner (optional — share runner_name with agent modules above).
+# module "onprem_aiden_runner" {
+#   source = "../../modules/aios-remote-runner"
+#   create_runner = true
+#   name          = "my-org-tofu-runner"
+#   labels        = { env = "production" }
+# }
+# output "aiden_runner_helm_install" {
+#   value     = module.onprem_aiden_runner.helm_install_command
+#   sensitive = true
+# }
 
 # =============================================================================
 # Optional: Guild read-only data sources (StackGen provider)

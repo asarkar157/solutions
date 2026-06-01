@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Trigger terraform-module-update via Guild webhook (local dev or remote StackGen).
 # Usage:
-#   ./trigger-webhook.sh --issue 901 --title "Add aws_scheduler_schedule module" --module aws_scheduler_schedule
-#   ./trigger-webhook.sh --from-tofu-output   # reads terraform/guild tofu output
+#   GUILD_URL=http://localhost:8081 ./trigger-webhook.sh --from-tofu-output --issue 901 --title "Add aws_scheduler_schedule module"
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GUILD_URL="${GUILD_URL:-http://localhost:8088}"
+# Direct Guild API (8081). Ingress edge on 8088 may not route /api/v1/webhooks/trigger.
+GUILD_URL="${GUILD_URL:-http://localhost:8081}"
 ORG_ID="${ORG_ID:-74301888-bab0-4af5-a882-2de0a491651f}"
 API_KEY="${API_KEY:-}"
 ISSUE_NUM=""
@@ -14,12 +14,17 @@ ISSUE_TITLE=""
 ISSUE_BODY=""
 REPO="stackgenhq/discovery-modules"
 FROM_TOFU=0
+CREATE_GITHUB_ISSUE=0
 
 usage() {
   cat <<EOF
-Usage: $0 [--guild-url URL] [--org-id UUID] [--api-key TOKEN] [--issue N] [--title TEXT] [--body TEXT] [--from-tofu-output]
+Usage: $0 [--guild-url URL] [--org-id UUID] [--api-key TOKEN] [--issue N] [--title TEXT] [--body TEXT] [--repo OWNER/NAME] [--create-github-issue] [--from-tofu-output]
 
 Triggers POST /api/v1/webhooks/trigger for terraform-bot-github-receiver → terraform-module-update.
+Local dev: use GUILD_URL=http://localhost:8081 (not :8088 ingress).
+
+When --create-github-issue is set, opens a real GitHub issue (with discovery-module-request label)
+and uses its number in the webhook payload so create-pr issue comments succeed.
 EOF
   exit 1
 }
@@ -33,6 +38,7 @@ while [ $# -gt 0 ]; do
     --title) ISSUE_TITLE="$2"; shift 2 ;;
     --body) ISSUE_BODY="$2"; shift 2 ;;
     --repo) REPO="$2"; shift 2 ;;
+    --create-github-issue) CREATE_GITHUB_ISSUE=1; shift ;;
     --from-tofu-output) FROM_TOFU=1; shift ;;
     -h|--help) usage ;;
     *) echo "unknown arg: $1" >&2; usage ;;
@@ -53,7 +59,14 @@ if [ "$FROM_TOFU" -eq 1 ]; then
   API_KEY="$(printf '%s' "$blob" | jq -r '.token // empty')"
   ingress="$(printf '%s' "$blob" | jq -r '.ingress_payload_url // empty')"
   if [ -n "$ingress" ] && [ "$ingress" != "null" ]; then
-    TRIGGER_URL="$ingress"
+    # Prefer explicit GUILD_URL; rewrite common local ingress port to direct API.
+    if [ "$GUILD_URL" = "http://localhost:8081" ] && printf '%s' "$ingress" | grep -q ':8088'; then
+      TRIGGER_URL="$(printf '%s' "$ingress" | sed 's|:8088|:8081|')"
+    elif [ -n "${GUILD_URL:-}" ]; then
+      TRIGGER_URL="${GUILD_URL%/}/api/v1/webhooks/trigger?apiKey=${API_KEY}&orgId=${ORG_ID}"
+    else
+      TRIGGER_URL="$ingress"
+    fi
   fi
 fi
 
@@ -65,14 +78,27 @@ if [ -z "${TRIGGER_URL:-}" ]; then
   TRIGGER_URL="${GUILD_URL%/}/api/v1/webhooks/trigger?apiKey=${API_KEY}&orgId=${ORG_ID}"
 fi
 
-if [ -z "$ISSUE_NUM" ]; then
-  ISSUE_NUM="$(date +%s | tail -c 6)"
-fi
 if [ -z "$ISSUE_TITLE" ]; then
-  ISSUE_TITLE="discovery-module-request test issue ${ISSUE_NUM}"
+  ISSUE_TITLE="discovery-module-request test issue $(date +%s | tail -c 6)"
 fi
 if [ -z "$ISSUE_BODY" ]; then
-  ISSUE_BODY="Automated terraform-bot webhook test for issue ${ISSUE_NUM}."
+  ISSUE_BODY="Automated terraform-bot webhook test."
+fi
+
+if [ "$CREATE_GITHUB_ISSUE" -eq 1 ]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "error: gh CLI required for --create-github-issue" >&2
+    exit 1
+  fi
+  issue_url="$(gh issue create --repo "$REPO" --title "$ISSUE_TITLE" --body "$ISSUE_BODY" \
+    --label "discovery-module-request" 2>/dev/null || \
+    gh issue create --repo "$REPO" --title "$ISSUE_TITLE" --body "$ISSUE_BODY" 2>/dev/null)"
+  ISSUE_NUM="${issue_url##*/}"
+  echo "github_issue=$issue_url"
+fi
+
+if [ -z "$ISSUE_NUM" ]; then
+  ISSUE_NUM="$(date +%s | tail -c 6)"
 fi
 
 owner="${REPO%%/*}"

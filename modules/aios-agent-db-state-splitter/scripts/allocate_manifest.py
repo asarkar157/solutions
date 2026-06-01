@@ -540,6 +540,157 @@ def write_inventory(state_path: str, work_root: str) -> Tuple[str, str, int]:
     return seeds_path, inventory_path, len(seeds)
 
 
+def parse_provider_block(provider_str: str) -> Tuple[str, str]:
+    """Return (local_name, source) from a tfstate provider string."""
+    m = re.search(r"registry\.terraform\.io/([^/\"]+)/([^\"]+)", provider_str or "")
+    if not m:
+        return "aws", "hashicorp/aws"
+    namespace, ptype = m.group(1), m.group(2)
+    return ptype, f"{namespace}/{ptype}"
+
+
+def import_id_from_instance(inst: dict) -> Optional[str]:
+    """Best-effort import id from instance attributes."""
+    attrs = inst.get("attributes") or {}
+    for key in (
+        "id",
+        "arn",
+        "name",
+        "self_link",
+        "unique_id",
+        "bucket",
+        "cluster_id",
+        "function_name",
+    ):
+        val = attrs.get(key)
+        if val is not None and str(val).strip() != "":
+            return str(val)
+    return None
+
+
+def scaffold_group_dir(group_dir: str, group_id: str, state_path: str) -> dict:
+    """Write versions.tf, providers.tf, imports.tf for one logical group shard."""
+    with open(state_path, encoding="utf-8") as fh:
+        state = json.load(fh)
+
+    providers: Dict[str, str] = {}
+    import_blocks: List[str] = []
+    orphan_addrs: List[str] = []
+
+    for res in state.get("resources") or []:
+        if res.get("mode") != "managed":
+            continue
+        local, source = parse_provider_block(res.get("provider") or "")
+        providers[local] = source
+        insts = res.get("instances") or [{}]
+        for inst in insts:
+            if inst.get("deposed"):
+                continue
+            addr = instance_address(res, inst)
+            imp_id = import_id_from_instance(inst)
+            if not imp_id:
+                orphan_addrs.append(addr)
+                continue
+            safe_id = imp_id.replace("\\", "\\\\").replace('"', '\\"')
+            import_blocks.append(
+                f"import {{\n  to = {addr}\n  id = \"{safe_id}\"\n}}\n"
+            )
+
+    os.makedirs(group_dir, exist_ok=True)
+
+    versions = 'terraform {\n  required_version = ">= 1.5.0"\n  required_providers {\n'
+    for local, source in sorted(providers.items()):
+        versions += f'    {local} = {{\n      source = "{source}"\n    }}\n'
+    versions += "  }\n}\n"
+
+    prov_tf = ""
+    for local in sorted(providers.keys()):
+        if local == "aws":
+            prov_tf += 'provider "aws" {\n  region = "us-east-1"\n}\n\n'
+        if local == "azurerm":
+            prov_tf += 'provider "azurerm" {\n  features {}\n}\n\n'
+        if local == "google":
+            prov_tf += (
+                'provider "google" {\n  project = "change-me"\n  region  = "us-central1"\n}\n\n'
+            )
+
+    imports_path = os.path.join(group_dir, "imports.tf")
+    with open(os.path.join(group_dir, "versions.tf"), "w", encoding="utf-8") as fh:
+        fh.write(versions)
+    with open(os.path.join(group_dir, "providers.tf"), "w", encoding="utf-8") as fh:
+        fh.write(prov_tf)
+    with open(imports_path, "w", encoding="utf-8") as fh:
+        fh.write(f"# Group {group_id} — import blocks from monolith state shard\n\n")
+        fh.write("".join(import_blocks))
+
+    return {
+        "group_id": group_id,
+        "imports_path": imports_path,
+        "import_count": len(import_blocks),
+        "orphan_count": len(orphan_addrs),
+        "orphan_addresses": orphan_addrs,
+    }
+
+
+def cmd_scaffold_registry(work_root: str) -> int:
+    """Generate per-group HCL scaffold (versions/providers/imports) under groups/<id>/."""
+    manifest_path = os.path.join(work_root, "logical_group_manifest.json")
+    if not os.path.isfile(manifest_path):
+        print("scaffold_error=missing_logical_group_manifest", file=sys.stderr)
+        return 1
+
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+
+    paths_path = os.path.join(work_root, "group_state_paths.json")
+    group_paths: Dict[str, str] = {}
+    if os.path.isfile(paths_path):
+        with open(paths_path, encoding="utf-8") as fh:
+            group_paths = json.load(fh)
+
+    summary: List[dict] = []
+    orphans_bundle: List[dict] = []
+    total_imports = 0
+
+    for gid in sorted(manifest.keys()):
+        state_path = group_paths.get(gid) or os.path.join(
+            work_root, "groups", gid, "terraform.tfstate"
+        )
+        if not os.path.isfile(state_path):
+            print(f"scaffold_warning=missing_state group_id={gid}", file=sys.stderr)
+            continue
+        group_dir = os.path.join(work_root, "groups", gid)
+        result = scaffold_group_dir(group_dir, gid, state_path)
+        summary.append(result)
+        total_imports += result["import_count"]
+        for addr in result.get("orphan_addresses") or []:
+            orphans_bundle.append(
+                {"address": addr, "group_id": gid, "reason": "no_import_id_in_state"}
+            )
+
+    report_path = os.path.join(work_root, "registry_mapping_report.json")
+    orphans_path = os.path.join(work_root, "orphans_bundle.json")
+    reverse_summary = {
+        "files_created": len(summary) * 3,
+        "groups_scaffolded": len(summary),
+        "imports_pending": total_imports,
+        "scaffold_paths_per_group": {
+            row["group_id"]: row["imports_path"] for row in summary
+        },
+    }
+    with open(report_path, "w", encoding="utf-8") as fh:
+        json.dump(reverse_summary, fh, indent=2)
+    with open(orphans_path, "w", encoding="utf-8") as fh:
+        json.dump(orphans_bundle, fh, indent=2)
+
+    print(f"registry_scaffold_groups={len(summary)}")
+    print(f"registry_import_blocks={total_imports}")
+    print(f"registry_mapping_report={report_path}")
+    print(f"orphans_bundle={orphans_path}")
+    print(f"reverse_iac_summary={json.dumps(reverse_summary)}")
+    return 0
+
+
 def cmd_allocate(work_root: str, state_path: str, strategy: str, cap: int) -> int:
     manifest, per_group, stats = allocate(state_path, strategy, cap)
     manifest_path = os.path.join(work_root, "logical_group_manifest.json")
@@ -565,7 +716,7 @@ def cmd_allocate(work_root: str, state_path: str, strategy: str, cap: int) -> in
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            "usage: allocate_manifest.py <allocate|reconcile|extract-states|split|inventory> ...",
+            "usage: allocate_manifest.py <allocate|reconcile|extract-states|split|inventory|scaffold-registry> ...",
             file=sys.stderr,
         )
         return 2
@@ -603,6 +754,10 @@ def main() -> int:
         print(f"db_anchor_inventory_path={inv}")
         print(f"anchor_seeds_extracted={n}")
         return 0
+
+    if cmd == "scaffold-registry":
+        work_root = sys.argv[2]
+        return cmd_scaffold_registry(work_root)
 
     if cmd == "split":
         work_root, state_path = sys.argv[2], sys.argv[3]

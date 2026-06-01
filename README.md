@@ -38,7 +38,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 |------|---------|
 | [`modules/`](modules/) | One directory per Terraform module (foundation, integrations, agents, policies). Each module is intended to be used via a `module` block `source` pointing at this repo (see [Quick start](#quick-start)). |
 | [`examples/`](examples/) | Runnable Terraform roots that compose modules for local experimentation and CI validation (`examples/complete`). Snippet-only quickstarts live next to them as READMEs. |
-| [`docs/`](docs/) | **GitHub Pages** onboarding site ([`docs/onboarding/`](docs/onboarding/)), Jekyll [`_config.yml`](docs/_config.yml), and [architecture](docs/architecture.md) for the dependency graph. |
+| [`docs/`](docs/) | **GitHub Pages** onboarding site ([`docs/onboarding/`](docs/onboarding/)), [use-case catalog](docs/use-case-catalog.md), Jekyll [`_config.yml`](docs/_config.yml), and [architecture](docs/architecture.md) for the dependency graph. |
 | [`AGENTS.md`](AGENTS.md) | **Cursor / IDE / AI assistants** — how to compose modules, provider setup, layer order, and module inventory (keep in sync when adding modules). |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
@@ -58,7 +58,7 @@ Modules are organized in **four composable layers**:
 │  software-engineering • supply-chain • workspace        │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1 — Integrations (Cloud & Tool Connectors)       │
-│  aws • azure • grafana • slack • github • clickhouse    │
+│  aws • azure • gcp • grafana • datadog • pagerduty • …  │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 0 — Foundation (Models, Policies)               │
 │  foundation • policies                                  │
@@ -125,6 +125,8 @@ See [`examples/complete/`](examples/complete/) for a full reproduction of the AI
 
 ## 📦 Available Modules
 
+Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hosted): **[`docs/use-case-catalog.md`](docs/use-case-catalog.md)**. Interactive catalog with tags: **[GitHub Pages module catalog](https://appcd-dev.github.io/solutions/module-catalog/)** (or [`docs/module-catalog.md`](docs/module-catalog.md) locally).
+
 ### Foundation (Layer 0)
 
 | Module | Description |
@@ -142,6 +144,17 @@ See [`examples/complete/`](examples/complete/) for a full reproduction of the AI
 | [`aios-integration-slack`](modules/aios-integration-slack/) | Slack ChatOps integration |
 | [`aios-integration-github`](modules/aios-integration-github/) | GitHub SCM integration |
 | [`aios-integration-clickhouse`](modules/aios-integration-clickhouse/) | ClickHouse BYOI analytics integration |
+| [`aios-integration-gcp`](modules/aios-integration-gcp/) | GCP service account + MCP integration |
+| [`aios-integration-datadog`](modules/aios-integration-datadog/) | Datadog observability (official MCP) — `saas`, `multitenant` |
+| [`aios-integration-pagerduty`](modules/aios-integration-pagerduty/) | PagerDuty incident management — `webhook`, `saas` |
+| [`aios-integration-firehydrant`](modules/aios-integration-firehydrant/) | FireHydrant incidents — `privatesaas`, `webhook` |
+| [`aios-integration-servicenow`](modules/aios-integration-servicenow/) | ServiceNow ITSM — `tickets`, `webhook` |
+| [`aios-integration-confluence`](modules/aios-integration-confluence/) | Confluence runbooks / knowledge base — `sre` |
+| [`aios-integration-paloalto`](modules/aios-integration-paloalto/) | PAN-OS firewall — `privatesaas`, `security` |
+| [`aios-integration-internal-tool`](modules/aios-integration-internal-tool/) | Internal REST operator console — `privatesaas` |
+| [`aios-integration-gitlab`](modules/aios-integration-gitlab/) | GitLab SCM — `gitops`, `privatesaas` |
+| [`aios-integration-argocd`](modules/aios-integration-argocd/) | Argo CD GitOps — `gitops`, `privatesaas` |
+| [`aios-integration-sonarqube`](modules/aios-integration-sonarqube/) | SonarQube quality gates — `gitops` |
 
 ### Agents (Layer 2)
 
@@ -160,6 +173,13 @@ See [`examples/complete/`](examples/complete/) for a full reproduction of the AI
 | [`aios-agent-marketing`](modules/aios-agent-marketing/) | Marketing operations | 1 | 1 |
 | [`aios-agent-onboarding`](modules/aios-agent-onboarding/) | Workspace onboarding | 1 | 1 |
 | [`aios-agent-predictive-sre`](modules/aios-agent-predictive-sre/) | Predictive / cross-signal triage | 1 | 1 |
+| [`aios-agent-azure-saas-sre`](modules/aios-agent-azure-saas-sre/) | Azure SaaS: PagerDuty → Datadog/Azure → Confluence → Automation | 3 | 3+ |
+| [`aios-agent-sre-ticket-resolution`](modules/aios-agent-sre-ticket-resolution/) | ServiceNow tickets → Grafana/AWS → remediation → Slack | 3 | 3+ |
+| [`aios-agent-multitenant-sre-rca`](modules/aios-agent-multitenant-sre-rca/) | Multi-tenant Datadog RCA + Slack collaboration | 4 | 2 |
+| [`aios-agent-privatesaas-devops-sre`](modules/aios-agent-privatesaas-devops-sre/) | PrivateSaaS: Grafana → AWS/PAN-OS → bounded remediation | 3 | 3+ |
+| [`aios-agent-privatesaas-sre`](modules/aios-agent-privatesaas-sre/) | PrivateSaaS SRE (Aiden): FireHydrant/Grafana, GCP, runbooks, **Bifrost LLM** | 3 | 3+ |
+| [`aios-agent-privatesaas-gitops-sre`](modules/aios-agent-privatesaas-gitops-sre/) | PrivateSaaS GitOps: Slack `/aiden`, GitLab/Argo CD/SonarQube | 3 | 3+ |
+| [`aios-agent-selfhosted-infra`](modules/aios-agent-selfhosted-infra/) | Self-hosted AWS: CloudFormation failures, drift, pre-deploy review | 3 | 3+ |
 
 ### Solutions (Layer 3)
 

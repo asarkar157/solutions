@@ -27,7 +27,7 @@ permalink: module-catalog/
   > | "Take a legacy repo and make IaC." | `make demo SCENARIO=repo-to-iac` | foundation, policies, integration-github, agent-repo-to-iac |
   > | "Wipe to a clean baseline." | `make demo SCENARIO=clean-tenant-reset` | foundation, policies |
   >
-  > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}).
+  > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}). For **deployment-profile** use cases (Azure SaaS, PrivateSaaS, multi-tenant RCA, self-hosted infra), see the [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}).
 
   </div>
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke-check that aios-agent-db-state-splitter templatefile() inputs render
-# (catches tftpl syntax errors before apply). OpenTofu/Terraform built-ins
-# only — no StackGen credentials required.
+# (catches tftpl syntax errors such as unescaped bash ${1:?} before apply).
+# Renders *.md.tftpl personas/templates and ingest/iac-pr/converge embed shells.
+# OpenTofu/Terraform built-ins only — no StackGen credentials required.
 #
 # The Terraform fixture (main.tf) lives alongside this script under
 # fixtures/db-state-split-templates/ so we avoid in-script heredocs (some

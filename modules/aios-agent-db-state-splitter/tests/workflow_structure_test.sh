@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Static checks for db-monorepo-state-split-convergence workflow in main.tf.
+# Static checks for db-monorepo-state-split-convergence workflow in main.tf (lean v2 DAG).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -7,16 +7,11 @@ MAIN="${ROOT}/main.tf"
 
 required_stages=(
   ingest-and-split
-  split-input-gate
-  split-ingest-blocked-gate
-  split-loop-gate
+  ingest-blocked-gate
   registry-and-import-codegen
-  hcl-hydrate-per-group
-  materialize-stackgen-appstacks
+  shell-converge-matrix
+  materialize-appstacks-coordinator
   orphans-secondary-pipeline
-  multi-shard-plan-convergence
-  multi-shard-plan-infra-gate
-  multi-shard-plan-loop-gate
   final-gate-and-memory
 )
 
@@ -27,21 +22,31 @@ for stage in "${required_stages[@]}"; do
   fi
 done
 
-# Legacy split stages must not return (4 architect turns removed).
-for legacy in discover-db-anchors allocate-related-resources count-reconcile-loop count-reconcile-loop-gate ingest-monolith; do
+# Legacy stages must not return.
+for legacy in \
+  split-input-gate split-loop-gate split-ingest-blocked-gate iac-pr-fast-path-gate \
+  hcl-hydrate-per-group materialize-stackgen-appstacks \
+  multi-shard-plan-convergence multi-shard-plan-infra-gate multi-shard-plan-loop-gate \
+  discover-db-anchors allocate-related-resources count-reconcile-loop count-reconcile-loop-gate ingest-monolith
+do
   if grep -q "stage_id[[:space:]]*=[[:space:]]*\"${legacy}\"" "${MAIN}"; then
-    echo "FAIL: legacy stage ${legacy} still present — use ingest-and-split" >&2
+    echo "FAIL: legacy stage ${legacy} still present" >&2
     exit 1
   fi
 done
 
-if ! grep -q 'action_type[[:space:]]*=[[:space:]]*"loop_stage"' "${MAIN}"; then
-  echo "FAIL: workflow must define loop_stage gates" >&2
+if grep -q 'action_type[[:space:]]*=[[:space:]]*"loop_stage"' "${MAIN}"; then
+  echo "FAIL: v2 DAG must not use loop_stage gates (false GO_BACK fan-in)" >&2
   exit 1
 fi
 
 if ! grep -q 'action_type[[:space:]]*=[[:space:]]*"conditional_skip"' "${MAIN}"; then
-  echo "FAIL: workflow must define conditional_skip for missing monolith URI" >&2
+  echo "FAIL: workflow must define conditional_skip for ingest-blocked-gate" >&2
+  exit 1
+fi
+
+if ! grep -q 'ingest-blocked-gate' "${MAIN}"; then
+  echo "FAIL: missing ingest-blocked-gate conditional_skip" >&2
   exit 1
 fi
 
@@ -51,7 +56,7 @@ if ! grep -q 'blocked:missing_monolith_state_uri' "${MAIN}"; then
 fi
 
 if ! grep -q 'blocked:ubuntu_infra_tofu_missing' "${MAIN}"; then
-  echo "FAIL: workflow must define blocked:ubuntu_infra_tofu_missing infra sentinel" >&2
+  echo "FAIL: workflow must reference blocked:ubuntu_infra_tofu_missing sentinel" >&2
   exit 1
 fi
 
@@ -60,38 +65,18 @@ if ! grep -q 'blocked:three_runner_attempts_failed' "${MAIN}"; then
   exit 1
 fi
 
-if ! grep -q 'multi-shard-plan-infra-gate' "${MAIN}"; then
-  echo "FAIL: missing multi-shard-plan-infra-gate conditional_skip" >&2
-  exit 1
-fi
-
-if ! grep -q 'split-ingest-blocked-gate' "${MAIN}"; then
-  echo "FAIL: missing split-ingest-blocked-gate conditional_skip" >&2
+if grep -q '"action":"GO_BACK"' "${MAIN}"; then
+  echo "FAIL: v2 DAG must not match GO_BACK in conditional_skip (false fan-in)" >&2
   exit 1
 fi
 
 if ! grep -q 'output_matches_regex' "${MAIN}"; then
-  echo "FAIL: conditional_skip gates must use output_matches_regex for ingest/infra blockers" >&2
+  echo "FAIL: conditional_skip gates must use output_matches_regex" >&2
   exit 1
 fi
 
-if ! grep -q 'split-loop-gate' "${MAIN}"; then
-  echo "FAIL: missing split-loop-gate" >&2
-  exit 1
-fi
-
-if ! grep -q 'multi-shard-plan-loop-gate' "${MAIN}"; then
-  echo "FAIL: missing multi-shard-plan-loop-gate" >&2
-  exit 1
-fi
-
-if ! grep -q '"action":"GO_BACK"' "${MAIN}"; then
-  echo "FAIL: downstream stages must block when predecessor emits GO_BACK JSON" >&2
-  exit 1
-fi
-
-if ! grep -q 'mock_provider' "${MAIN}"; then
-  echo "FAIL: registry scaffold must require mock_provider in optional tftest files" >&2
+if ! grep -q 'cmd_registry_scaffold' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must include registry scaffold command" >&2
   exit 1
 fi
 
@@ -101,7 +86,7 @@ if ! grep -q '$HOME/.<workflow_run_id>/' "${MAIN}"; then
 fi
 
 if ! grep -q 'appstack-materialize-runner-batch' "${MAIN}"; then
-  echo "FAIL: materialize must mandate parallel appstack batch fan-out" >&2
+  echo "FAIL: materialize coordinator must mandate parallel appstack batch fan-out" >&2
   exit 1
 fi
 
@@ -110,13 +95,28 @@ if ! grep -q 'flow_type:"parallel"' "${MAIN}"; then
   exit 1
 fi
 
-if ! grep -q 'ingest-and-split' "${MAIN}"; then
-  echo "FAIL: workflow must use consolidated ingest-and-split stage" >&2
+if ! grep -q 'shell-converge-matrix-runner' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must register shell-converge-matrix-runner" >&2
   exit 1
 fi
 
-if ! grep -q 'ingest-and-split' "${ROOT}/scripts/stage-runner.sh"; then
-  echo "FAIL: stage-runner must support ingest-and-split command" >&2
+if ! grep -q 'CONVERGE_EXECUTE_SERIES' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must include CONVERGE_EXECUTE_SERIES block" >&2
+  exit 1
+fi
+
+if ! grep -q 'prepare-parallel-artifacts' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must support prepare-parallel-artifacts command" >&2
+  exit 1
+fi
+
+if ! grep -q 'hydrate-and-plan-matrix' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must support hydrate-and-plan-matrix command" >&2
+  exit 1
+fi
+
+if grep -q 'rsync' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must use cp -a only (no rsync dependency)" >&2
   exit 1
 fi
 
@@ -140,38 +140,23 @@ if ! grep -q 'merge_small_by_seed' "${ROOT}/scripts/allocate_manifest.py"; then
   exit 1
 fi
 
-if ! grep -q 'verify-script-pack' "${ROOT}/scripts/stage-runner.sh"; then
-  echo "FAIL: stage-runner must support verify-script-pack" >&2
+if ! grep -q 'stage_depends_on = \["ingest-and-split"\]' "${MAIN}"; then
+  echo "FAIL: ingest-blocked-gate must depend on ingest-and-split" >&2
   exit 1
 fi
 
-if ! grep -q 'emit_script_pack_verify' "${ROOT}/scripts/stage-runner.sh"; then
-  echo "FAIL: stage-runner must emit script_pack_verify_ok after split" >&2
-  exit 1
-fi
-
-if ! grep -q 'stage_depends_on = \["split-loop-gate", "ingest-and-split"\]' "${MAIN}"; then
-  echo "FAIL: split-ingest-blocked-gate must fan-in ingest-and-split for gate regex matching" >&2
-  exit 1
-fi
-
-if ! grep -q 'stage_depends_on = \["split-input-gate", "ingest-and-split"\]' "${MAIN}"; then
-  echo "FAIL: split-loop-gate must fan-in ingest-and-split for count_reconciliation_ok matching" >&2
-  exit 1
-fi
-
-if ! grep -q 'stage_depends_on = \["multi-shard-plan-infra-gate", "multi-shard-plan-convergence"\]' "${MAIN}"; then
-  echo "FAIL: multi-shard-plan-loop-gate must fan-in multi-shard-plan-convergence for plan sentinel matching" >&2
+if ! grep -q 'stage_depends_on = \["shell-converge-matrix", "materialize-appstacks-coordinator", "orphans-secondary-pipeline"\]' "${MAIN}"; then
+  echo "FAIL: final-gate must fan-in parallel layer" >&2
   exit 1
 fi
 
 if ! grep -q 'count_reconciliation_ok: \\\"false\\\"' "${MAIN}"; then
-  echo "FAIL: split-ingest-blocked-gate must match count_reconciliation_ok false" >&2
+  echo "FAIL: ingest-blocked-gate must match count_reconciliation_ok false" >&2
   exit 1
 fi
 
 if ! grep -q 'INGEST STOP RULE' "${MAIN}"; then
-  echo "FAIL: ingest stage must define INGEST STOP RULE to prevent post-success thrash" >&2
+  echo "FAIL: ingest stage must define INGEST STOP RULE" >&2
   exit 1
 fi
 
@@ -185,18 +170,73 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'gh api' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must fetch scripts via gh api (private repo)" >&2
-  exit 1
-fi
-
-if grep -q 'write_embedded_script\|script_pack_allocate_b64\|raw.githubusercontent.com' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must not base64-embed or use raw.githubusercontent.com" >&2
+if ! grep -q 'dbsplit_fetch_script_pack' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must git-fetch script pack via GIT_TOKEN" >&2
   exit 1
 fi
 
 if ! grep -q "/bin/bash <<'DBSPLIT_INGEST_EXECUTE'" "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must use /bin/bash heredoc (sh -c incompatible)" >&2
+  echo "FAIL: ingest execute series must use /bin/bash heredoc" >&2
+  exit 1
+fi
+
+if ! grep -q 'dbsplit_resolve_monolith_uri' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must resolve MONOLITH_URI deterministically" >&2
+  exit 1
+fi
+
+if ! grep -q 'dbsplit_resolve_work_root' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest execute series must resolve WORK_ROOT without {{workflow_run_id}} placeholder" >&2
+  exit 1
+fi
+
+if grep -q '{{workflow_run_id}}' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must not contain unresolved {{workflow_run_id}} (ONE_LINER is terraform-base64)" >&2
+  exit 1
+fi
+
+if ! grep -q 'spawn_monolith_uri' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: ingest spawn contract must require spawn_monolith_uri pre-write" >&2
+  exit 1
+fi
+
+if ! grep -q 'INGEST_EXECUTE_SERIES_B64' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must deliver ingest via INGEST_EXECUTE_SERIES_B64" >&2
+  exit 1
+fi
+
+if ! grep -q 'INGEST_EXECUTE_SERIES_DECODE_COMMAND' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must deliver ingest decode command" >&2
+  exit 1
+fi
+
+if ! grep -q 'ingest_execute_series_decode_command' "${MAIN}"; then
+  echo "FAIL: main.tf must define ingest_execute_series_decode_command" >&2
+  exit 1
+fi
+
+if ! grep -q 'create_files' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: ingest spawn_contract must allow create_files for embed b64" >&2
+  exit 1
+fi
+
+if grep -qF '---BEGIN INGEST_EXECUTE_SERIES---' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must not embed raw INGEST heredoc (use B64 + create_files)" >&2
+  exit 1
+fi
+
+if ! grep -q 'INGEST_RUNNER_RULE' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must include INGEST_RUNNER_RULE embed guidance" >&2
+  exit 1
+fi
+
+if ! grep -q 'INGEST RETRY' "${MAIN}"; then
+  echo "FAIL: ingest-and-split stage note must document INGEST RETRY (same spawn_contract goal)" >&2
+  exit 1
+fi
+
+if [ ! -f "${ROOT}/templates/converge-execute-series-embedded.sh.tftpl" ]; then
+  echo "FAIL: missing converge-execute-series-embedded.sh.tftpl" >&2
   exit 1
 fi
 

@@ -2,9 +2,8 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # sg_agent.remote_runners + sg_remote_runner lookup; 0.1.17 secret_ref reuse.
-      # spawn_contracts on stage_bindings + workflow metadata (provider >= 0.1.21).
-      version = ">= 0.1.21, < 0.2.0"
+      # sg_remote_runner create + install commands (>= 0.1.23); spawn_contracts (>= 0.1.21).
+      version = ">= 0.1.23, < 0.2.0"
     }
   }
 }
@@ -25,6 +24,9 @@ locals {
   sop_discovery_modules_layout  = "${local.module_prefix}-discovery-modules-layout-sop${local.suffix}"
   discovery_modules_enabled     = length(var.discovery_modules_repository_full_names) > 0
   discovery_legacy_issue_labels = ["analyze-request"]
+  ubuntu_integration_home       = "/home/integration"
+  script_pack_version           = "20260531.37"
+  tfbot_pack_dir                = "${local.ubuntu_integration_home}/.terraform-bot/pack/${local.script_pack_version}"
   discovery_modules_template_vars = {
     discovery_repositories_list = join(", ", [for r in var.discovery_modules_repository_full_names : "\"${r}\""])
     discovery_issue_label       = trimspace(var.discovery_modules_issue_label)
@@ -33,6 +35,7 @@ locals {
     sop_install_validate_test   = local.sop_install_validate_test
     stackgen_upload_url         = trimspace(var.stackgen_upload_url)
     stackgen_upload_project_id  = trimspace(var.stackgen_upload_project_id)
+    tfbot_pack_dir              = local.tfbot_pack_dir
   }
   discovery_modules_orchestration_addon = local.discovery_modules_enabled ? trimspace(templatefile("${path.module}/templates/discovery-modules-orchestration-addon.md.tftpl", local.discovery_modules_template_vars)) : ""
   discovery_modules_layout_sop_body     = local.discovery_modules_enabled ? trimspace(templatefile("${path.module}/templates/discovery-modules-layout-sop.md.tftpl", local.discovery_modules_template_vars)) : ""
@@ -52,10 +55,14 @@ locals {
     for name in local.workflow_script_names :
     name => trimspace(file("${path.module}/scripts/${name}"))
   }
-  stage_runner_script       = trimspace(file("${path.module}/scripts/stage-runner.sh"))
-  clone_pack_script         = trimspace(file("${path.module}/scripts/clone-pack.sh"))
-  ubuntu_integration_home   = "/home/integration"
-  script_pack_version       = "20260531.12"
+  stage_runner_script = trimspace(file("${path.module}/scripts/stage-runner.sh"))
+  clone_pack_script   = trimspace(file("${path.module}/scripts/clone-pack.sh"))
+  # Inline pack install from Ubuntu integration env (module ubuntu_integration.env_vars). No guild image changes.
+  # Heredoc keeps single $ for shell vars in agent-facing strings (never $$ — bash treats $$ as PID; trace c72004698186).
+  tfbot_pack_ensure_shell = trimspace(<<-SHELL
+PD='${local.tfbot_pack_dir}'; mkdir -p "$PD"; if [ -x "$PD/clone-pack.sh" ] && [ -x "$PD/stage-runner.sh" ]; then :; elif [ -n "$TFBOT_CLONE_PACK_B64" ] && [ -n "$TFBOT_STAGE_RUNNER_B64" ]; then printf '%s' "$TFBOT_CLONE_PACK_B64" | base64 -d >"$PD/clone-pack.sh" && chmod +x "$PD/clone-pack.sh" && printf '%s' "$TFBOT_STAGE_RUNNER_B64" | base64 -d >"$PD/stage-runner.sh" && chmod +x "$PD/stage-runner.sh"; else echo tfbot_pack_error=missing_pack hint=recycle_ubuntu_sidecar_after_tofu_apply_TFBOT_env; exit 1; fi
+SHELL
+  )
   script_pack_runner_sha256 = sha256(local.stage_runner_script)
   script_pack_clone_sha256  = sha256(local.clone_pack_script)
   clone_execute_series_body = templatefile(
@@ -68,9 +75,11 @@ locals {
   validate_execute_series_body = templatefile(
     "${path.module}/templates/validate-execute-series-embedded.sh.tftpl",
     {
-      ubuntu_integration_home = local.ubuntu_integration_home
-      stage_runner_script     = local.stage_runner_script
-      script_pack_version     = local.script_pack_version
+      ubuntu_integration_home     = local.ubuntu_integration_home
+      script_pack_version         = local.script_pack_version
+      script_pack_runner_b64      = base64encode(local.stage_runner_script)
+      script_pack_runner_sha256   = local.script_pack_runner_sha256
+      defer_pr_until_quality_pass = var.defer_pr_until_quality_pass ? "true" : "false"
     },
   )
   commit_pr_execute_series_body = templatefile(
@@ -83,16 +92,23 @@ locals {
   discovery_scaffold_execute_series_body = templatefile(
     "${path.module}/templates/discovery-scaffold-execute-series-embedded.sh.tftpl",
     {
-      ubuntu_integration_home = local.ubuntu_integration_home
-      stage_runner_script     = local.stage_runner_script
-      script_pack_version     = local.script_pack_version
+      ubuntu_integration_home   = local.ubuntu_integration_home
+      script_pack_version       = local.script_pack_version
+      script_pack_runner_b64    = base64encode(local.stage_runner_script)
+      script_pack_runner_sha256 = local.script_pack_runner_sha256
     },
   )
+  discovery_scaffold_execute_series_b64       = base64encode(local.discovery_scaffold_execute_series_body)
+  discovery_scaffold_execute_series_one_liner = "printf '%s' '${local.discovery_scaffold_execute_series_b64}' | base64 -d | /bin/bash"
+  clone_execute_series_b64                    = base64encode(local.clone_execute_series_body)
+  clone_execute_series_one_liner              = "printf '%s' '${local.clone_execute_series_b64}' | base64 -d | /bin/bash"
+  validate_execute_series_b64                 = base64encode(local.validate_execute_series_body)
+  validate_execute_series_one_liner           = "printf '%s' '${local.validate_execute_series_b64}' | base64 -d | /bin/bash"
   workflow_script_pack_body = trimspace(templatefile("${path.module}/templates/workflow-script-pack.md.tftpl", {
-    ubuntu_tool_prefix  = local.ubuntu_tool_prefix
-    stage_runner_script = local.stage_runner_script
-    clone_pack_script   = local.clone_pack_script
-    script_pack_version = local.script_pack_version
+    ubuntu_tool_prefix      = local.ubuntu_tool_prefix
+    ubuntu_integration_home = local.ubuntu_integration_home
+    script_pack_version     = local.script_pack_version
+    tfbot_pack_dir          = local.tfbot_pack_dir
   }))
   module_quality_sop_body = trimspace(templatefile("${path.module}/templates/module-quality-sop.md.tftpl", {
     module_quality_max_iterations = var.module_quality_max_iterations
@@ -116,11 +132,12 @@ locals {
   github_tool_prefix = local.resolved_github_integration_name
   ubuntu_tool_prefix = local.resolved_ubuntu_integration_name
   subagent_budget_defaults = {
-    script_runner_max_llm_calls     = 25
+    script_runner_max_llm_calls     = 8
     github_fetch_max_llm_calls      = 12
     github_comment_max_llm_calls    = 15
-    validate_runner_max_llm_calls   = 32
-    hcl_author_max_llm_calls        = 50
+    github_notify_max_llm_calls     = 5
+    validate_runner_max_llm_calls   = 12
+    hcl_author_max_llm_calls        = 20
     script_runner_timeout_seconds   = 300
     github_fetch_timeout_seconds    = 90
     github_comment_timeout_seconds  = 90
@@ -131,17 +148,21 @@ locals {
     for key, default in local.subagent_budget_defaults :
     key => coalesce(try(var.subagent_budgets[key], null), default)
   }
-  create_pr_runner_max_llm_calls = local.subagent_budgets.script_runner_max_llm_calls + local.subagent_budgets.github_comment_max_llm_calls
+  create_pr_runner_max_llm_calls     = local.subagent_budgets.script_runner_max_llm_calls + local.subagent_budgets.github_comment_max_llm_calls
+  discovery_scaffold_timeout_seconds = local.subagent_budgets.script_runner_timeout_seconds + 300
   orchestration_sop_template_vars = {
-    module_prefix                  = local.module_prefix
-    github_tool_prefix             = local.github_tool_prefix
-    ubuntu_tool_prefix             = local.ubuntu_tool_prefix
-    ubuntu_integration_name        = local.ubuntu_integration_name
-    github_integration_name        = local.github_integration_name
-    discovery_modules_issue_label  = trimspace(var.discovery_modules_issue_label)
-    sop_discovery_modules_layout   = local.sop_discovery_modules_layout
-    subagent_budgets               = local.subagent_budgets
-    create_pr_runner_max_llm_calls = local.subagent_budgets.script_runner_max_llm_calls + local.subagent_budgets.github_comment_max_llm_calls
+    module_prefix                      = local.module_prefix
+    github_tool_prefix                 = local.github_tool_prefix
+    ubuntu_tool_prefix                 = local.ubuntu_tool_prefix
+    ubuntu_integration_home            = local.ubuntu_integration_home
+    tfbot_pack_dir                     = local.tfbot_pack_dir
+    ubuntu_integration_name            = local.ubuntu_integration_name
+    github_integration_name            = local.github_integration_name
+    discovery_modules_issue_label      = trimspace(var.discovery_modules_issue_label)
+    sop_discovery_modules_layout       = local.sop_discovery_modules_layout
+    subagent_budgets                   = local.subagent_budgets
+    discovery_scaffold_timeout_seconds = local.discovery_scaffold_timeout_seconds
+    create_pr_runner_max_llm_calls     = local.subagent_budgets.script_runner_max_llm_calls + local.subagent_budgets.github_comment_max_llm_calls
   }
   terraform_bot_orchestration_extensions_body = trimspace(templatefile("${path.module}/templates/terraform-bot-orchestration-extensions.md.tftpl", local.orchestration_sop_template_vars))
   terraform_bot_orchestration_sop_body = join("\n\n", compact([
@@ -190,11 +211,25 @@ module "ubuntu_integration" {
     trimspace(var.stackgen_token_secret_id) != "" ? var.stackgen_token_secret_id : "",
   ])
   install_tools = ["tofu", "terraform", "gh", "git", "curl"]
+  env_vars = {
+    TFBOT_PACK_DIR            = local.tfbot_pack_dir
+    TFBOT_SCRIPT_PACK_VERSION = local.script_pack_version
+    TFBOT_CLONE_PACK_B64      = base64encode(local.clone_pack_script)
+    TFBOT_STAGE_RUNNER_B64    = base64encode(local.stage_runner_script)
+    TFBOT_CLONE_PACK_SHA256   = local.script_pack_clone_sha256
+    TFBOT_STAGE_RUNNER_SHA256 = local.script_pack_runner_sha256
+    TFBOT_ALLOW_DIRECT        = "1"
+  }
 }
 
-data "sg_remote_runner" "terraform_module_manager" {
-  count = var.remote_runner_attach_to_agent ? 1 : 0
-  name  = trimspace(var.remote_runner_name)
+module "remote_runner" {
+  count  = trimspace(var.remote_runner_name) != "" ? 1 : 0
+  source = "../aios-remote-runner"
+
+  create_runner = var.create_remote_runner
+  name          = trimspace(var.remote_runner_name)
+  description   = trimspace(var.remote_runner_description) != "" ? trimspace(var.remote_runner_description) : "Remote runner for ${local.agent_name} (OpenTofu/Terraform module work off the Ubuntu sandbox)."
+  labels        = var.remote_runner_labels
 }
 
 # ============================================================================
@@ -206,7 +241,7 @@ resource "sg_agent" "terraform_module_manager" {
   persona     = local.persona
   model_names = compact(var.model_names)
 
-  remote_runners = length(data.sg_remote_runner.terraform_module_manager) > 0 ? toset([data.sg_remote_runner.terraform_module_manager[0].name]) : null
+  remote_runners = var.remote_runner_attach_to_agent && length(module.remote_runner) > 0 ? toset([module.remote_runner[0].runner_name]) : null
 
   integrations = [
     local.resolved_github_integration_name,
@@ -499,13 +534,15 @@ resource "sg_workflow" "terraform_module_update" {
   name        = local.workflow_name
   domain      = "infrastructure-as-code"
   description = <<-EOT
-    GitHub issue/PR-driven Terraform module workflow (linear): `check-info-and-clone` → `check-info-blocked-gate` → `implement-module` → `validate-and-test` → `validate-infra-gate` → `validate-loop-gate` → `create-pr`.
+    GitHub issue/PR-driven Terraform module workflow (linear): `check-info-and-clone` → `check-info-blocked-gate` → `implement-module` → `validate-greenfield-skip-gate` → `validate-and-test` → `validate-infra-gate` → `validate-draft-pr-gate` → `validate-loop-gate` → `create-pr`.
     Cross-stage state uses planner `note` + stage closing message echo (orchestration SOP §3a–§3b); disk mirror at `$HOME/.<workflow_run_id>/notes.json` when the Ubuntu container is warm. Shell work uses ONE `execute_series` with embedded stage-runner (script-pack §3h). Copy `workflow_run_id` from stagerunner `[Workflow execution]` header.
   EOT
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations       = "40"
+    terminal_calling_halguard_mode    = "paste_only_minimal_planner"
+    halguard_skip_subagent_task_types = "terminal_calling"
   }
 
   evidence_checklist_ref = sg_evidence_checklist.terraform_module_update_evidence.name
@@ -556,6 +593,12 @@ resource "sg_workflow" "terraform_module_update" {
       required    = true
     },
     {
+      stage_id    = "validate-greenfield-skip-gate"
+      description = "Skip validate-and-test when discovery greenfield already ran scaffold+validate in one embed"
+      note        = "conditional_skip only — no LLM."
+      required    = false
+    },
+    {
       stage_id    = "validate-and-test"
       description = "Run Terraform/OpenTofu fmt, init, validate, and test; remediate once if needed"
       note        = "Step 3: terraform validate commands + tftest; emit quality_check_* and module_quality_summary."
@@ -564,6 +607,12 @@ resource "sg_workflow" "terraform_module_update" {
     {
       stage_id    = "validate-infra-gate"
       description = "Skip quality rework loop when validate failed due to Ubuntu/integration infra, not module code"
+      note        = "conditional_skip only — no LLM."
+      required    = false
+    },
+    {
+      stage_id    = "validate-draft-pr-gate"
+      description = "Skip rework loop when a draft PR was opened for quality failures"
       note        = "conditional_skip only — no LLM."
       required    = false
     },
@@ -589,7 +638,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_bot_orchestration.name,
       ]
       skill_refs = concat(
-        [local.sop_orchestration_name, local.sop_workflow_script_pack],
+        [local.sop_orchestration_name],
         try(var.workflow_skill_refs["terraform-module-update::check-info-and-clone"], []),
       )
       spawn_contracts = local.spawn_contracts_check_info_and_clone
@@ -599,16 +648,16 @@ resource "sg_workflow" "terraform_module_update" {
         script_pack_version=${local.script_pack_version}
         Budget contract: ≤ 2 subagents, ≤ $1.00, ≤ 3 minutes.
 
-        **Step 1 — check info + clone**
+        **Step 1 — check info + clone (MANDATORY ORDER — trace `9d8958e4` failed when clone ran before notes)**
         0. Read `[Workflow execution]` → `workflow_run_id`; spawn contract resolves `WORK_ROOT={{work_root}}` to the absolute scratch path (Ubuntu home is often `/home/integration`, not `/root`).
-        1. Extract trigger fields into notes (no subagents before label gate): parse webhook JSON from stage Input per orchestration §0b — `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`, `event_type`, `issue_labels`, `pr_head_ref`, `pr_head_clone_url`. Missing repo or issue # → §8(a) blocked notify and STOP.
+        1. **FIRST — note trigger keys (no subagents yet):** parse webhook JSON from stage Input per orchestration §0b. `note()` each: `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`, `event_type`, `issue_labels`, `pr_head_ref`, `pr_head_clone_url`. Missing repo or issue # → §8(a) blocked notify and STOP.
         2. Discovery label gate (when `discovery_repo=true`): evaluate `${local.sop_discovery_modules_layout}` §1. On `missing_label` → spawn ONE `create-pr-comment` (Template E, GitHub path only), STOP.
         3. Build `issue_details` JSON from parsed webhook fields (§0b step 3) when `issue.title` or `pull_request.title` is present — **do NOT** spawn `check-info-and-clone-fetch`. Fetch ONLY when title is absent after JSON parse.
-        4. If `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone` (`task_type=terminal_calling`). **Before spawn**, pass `create_agent` **context** with `repository_clone_url=`, `repository_default_branch=`, `issue_or_pr_number=` from step 1. Host spawn context includes embedded clone between `---BEGIN CLONE_EXECUTE_SERIES---` / `---END---` (short inline script; parses `TRIGGER_JSON` when read_notes empty). ONE `${local.ubuntu_tool_prefix}_execute_series` **commands.length=1**: optional exports + embedded block verbatim. **Never** spawn `create-pr-comment` on clone failure — `check-info-blocked-gate` → `create-pr` owns notify.
-        5. **Clone outcome (not token probe alone):** BLOCKED only when `clone_blocker=*` OR `repo_clone_path` still empty after the clone series — note `stage_summary:check-info-and-clone=blocked: <reason>`. If `gh_env_present=false` but `repo_clone_path` is set (public anonymous clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue**.
+        4. **Only after steps 1–3:** if `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone`. **Subagent goal MUST match the spawn contract verbatim** — never `load_skill terraform-bot-workflow-script-pack` or `_embed_tfbot_run` (trace `9d8958e4`). Pass **context** lines: `repository_clone_url=…`, `repository_default_branch=…`, `issue_or_pr_number=…` so the clone runner uses spawn-context inline pack ensure + `${local.tfbot_pack_dir}/clone-pack.sh clone` (requires `TFBOT_*_B64` on Ubuntu integration env — recycle sidecar after apply). Runner: ONE execute_series — `working_dir=${local.ubuntu_integration_home}` or omit; **never** `working_dir=WORK_ROOT` before clone. **FORBIDDEN:** `TRIGGER_JSON='{"…"}'` in `commands[0].command`; `CLONE_ONE_LINER`; truncating commands.
+        5. **Clone outcome:** BLOCKED when `clone_blocker=*` OR `repo_clone_path` empty. `tfbot_pack_error=` → **§8(g)** (`tofu apply` + recycle `terraform-bot-ubuntu`). `base64: invalid input` on pack ensure with TFBOT env present → `clone_blocker=wrong_shell_dollar_escape` (**$$** in execute_series — use single **$**; trace `c72004698186`). `base64: invalid input` with empty TFBOT env → missing_script_pack. **FORBIDDEN** ad-hoc `git clone` or HTTPS token clone fallback (PAT may be fine). `clone_blocker=placeholder_url` → **agent invented URL**. `clone_blocker=auth_or_network` → PAT/scope. If `gh_env_present=false` but `repo_clone_path` set (public clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue**.
         6. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:check-info-and-clone` + echo handoff keys (§3b).
 
-        Forbidden: `graph_query`, org-wide `gh repo list`, `gh api /user/repos`, auth-verify-only subagents, spawning `check-info-and-clone-fetch` when webhook already has `issue.labels` + `issue.title`, spawning `create-pr-comment` on clone auth failure, raw PAT in goals, `{}` execute_series payloads, `/root/.wf-*` paths.
+        Forbidden: spawning clone before step 1 notes; placeholder clone URLs; `graph_query`; org-wide `gh repo list`; auth-verify-only subagents; `check-info-and-clone-fetch` when webhook has `issue.labels` + `issue.title`; `create-pr-notify` on clone failure in this stage; `load_skill` on clone runner; `working_dir=WORK_ROOT` or `working_dir=$HOME/.wf-*` on clone execute_series; raw PAT in goals; `{}` execute_series payloads; `/root/.wf-*` paths.
       EOT
     },
     {
@@ -617,7 +666,7 @@ resource "sg_workflow" "terraform_module_update" {
       stage_depends_on = ["check-info-and-clone"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "(?m)stage_summary:check-info-and-clone[=:\"\\s]+blocked:|clone_blocker=(auth|auth_or_network|network|404|branch)|_embed_tfbot_run.*command not found|script_pack_error=|Syntax error.*unexpected|ubuntu_shell_incompatible"
+        match     = "(?m)stage_summary:check-info-and-clone[=:\"\\s]+blocked:|stage_summary:implement-module[=:\"\\s]+blocked:|clone_blocker=(auth|auth_or_network|network|404|branch|placeholder_url|missing_clone_params|repo_not_found_or_auth|missing_script_pack|wrong_shell_dollar_escape)|chdir .+\\.wf-[^:]+: no such file or directory|base64: invalid input|omitted for brevity|unexpected EOF while looking for matching|syntax error|parse error near|Syntax error:.*unexpected|_embed_tfbot_run.*command not found|script_pack_error=|tfbot_pack_error=|scaffold_error=|missing_stage_runner|exit 127|command not found|clone-pack\\.sh: not found|Syntax error.*unexpected|ubuntu_shell_incompatible|example/example"
         skip_to   = "create-pr"
         reason    = "Clone/auth failed at intake — skip implement/validate; create-pr posts operator-facing blocker comment"
       }
@@ -631,7 +680,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.terraform_install_validate_test.name,
       ]
       skill_refs = concat(
-        [local.sop_orchestration_name, local.sop_workflow_script_pack, local.sop_install_validate_test],
+        [local.sop_orchestration_name, local.sop_install_validate_test],
         local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::implement-module"], []),
       )
@@ -643,10 +692,11 @@ resource "sg_workflow" "terraform_module_update" {
         **Stage entry (§3a):** `read_notes` + `[Workflow execution]` + prior stage message; recover from `check-info-and-clone` echo if empty. Honor `[SubagentFailure]` — fix root cause before retry.
         **Canonical clone path:** `repo_clone_path` MUST be `$WORK_ROOT/repo` (stage-runner §2.1). If notes say `repo_clone`, treat as legacy — downstream script-pack normalizes via symlink.
         **Blocked passthrough:** when `repo_clone_path` is empty or notes contain `clone_blocker` — emit `stage_summary:implement-module=blocked: upstream clone failed` without spawning Ubuntu runners; do not scaffold into an empty workdir.
-        **Quality-loop rework:** when prior `validate-and-test` had `module_quality_summary: NEEDS_REVISION` (code FAIL, not BLOCKED) and `module_paths` is non-empty — fix `module_quality_gaps` only; do NOT re-scaffold from scratch or re-commit unchanged files.
+        **Quality-loop rework:** when prior `validate-and-test` had `module_quality_summary: NEEDS_REVISION` (code FAIL, not BLOCKED) and `module_paths` is non-empty — spawn **Template J** (orchestration §5i/§7): one subagent, goal ≤800 chars (host replaces with spawn contract). Fix `module_quality_gaps` only using `test_summary_tail` from notes — do NOT re-scaffold or paste fix scripts into the spawn goal. `discovery_repo=true` → `implement-module-discovery-scaffold` only (never `implement-module-scaffold`). Inline validate via spawn-context Validate in the same execute_series — do NOT spawn `validate-and-test-runner` here.
+        **Routing honesty:** `validate-greenfield-skip-gate` skips `validate-and-test` ONLY when inline validate was **PASS** (`discovery_greenfield_validated=true` AND `module_quality_summary: PASS`). On NEEDS_REVISION, `validate-and-test` still runs; a **draft** PR opens there when `fmt_exit=0` and `validate_exit=0` even if tests fail (fixture-only gaps).
         1. Resolve target module per orchestration §2a or script-pack §2.4: spawn ONE Ubuntu subagent — ONE execute_series with `resolve-paths` embedded (script-pack §0). Light layout discovery only — deep validate belongs in `validate-and-test`. Do NOT open PR here.
         2. Branch:
-           - `not_found` + greenfield + `discovery_repo=true`: spawn **ONLY** `implement-module-discovery-scaffold` — ONE execute_series: §2.5 discovery-check **and** write all layout files in the **same** series (`max_llm_calls=${local.subagent_budgets.hcl_author_max_llm_calls}`, `task_type=terminal_calling`). Do **NOT** also spawn `implement-module-scaffold` or `implement-module-clone`.
+           - `not_found` + greenfield + `discovery_repo=true`: spawn **ONLY** `implement-module-discovery-scaffold` — ONE execute_series with spawn-context Discovery command (`TRIGGER_JSON_B64` + `${local.tfbot_pack_dir}/stage-runner.sh discovery-scaffold '{{work_root}}'` — same pack path as clone-pack; **never** `"$WORK_ROOT/.pack/stage-runner.sh"`). Pass real base64 for webhook JSON. Echo `discovery_greenfield_validated=true` plus `quality_check_*` / `module_quality_summary` from stdout. **FORBIDDEN:** inline `TRIGGER_JSON='{…}'`, `WORK_ROOT='$HOME/.wf-*'` with `$WORK_ROOT/.pack/...`, placeholder TRIGGER_JSON_B64, `DISCOVERY_SCAFFOLD_ONE_LINER`. Do **NOT** spawn `validate-and-test-runner`, `implement-module-scaffold`, or `implement-module-clone`.
            - `not_found` + greenfield + generic repo: Template H then G if registry fails.
            - `ambiguous` → `ask_clarifying_question` ONCE.
            - `exact`/`probable` → edit existing paths in ONE execute_series when shell edits suffice.
@@ -654,20 +704,31 @@ resource "sg_workflow" "terraform_module_update" {
         4. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:implement-module` + echo `module_paths` (single path when greenfield), confidence, registry keys.
 
         Approved subagents ONLY: `implement-module-discovery-scaffold`, `implement-module-registry-wrap`, `implement-module-scaffold` (non-discovery only).
-        Forbidden: `implement-module-clone`, `gh pr create`, split create_files + validate across tool calls, dual module dirs for one issue, full security scan suite (validate stage owns deep test).
+        Forbidden: `implement-module-clone`, `validate-and-test-runner`, `create-pr-runner`, `create-pr-notify`, `create-pr-comment`, `create-pr-register`, `create-pr-evidence-submit`, `load_skill` when spawn context has `---BEGIN DISCOVERY_SCAFFOLD_EXECUTE_SERIES---`, `gh pr create`, split create_files + validate across tool calls, dual module dirs for one issue, spawning validate runners in this stage.
       EOT
+    },
+    {
+      stage_id         = "validate-greenfield-skip-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["implement-module"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = "discovery_greenfield_validated[^\\n]{0,48}true.*module_quality_summary[^\\n]{0,48}PASS"
+        skip_to   = "validate-infra-gate"
+        reason    = "Discovery greenfield inline validate already PASS — skip duplicate validate-and-test stage"
+      }
     },
     {
       stage_id         = "validate-and-test"
       agent_ref        = sg_agent.terraform_module_manager.name
-      stage_depends_on = ["implement-module"]
+      stage_depends_on = ["validate-greenfield-skip-gate"]
       runbook_refs = [
         sg_runbook_sop.terraform_bot_orchestration.name,
         sg_runbook_sop.terraform_install_validate_test.name,
         sg_runbook_sop.module_quality.name,
       ]
       skill_refs = concat(
-        [local.sop_orchestration_name, local.sop_workflow_script_pack, local.sop_install_validate_test, local.sop_module_quality],
+        [local.sop_orchestration_name, local.sop_install_validate_test, local.sop_module_quality],
         local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::validate-and-test"], []),
       )
@@ -676,13 +737,16 @@ resource "sg_workflow" "terraform_module_update" {
         Budget contract: ≤ 1 subagent, ≤ $3.00, ≤ 8 minutes.
 
         **Step 3 — fmt / init / validate / test**
+        **Architect role:** spawn exactly ONE `validate-and-test-runner`, then read stdout `key=value` markers (`fmt_exit=`, `module_quality_summary=`, `validate_markers_file=`, `test_summary_file=`, `test_summary_tail=` when `test_exit=1`) — copy `test_summary_tail` verbatim into `workflow_notes_snapshot`; do NOT re-summarize runner prose or spawn implement subagents.
         1. Require non-empty `module_paths` or documented blocker; if empty without blocker → STOP with notify.
-        2. Spawn exactly ONE `validate-and-test-runner` with `max_llm_calls=${local.subagent_budgets.validate_runner_max_llm_calls}`, `task_type=terminal_calling` (Template C / script-pack). If `[stop_agent_error] max LLM calls` → re-spawn once with +10 (cap 60) and a smaller goal — never a second runner name.
-        3. **Infra vs code (module-quality-sop §2b–§2c):** BLOCKED when the runner never executed real shell — synthesized PASS lines, forbidden keys (`quality_check_terraform`, `quality_check_module_layout`), or stdout missing `fmt_exit=` / `binary=` from stage-runner validate. Emit `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED` — do **NOT** set `module_quality_rework=true`. Retry the same runner at most once after §8(e) infra backoff; then BLOCKED.
+        2. Spawn exactly ONE `validate-and-test-runner` with `max_llm_calls=${local.subagent_budgets.validate_runner_max_llm_calls}`, `task_type=terminal_calling`. Runner MUST use spawn-context Validate command: `${local.tfbot_pack_dir}/stage-runner.sh validate-and-pr` with `MODULE_PATH` (absolute), `REPO_FULL_NAME`, `ISSUE_OR_PR`, `BASE_BRANCH` from notes — **FORBIDDEN:** `VALIDATE_ONE_LINER`, inline `TRIGGER_JSON='{…}'`, `Syntax error: Unterminated quoted string` from pasting base64 one-liners. If `[stop_agent_error] max LLM calls` → re-spawn once with +10 (cap 60) and a smaller goal — never a second runner name.
+        3. **Infra vs code (module-quality-sop §2b–§2c):** BLOCKED when the runner never executed real shell — synthesized PASS lines, forbidden keys (`quality_check_terraform`, `quality_check_module_layout`), or stdout missing `fmt_exit=` from stage-runner validate. Emit `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED` — do **NOT** set `module_quality_rework=true`. Retry the same runner at most once after §8(e) infra backoff; then BLOCKED.
         4. Map real exit codes to sentinels (module-quality-sop §2): `quality_check_fmt`, `quality_check_validate`, `quality_check_test`, then `module_quality_summary: PASS|NEEDS_REVISION`. On NEEDS_REVISION (code FAIL only), include `module_quality_rework=true` in `workflow_notes_snapshot`.
-        5. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:validate-and-test` + echo sentinel lines and `pr_url` / `working_branch` when validate runner opened a PR in-shell.
+        5. **PR gate (default):** open PR only when `fmt_exit=0`, `init_exit=0`, `validate_exit=0` (`pr_eligible_fmt_validate=true`) — **never** when init or validate failed (`pr_deferred=init_failed` / `validate_failed`). **Draft** when `test_exit≠0` (fixture gaps OK). `defer_pr_until_quality_pass=false` waits for full `module_quality_summary=PASS` (tests too). Init/validate failures → rework loop + GitHub comment at `create-pr`, not a PR.
+        6. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:validate-and-test` + echo sentinel lines and `pr_url` / `working_branch` / `pr_draft` when validate runner opened a PR in-shell.
+        7. When `pr_url` is set, `create-pr` comments only. When `pr_eligible_fmt_validate=true` but `pr_url` empty, copy `pr_deferred=` from stdout (`missing_repo_or_issue`, `push_auth`, `commit_failed`) — `create-pr` must run `create-pr-runner` (step 3b). Do not treat bare `pr_deferred=true` in notes as policy; use runner reason strings only.
 
-        Forbidden: opening PR, more than two validate runners per stage invocation, PASS without `fmt_exit=` in runner stdout, NEEDS_REVISION when infra BLOCKED, printf-only execute_series.
+        Forbidden: `implement-module-discovery-scaffold`, `implement-module-scaffold`, `implement-module-registry-wrap`, `create-pr-runner`, `create-pr-comment`, `create-pr-register`, `create-pr-evidence-submit`, `load_skill`, `VALIDATE_ONE_LINER`, inline `TRIGGER_JSON`, more than two validate runners per stage invocation, PASS without `fmt_exit=` in runner stdout, NEEDS_REVISION when infra BLOCKED, printf-only execute_series.
       EOT
     },
     {
@@ -691,20 +755,31 @@ resource "sg_workflow" "terraform_module_update" {
       stage_depends_on = ["validate-and-test"]
       action_config = {
         condition = "output_matches_regex"
-        match     = "(?m)^\\s*module_quality_summary:\\s*BLOCKED\\s*$|(?m)^\\s*quality_check_fmt:\\s*BLOCKED\\s*$|quality_check_terraform|quality_check_module_layout|workspace unavailable|Ubuntu MCP sidecar unavailable|terraform-bot-ubuntu integration pod"
+        match     = "module_quality_summary[^\\n]{0,40}BLOCKED|quality_check_fmt[^\\n]{0,40}BLOCKED|quality_check_validate[^\\n]{0,40}BLOCKED|quality_check_test[^\\n]{0,40}BLOCKED|quality_check_terraform|quality_check_module_layout|workspace unavailable|Ubuntu MCP sidecar unavailable|terraform-bot-ubuntu integration pod|validation_error=missing_fmt_exit_marker"
         skip_to   = "create-pr"
         reason    = "Integration infra failure — skip quality rework loop; create-pr posts blocked summary on GitHub"
       }
     },
     {
+      stage_id         = "validate-draft-pr-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["validate-infra-gate"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = var.continue_quality_loop_after_draft_pr ? "pr_url=https://github\\.com/[^\\s]+" : "pr_url=https://github\\.com/[^\\s]+|pr_eligible_fmt_validate[^\\n]{0,40}true"
+        skip_to   = "create-pr"
+        reason    = "fmt+init+validate passed (or PR already open) — skip test-fixture rework loop; create-pr opens draft PR + issue comment"
+      }
+    },
+    {
       stage_id         = "validate-loop-gate"
       action_type      = "loop_stage"
-      stage_depends_on = ["validate-infra-gate"]
+      stage_depends_on = ["validate-draft-pr-gate"]
       action_config = {
         loop_to        = "implement-module"
         max_iterations = var.module_quality_max_iterations
         exit_condition = "output_contains"
-        exit_match     = "module_quality_summary: PASS"
+        exit_match     = "module_quality_summary[^\\n]{0,48}(PASS|BLOCKED)"
       }
     },
     {
@@ -717,7 +792,7 @@ resource "sg_workflow" "terraform_module_update" {
         sg_runbook_sop.github_content_change.name,
       ]
       skill_refs = concat(
-        [local.sop_orchestration_name, local.sop_workflow_script_pack, local.sop_stackgen_registration, local.sop_github_content_change],
+        [local.sop_orchestration_name, local.sop_stackgen_registration, local.sop_github_content_change],
         local.discovery_modules_enabled ? [local.sop_discovery_modules_layout] : [],
         try(var.workflow_skill_refs["terraform-module-update::create-pr"], []),
       )
@@ -725,18 +800,24 @@ resource "sg_workflow" "terraform_module_update" {
       note            = <<-EOT
         Budget contract: ≤ 2 subagents, ≤ $2.00, ≤ 4 minutes.
 
-        **Step 4 — PR + notify (+ optional register)**
+        **Step 4 — notify (+ optional register; PR may already exist)**
+        **Deliverable when `pr_url` is set:** ONE GitHub issue comment (Template E) linking the draft PR and `test_summary_tail` when present — that satisfies the workflow for human review. `create-pr-register`, full `module_quality_summary: PASS`, and `submit_evidence` are **optional** — do not block the comment.
+        **Same branch on rework:** when the loop runs (`continue_quality_loop_after_draft_pr=true`) or validate-and-test re-runs `validate-and-pr`, `commit-pr` reuses `working_branch` and pushes to the existing PR head (no second PR).
         0. If predecessor JSON has `"action":"GO_BACK"` → **blocked** (`stage_summary:create-pr=blocked:loop_not_finished`). Do NOT rework here; loop gate must finish first.
-        1. One `read_notes` at stage entry (§3a); parse predecessor loop-gate JSON. `max iterations reached` → **blocked** (post Template E with partial progress + operator next steps).
-        2. **Infra BLOCKED path** (`module_quality_summary: BLOCKED` or any `quality_check_*: BLOCKED`): spawn ONE `create-pr-comment` (Template E, GitHub path only) explaining Ubuntu sidecar failure and what was scaffolded; do NOT spawn `create-pr-runner` or `create-pr-register`. `submit_evidence` with blocked quality items.
-        2b. **Push auth BLOCKED path** (`module_quality_summary: PASS` but `push_requires_token=true`, `pr_blocker=auth`, or `clone_auth_mode=anonymous`): spawn ONE `create-pr-comment` (Template E) — module validated locally but PAT missing for push/PR; include `module_paths` and validation summary; operator binds Provider/github PAT to ubuntu `secret_ref_ids` and re-triggers.
-        3. **Happy path** requires `module_quality_summary: PASS`, all `quality_check_*: PASS`, non-empty `module_paths`, no `stage_summary:*` starting with `blocked:`, and `push_requires_token` not `true`. If `pr_url` already in notes/snapshot from validate-and-test → skip `create-pr-runner`; comment on issue only.
+        1. One `read_notes` at stage entry (§3a); parse predecessor loop-gate JSON. When `Reason` contains `max iterations reached`:
+           - **Default (`draft_pr_on_max_iterations_exhausted=true`):** if `module_paths` non-empty **and** `pr_eligible_fmt_validate=true` (or `init_exit=0` + `validate_exit=0` in notes) → ONE `create-pr-runner`; if init/validate never passed → ONE `create-pr-notify` only (no PR). Empty `module_paths` → Template E only.
+           - **Notify-only (`draft_pr_on_max_iterations_exhausted=false`):** spawn ONE `create-pr-notify` (Template E) with partial progress — **no** `create-pr-runner`.
+        2. **Infra BLOCKED path** (`module_quality_summary: BLOCKED` or any `quality_check_*: BLOCKED`): spawn ONE `create-pr-notify` (Template E, GitHub-only, ≤5 LLM) explaining Ubuntu sidecar failure and what was scaffolded; do NOT spawn `create-pr-runner` or `create-pr-register`. Architect runs `submit_evidence` directly — never spawn `create-pr-evidence-submit`.
+        2b. **Push auth BLOCKED path** (`module_quality_summary: PASS` but `push_requires_token=true`, `pr_blocker=auth`, or `clone_auth_mode=anonymous`): spawn ONE `create-pr-notify` (Template E) — module validated locally but PAT missing for push/PR; include `module_paths` and validation summary; operator binds Provider/github PAT to ubuntu `secret_ref_ids` and re-triggers.
+        3. **Early draft PR path (default):** when `pr_url` is already in notes from `validate-and-test` → spawn **only** `create-pr-comment` / `create-pr-notify` (GitHub issue comment with PR link + validation summary). Skip `create-pr-runner`. Optional: `create-pr-register` when token present; skip register without blocking.
+        3a. **Happy path (no `pr_url` yet)** requires `module_quality_summary: PASS`, all `quality_check_*: PASS`, non-empty `module_paths`, no `stage_summary:*` starting with `blocked:`, and `push_requires_token` not `true`.
+        3b. **Draft test-fail path:** when `pr_eligible_fmt_validate=true` (fmt+init+validate passed), `module_quality_summary: NEEDS_REVISION` (tests/fixtures only), `pr_url` empty, `module_paths` non-empty — spawn ONE `create-pr-runner` then issue comment. **FORBIDDEN** when `init_exit≠0` or `validate_exit≠0` — use `create-pr-notify` with `module_quality_gaps` instead.
         4. Happy + no `pr_url`: spawn ONE `create-pr-runner` — ONE Ubuntu series (embedded COMMIT_PR block) then ONE GitHub series (issue comment). If runner returns `pr_blocker=auth`, fall back to §2b — do not retry commit-pr in a loop.
         5. Happy + discovery: optionally spawn `create-pr-register` when `STACKGEN_TOKEN` present; else `registration_skipped=missing_stackgen_token` in snapshot.
         6. **Evidence gate (§3f):** `submit_evidence` for checklist `${local.evidence_checklist_name}` before happy-path comment.
         7. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:create-pr` with `pr_url` or blocker. Echo critical keys in final message.
 
-        Approved names: `create-pr-runner`, `create-pr-register`, `create-pr-comment` (BLOCKED / max-iterations notify only). Do not spawn separate `create-pr-open` + `create-pr-comment` on happy path.
+        Approved names: `create-pr-runner`, `create-pr-register`, `create-pr-notify`, `create-pr-comment` (alias — prefer `create-pr-notify` for blocked/max-iter notify). Do not spawn separate `create-pr-open` + notify on happy path. FORBIDDEN: `create-pr-evidence-submit`, `load_skill` when spawn context has `---BEGIN *_EXECUTE_SERIES---`.
       EOT
     }
   ]

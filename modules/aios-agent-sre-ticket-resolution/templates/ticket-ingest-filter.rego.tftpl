@@ -1,0 +1,75 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  priority_ok
+  assignment_group_ok
+  category_ok
+  not is_blocked_assignment_group
+  not is_blocked_short_description
+}
+
+# --- Priority allowlist (skipped when empty) ---
+priority_ok if { not ${priorities_gate_enabled} }
+priority_ok if {
+  some p in [${priorities_rego_literals}]
+  regex.match(sprintf(`\b%s\b`, [p]), _text)
+}
+
+# --- Assignment group allowlist (skipped when empty) ---
+assignment_group_ok if { not ${assignment_groups_gate_enabled} }
+assignment_group_ok if {
+  some g in [${assignment_groups_rego_literals}]
+  contains(_text, g)
+}
+
+# --- Category allowlist (skipped when empty) ---
+category_ok if { not ${categories_gate_enabled} }
+category_ok if {
+  some c in [${categories_rego_literals}]
+  contains(_text, c)
+}
+
+# --- Blocked assignment groups (skipped when list empty) ---
+is_blocked_assignment_group if {
+  ${blocked_assignment_groups_gate_enabled}
+  some b in [${blocked_assignment_groups_rego_literals}]
+  contains(_text, b)
+}
+
+# --- Blocked short_description substrings (skipped when list empty) ---
+is_blocked_short_description if {
+  ${blocked_short_descriptions_gate_enabled}
+  some s in [${blocked_short_descriptions_rego_literals}]
+  contains(_text, s)
+}
+
+deny contains msg if {
+  not priority_ok
+  msg := "ServiceNow ticket priority not in allowed ingest list"
+}
+
+deny contains msg if {
+  not assignment_group_ok
+  msg := "ServiceNow ticket assignment group not in allowed ingest list"
+}
+
+deny contains msg if {
+  not category_ok
+  msg := "ServiceNow ticket category not in allowed ingest list"
+}
+
+deny contains msg if {
+  is_blocked_assignment_group
+  msg := "ServiceNow ticket matches blocked assignment group ingest rule"
+}
+
+deny contains msg if {
+  is_blocked_short_description
+  msg := "ServiceNow ticket short description matches blocked ingest substring"
+}

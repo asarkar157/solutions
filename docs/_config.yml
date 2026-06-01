@@ -24,6 +24,7 @@ plugins:
 header_pages:
   - index.md
   - module-catalog.md
+  - use-case-catalog.md
   - onboarding/index.md
   - architecture.md
   - rego-policies.md

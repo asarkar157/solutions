@@ -1,0 +1,62 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  priority_ok
+  service_ok
+  environment_ok
+  not is_blocked
+}
+
+# --- Priority allowlist (skipped when empty) ---
+priority_ok if { not ${priorities_gate_enabled} }
+priority_ok if {
+  some p in [${priorities_rego_literals}]
+  regex.match(sprintf(`\b%s\b`, [p]), _text)
+}
+
+# --- Service allowlist (skipped when empty) ---
+service_ok if { not ${services_gate_enabled} }
+service_ok if {
+  some s in [${services_rego_literals}]
+  contains(_text, s)
+}
+
+# --- Environment allowlist (skipped when empty) ---
+environment_ok if { not ${environments_gate_enabled} }
+environment_ok if {
+  some e in [${environments_rego_literals}]
+  contains(_text, e)
+}
+
+# --- Blocked services (skipped when list empty) ---
+is_blocked if {
+  ${blocked_gate_enabled}
+  some b in [${blocked_services_rego_literals}]
+  contains(_text, b)
+}
+
+deny contains msg if {
+  not priority_ok
+  msg := "PagerDuty alert priority/urgency not in allowed ingest list"
+}
+
+deny contains msg if {
+  not service_ok
+  msg := "PagerDuty alert service not in allowed ingest list"
+}
+
+deny contains msg if {
+  not environment_ok
+  msg := "PagerDuty alert environment not in allowed ingest list"
+}
+
+deny contains msg if {
+  is_blocked
+  msg := "PagerDuty alert matches blocked service ingest rule"
+}

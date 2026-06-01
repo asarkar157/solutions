@@ -1,14 +1,14 @@
 Skill: Operating manual for the Terraform Module Manager. Read this BEFORE doing anything else in any stage. It encodes the planner/executor split, integration boundaries, subagent budget rules, and context hygiene that every other skill depends on.
 
-Keywords for skill discovery: terraform, opentofu, module, workflow, orchestration, planner, subagent, create_agent, integration boundaries, ubuntu cli, github cli, gh api, jq, note, plan, validate, security scan, AWS, GCP, Azure, infrastructure-as-code, sagemaker, s3, rds, eks.
+Keywords for skill discovery: terraform, opentofu, module, workflow, orchestration, planner, subagent, spawn contract, integration boundaries, ubuntu cli, github cli, gh api, jq, note, plan, validate, security scan, AWS, GCP, Azure, infrastructure-as-code, sagemaker, s3, rds, eks.
 
 ========================================================================
 0) Reality check — you are a planner, not an executor
 ========================================================================
 
-Your only direct tools are: `search_tools`, `create_agent`, `ask_clarifying_question`, `graph_query`, `notify`, `note`, `read_notes`, `delete_context`, `check_budget`, `knowledge_*`. You CANNOT call `${github_tool_prefix}_*` or `${ubuntu_tool_prefix}_*` directly. Every shell or API call happens inside a `create_agent` subagent.
+You are a **planner/coordinator**, not a shell executor. You CANNOT call `${github_tool_prefix}_*` or `${ubuntu_tool_prefix}_*` directly. Every shell or API call happens inside a **spawned subagent** defined by the stage's spawn contracts.
 
-When this SOP (or any other SOP) tells you to "run `git clone ...`" or "call `gh api ...`", that ALWAYS means: spawn ONE subagent whose `tool_names` include the right integration and whose `goal` inlines the command(s). The templates in §7 below show exactly how.
+When this SOP (or any other SOP) tells you to "run `git clone ...`" or "call `gh api ...`", that ALWAYS means: spawn ONE approved subagent (see spawn contracts on the stage binding) with the matching integration tools and goal. The templates in §7 below show exactly how.
 
 ========================================================================
 0a) GitHub auth — env-mounted on Ubuntu (read this BEFORE Template A)
@@ -53,11 +53,11 @@ its first `execute_series` (never log token values):
   git config --global user.name "stackgen-terraform-bot"
   git config --global user.email "terraform-bot@stackgen.local"
 
-HTTPS clone (preferred — token stays in env, not in subagent goal text):
+Production clone runs MUST use spawn-context inline pack ensure + **`${tfbot_pack_dir}/clone-pack.sh clone`** only (Ubuntu integration must have `TFBOT_*_B64` env from `tofu apply` + sidecar recycle). `clone-pack.sh` uses `GIT_TOKEN`/`GH_TOKEN` internally — do **not** reconstruct HTTPS/`x-access-token`/`git clone` logic in subagent goals.
 
-  GIT_USERNAME="$${GIT_USERNAME:-x-access-token}"
-  clone_url=$$(printf '%s' "<repository_clone_url>" | sed -E "s#^https?://([^@/]+@)?#https://$${GIT_USERNAME}:$${GIT_TOKEN}@#")
-  git -c credential.helper= clone "$$clone_url" "$WORK_ROOT/repo"
+**FORBIDDEN when pack ensure fails** (`tfbot_pack_error=`, `clone-pack.sh: not found`): ad-hoc `git clone`, `git clone https://x-access-token:…`, `gh repo clone`, or "retry with direct HTTPS clone". That is **not** §8(e) and **not** a PAT workaround — operator must apply terraform and recycle `terraform-bot-ubuntu` (see §8(g)).
+
+**`base64: invalid input` on pack ensure:** if Ubuntu integration env has non-empty `TFBOT_CLONE_PACK_B64` / `TFBOT_STAGE_RUNNER_B64`, the usual cause is **`$$` in execute_series** (bash expands `$$` to PID — e.g. `$$TFBOT_CLONE_PACK_B64` → garbage). Copy spawn-context commands with **single `$`** only (trace `c72004698186`). note `clone_blocker=wrong_shell_dollar_escape`. Only when env is empty → §8(g) missing pack.
 
 Hard rule: do NOT attempt anonymous `git clone https://github.com/...` for private repos.
 If `gh_env_present=false`, STOP, note `stage_summary:<stage>="blocked: no GitHub token in Ubuntu env"`,
@@ -124,6 +124,26 @@ When `repository_full_name` matches a discovery-modules repo (§0c) and a label 
   5. Until the gate passes, `check-info-and-clone` MUST NOT call: `graph_query`, `load_skill` (including `${sop_discovery_modules_layout}`), or spawn `check-info-and-clone-fetch` when the webhook already carried `issue.labels` and `issue.title`.
 
 Repo identification rule: the `repo_clone_path` MUST be derived from `repository_full_name` (or `pr_head_repo_full_name` for cross-fork PRs). NEVER guess the repo from substrings of the issue body, NEVER list any org via `gh repo list`, and NEVER pick a repo because its name "sounds related" to a module name mentioned in the issue body.
+
+========================================================================
+0c-check-info-and-clone-clone — Clone runner discipline (trace `9d8958e4`)
+========================================================================
+
+**Planner order (mandatory):** `note()` all trigger keys from §0b **before** spawning `check-info-and-clone-clone`. A clone subagent spawned while `read_notes` is still empty will invent placeholder URLs.
+
+**Spawn contract:** subagent **goal** MUST match the spawn contract verbatim — never `load_skill terraform-bot-workflow-script-pack` or `_embed_tfbot_run`.
+
+**Runner execute_series (ONE command):**
+1. `read_notes` for `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`.
+2. **Preferred:** spawn-context clone line — inline pack ensure decodes `TFBOT_*_B64` from Ubuntu integration env, then `${tfbot_pack_dir}/clone-pack.sh clone …`.
+3. Architect MUST note `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number` before spawn — clone runner does not parse webhook JSON inline. **Never** `TRIGGER_JSON='{"…"}'` (nested quotes/backticks break `sh -c`).
+4. `working_dir=${ubuntu_integration_home}` or omit.
+
+**working_dir trap (trace `3710113955ff`):** Setting `working_dir` to WORK_ROOT / `$HOME/.wf-*` before clone fails with `chdir …: no such file or directory` because the directory does not exist yet. Always use `${ubuntu_integration_home}` or omit.
+
+**FORBIDDEN clone URLs:** `https://github.com/example/example.git`, any `example.com` / `example/example` placeholder, or invented repo names. The embedded script emits `clone_blocker=placeholder_url` — that is **not** a PAT/`secret_ref_ids` problem.
+
+**Blocked-path messaging:** When stdout contains `clone_blocker=placeholder_url` or `missing_clone_params`, tell the operator the **agent skipped webhook parsing** — do not ask them to rotate the GitHub PAT unless `clone_blocker=auth_or_network` on a **real** `repository_clone_url`.
 
 ========================================================================
 1) Integration boundaries (which subagent gets which tools)
@@ -207,7 +227,11 @@ Canonical note keys (use these exact names — do not invent new ones per subage
 - `registry_wrap_summary` — one paragraph: search hits considered, chosen module + version, why it fits the issue.
 - `registry_wrap_failed` — boolean string "true" when registry path could not produce a module; triggers Template G fallback.
 - `validation_summary` — pass/fail of fmt/init/validate per module.
-- `test_summary` — `terraform test` output summary.
+- `test_summary` — `terraform test` output summary (notes mirror; prefer `test_summary_tail` for handoff).
+- `test_summary_file` — absolute path to stage-runner `tf-test.out`.
+- `test_summary_tail` — last ~40 lines of test stderr/stdout (quoted; copy verbatim from runner stdout when `test_exit=1`).
+- `validate_markers_file` — absolute path to validate stdout capture (e.g. `$WORK_ROOT/.work/validate.out`).
+- `module_quality_gaps` — first Error lines from test output when tests fail.
 - `deployment_impact` — context-graph dependency / org-impact summary.
 - `working_branch` — the `terraform-bot/<slug>-<ts>` branch.
 - `pr_url` — output of `gh pr view --json url -q .url` after PR creation.
@@ -228,7 +252,7 @@ Production traces (`157b399eacdc`, `84d21f0e4923`, `60326743b602468785de1545f722
 3. **Prior stage final message** — Guild prepends the previous stage's closing assistant message. Parse `repository_full_name`, `repo_clone_path`, `module_paths`, `gate_result`, and other canonical keys from that text when `read_notes` is empty. Also parse fenced ```json blocks labeled `workflow_notes_snapshot` when present.
 4. **`[SubagentFailure]`** — when the prior message includes a `[SubagentFailure]` block, treat it as authoritative: do not re-spawn the failed subagent with the same goal; fix the root cause (usually split `execute_series`, wrong `WORK_ROOT`, or missing webhook JSON).
 5. **Do not** spawn subagents whose only job is "verify notes" or re-fetch trigger metadata you already have from (1)–(4).
-6. **`check_budget` once per stage** before the first `create_agent` — do not call it before every subagent.
+6. **`check_budget` once per stage** before the first subagent spawn — do not call it before every subagent.
 
 **First Ubuntu-CLI subagent in the stage** (clone, validate, registry-wrap, PR, etc.):
 1. `WORK_ROOT=$HOME/.<workflow_run_id>`; `mkdir -p "$WORK_ROOT"`.
@@ -252,7 +276,7 @@ Production traces (`157b399eacdc`, `84d21f0e4923`, `60326743b602468785de1545f722
 
 Production trace `328f7adc495a` spent **~45%** of planner tool iterations on atomic `note` / `read_notes` calls. **Hard rules for the planner:**
 
-1. **During a stage:** do **not** call `note` per canonical key. Subagents mirror `key=value` stdout to `$WORK_ROOT/notes.json` inside their **one** `execute_series` (script-pack §0).
+1. **During a stage:** do **not** call `note` per canonical key. Subagents mirror `key=value` stdout to `$WORK_ROOT/notes.json` inside their **one** `execute_series` (script-pack §0). Never `note` with empty `content` — omit the key or set a real value (trace `910c35875165`).
 2. **End of stage:** call `note` **twice maximum**:
    - `note` key=`workflow_notes_snapshot` value=<compact single-line JSON of all canonical keys for this stage>
    - `note` key=`stage_summary:<stage_id>` value=<one paragraph>
@@ -316,12 +340,13 @@ c) `tool_names` rules:
    - Always include `note` and `read_notes` so the subagent can persist partial results before hitting its budget limit.
 
 d) Subagent goals (subagents cannot see your skills):
-   1. Load **`${module_prefix}-workflow-script-pack`** — ONE `execute_series` with the §2 block for this stage (`_embed_tfbot_run` heredoc). Goals **≤1000 chars**: name the §2 block + substitute args; do not paste the full heredoc.
-   2. Paste note key values from planner context (repository fields, module_paths, workflow_run_id).
-   3. For GitHub-only fetchers (Template B), paste the single `gh api` command — no script pack.
-   4. For LLM-authored HCL (discovery/registry/scaffold), keep the goal focused on **files to write**; run `validate-module.sh` in `validate-and-test`, not inside implement goals.
+   1. **Spawn contract wins:** When the subagent name matches the stage spawn contract, Guild **replaces** the spawn `goal` with the contract text. Planner-supplied goals longer than ~4000 runes may be truncated **before** patch — never paste multi-step shell/Python/heredoc scripts into the spawn goal (trace `910c35875165`). Keep planner spawn `goal` **≤ ~800 chars**; put gap lists in `context` or `read_notes` (`module_quality_gaps`, `test_summary_tail`).
+   2. Script runners: ONE `execute_series` using spawn-context **Clone / Validate / Discovery** command lines (copy verbatim, single `$`). Do **not** `load_skill` on embedded stages. Do **not** paste `---BEGIN …_EXECUTE_SERIES---` bodies into the goal.
+   3. Paste only note key **names** the subagent must `read_notes` (repository fields, `module_paths`, `workflow_run_id`) — not full file contents.
+   4. GitHub-only fetchers (Template B): one `gh api` command in the goal — no script pack.
+   5. HCL edits belong **inside** the subagent's `execute_series` (printf/heredoc/python), not in the planner goal text.
 
-e) Subagent budgets (**mandatory on every create_agent** — never omit `max_llm_calls`; omitted values default to ~15 and fail on script materialize + notes + file edits):
+e) Subagent budgets (**declared in spawn contracts** — host applies `max_llm_calls`; omitted values default to ~15 and fail on script materialize + notes + file edits):
 
 | Archetype | task_type | max_llm_calls | max_tool_iterations | timeout_seconds |
 |-----------|-----------|---------------|---------------------|-----------------|
@@ -333,11 +358,30 @@ e) Subagent budgets (**mandatory on every create_agent** — never omit `max_llm
 
 Guild clamps `max_llm_calls` to [8, 60]. If a subagent returns `[stop_agent_error] max LLM calls (N) exceeded`, re-spawn **once** with the same approved name, `max_llm_calls` +10 (cap 60), and a **smaller goal** — do NOT spawn a second runner (e.g. two `validate-and-test-runner` calls).
 
-f) Call `check_budget` **once** at stage start before the first `create_agent`. If remaining budget < $2, skip non-critical subagents and post a blocked summary with whatever evidence exists.
+f) Call `check_budget` **once** at stage start before the first subagent spawn. If remaining budget < $2, skip non-critical subagents and post a blocked summary with whatever evidence exists.
 
 g) If a subagent fails or partially succeeds: merge useful output into `workflow_notes_snapshot`; DO NOT spawn a retry with a slightly different name. After 2 failures on the same logical task, accept partial results and continue.
 
-h) **`validate-and-test`:** exactly **one** `validate-and-test-runner` per stage invocation — ONE `${ubuntu_tool_prefix}_execute_series` (script-pack §2.2 with `_embed_tfbot_run validate`). Forbidden: printf-only PASS, forbidden keys `quality_check_terraform` / `quality_check_module_layout`, a second runner to "confirm" tests, or many `execute_command` file probes after the series. PASS requires stdout `fmt_exit=` and `binary=` from stage-runner.
+h) **`validate-and-test`:** exactly **one** `validate-and-test-runner` per stage invocation — ONE `${ubuntu_tool_prefix}_execute_series` with spawn-context **Validate command** (`${tfbot_pack_dir}/stage-runner.sh validate-and-pr` after pack ensure; **never** `VALIDATE_ONE_LINER` or inline `TRIGGER_JSON='{…}'`). Forbidden: printf-only PASS, forbidden keys `quality_check_terraform` / `quality_check_module_layout`, a second runner to "confirm" tests, or many `execute_command` file probes after the series. PASS requires stdout `fmt_exit=` and `module_quality_summary=` from stage-runner. On `test_exit=1`, snapshot MUST include `test_summary_tail` and `validate_markers_file` — do not promise a PR when loop may hit max iterations (create-pr §1 vs §3b).
+
+i) **Planner stay-on-track** (routing, rework, notes — traces `910c35875165`, `c72004698186`, `573f84aa9000`):
+
+| Situation | Do | Do NOT |
+|-----------|-----|--------|
+| `discovery_repo=true` + any implement work | `implement-module-discovery-scaffold` (Template I / J) | `implement-module-scaffold`, `implement-module-registry-wrap` |
+| `module_quality_rework=true` + `module_paths` set | Template J — fix `module_quality_gaps` only; inline validate in same series | Re-scaffold, greenfield `discovery-scaffold`, 7k-char custom goals |
+| `module_quality_summary: BLOCKED` | §8(e)/(g); infra gate → `create-pr` notify | Rework loop, `implement-module` edits |
+| Pack / clone errors | Spawn-context command, single `$` | `$$TFBOT_*`, manual `git clone`, "recycle sidecar" when env is set but `base64: invalid input` |
+
+**Quality-loop rework entry (after `validate-loop-gate` → `implement-module`):**
+1. `read_notes` **once**: `module_paths`, `module_quality_gaps`, `test_summary_tail`, `validate_markers_file`, `discovery_repo`, `workflow_notes_snapshot`.
+2. Spawn **one** subagent per Template J. In `context` only: bullet the gaps quoted from `test_summary_tail` (max ~500 chars) — never embed fix scripts in `goal`.
+3. Do **not** spawn `validate-and-test-runner` from `implement-module`; use spawn-context **Validate** after edits in the same `execute_series`, or let the next `validate-and-test` stage run.
+4. Clear stale `quality_check_*` in the new `workflow_notes_snapshot` after rework stdout is known.
+
+**Note discipline:** Never `note` with empty `content` (trace `910c35875165` cleared `pr_head_ref`). Use §3i batched snapshot at stage end. Ignore `subagent:*` / foreign `workflow_notes_snapshot` blobs whose `WORK_ROOT` or `workflow_run_id` does not match `[Workflow execution]` for **this** run.
+
+**Parallel workflows:** Another trace's `implement-module-scaffold` / `base64: invalid input` in guild logs is not this run's state — stay on **your** `workflow_run_id` and prior stage message.
 
 ========================================================================
 6) End-state of every stage
@@ -351,12 +395,11 @@ Before declaring a stage done you MUST follow **§3i**: one `workflow_notes_snap
 
 Template A — "clone the repo" (check-info-and-clone-clone):
   agent_name: "check-info-and-clone-clone"
-  tool_names: ["${ubuntu_tool_prefix}_execute_command","${ubuntu_tool_prefix}_execute_series","load_skill","note","read_notes"]
+  tool_names: ["${ubuntu_tool_prefix}_execute_series","note","read_notes"]
   max_tool_iterations: 45, max_llm_calls: ${subagent_budgets.script_runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.script_runner_timeout_seconds}
   task_type: "terminal_calling"
   goal: |
-    load_skill ${module_prefix}-workflow-script-pack. ONE execute_series: copy script-pack §2.1 clone block verbatim (bash -lc + _embed_tfbot_run). Clone MUST land at $WORK_ROOT/repo. FORBIDDEN: ad hoc git clone to repo_clone.
-    note repo_clone_path + repo_head_sha from stdout. Stop — no directory listing.
+    ABS_WORK_ROOT={{work_root}}. Clone ONLY — max 2 tools: read_notes then ONE ${ubuntu_tool_prefix}_execute_series. read_notes repository_clone_url repository_default_branch issue_or_pr_number. execute_series commands.length=1 timeout 300. Use spawn-context clone command (inline pack ensure + clone-pack.sh). working_dir ${ubuntu_integration_home} or omitted. FORBIDDEN: CLONE_ONE_LINER, base64 decode, load_skill, _embed_tfbot_run, example.com URLs, fake repo_head_sha. note repo_clone_path stage_runner_path repo_head_sha from stdout. Stop.
 
 Template B — "fetch the triggering issue/PR" (check-info-and-clone-fetch):
   agent_name: "check-info-and-clone-fetch"
@@ -393,9 +436,9 @@ Template D+F — "PR + comment" (create-pr-runner — preferred):
   max_tool_iterations: 45, max_llm_calls: ${create_pr_runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.script_runner_timeout_seconds}
   task_type: "terminal_calling"
   goal: |
-    load_skill ${module_prefix}-workflow-script-pack.
-    (1) ONE ${ubuntu_tool_prefix}_execute_series: script-pack §2.3 commit-pr. WORK_ROOT=$HOME/.<workflow_run_id>.
-    (2) ONE ${github_tool_prefix}_execute_series: Template E comment on PR or issue (pre-authenticated gh).
+    read_notes pr_url working_branch test_summary_tail first.
+    When pr_url already set (draft PR from validate-and-test): Template E issue comment ONLY — register optional; do not open a second PR.
+    Else: (1) ONE ${ubuntu_tool_prefix}_execute_series commit-pr with WORKING_BRANCH from notes when set (pushes to same PR head on rework). (2) Template E issue comment.
     note workflow_notes_snapshot with working_branch, pr_url, pr_title. Stop.
 
 Template D — "open the PR" (create-pr-open — legacy, do not use with Template E):
@@ -500,16 +543,24 @@ Template H — "registry-backed new module" (preferred greenfield path — searc
     DO NOT commit / push here — `merge-test-pr-and-push-pr` handles that.
     DO NOT call `gh api` for registry data — only `registry.terraform.io` + local files.
 
-Template I — "discovery module scaffold" (discovery-modules repos only):
+Template I — "discovery module scaffold" (discovery-modules repos only — greenfield):
   agent_name: "implement-module-discovery-scaffold"
-  tool_names: ["${ubuntu_tool_prefix}_execute_command","${ubuntu_tool_prefix}_execute_series","${ubuntu_tool_prefix}_create_files","load_skill","note","read_notes"]
-  max_tool_iterations: 48, max_llm_calls: ${subagent_budgets.hcl_author_max_llm_calls}, timeout_seconds: ${subagent_budgets.hcl_author_timeout_seconds}
-  task_type: "coding"
+  tool_names: ["${ubuntu_tool_prefix}_execute_command","${ubuntu_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 48, max_llm_calls: ${subagent_budgets.script_runner_max_llm_calls}, timeout_seconds: ${discovery_scaffold_timeout_seconds}
+  task_type: "terminal_calling"
   goal: |
-    WORK_ROOT=$HOME/.<workflow_run_id>. load_skill ${module_prefix}-workflow-script-pack.
-    ONE execute_series: script-pack §2.5 discovery-check with repo_clone_path, provider, module_dir.
-    If not_found: author HCL/json/yaml files per ${sop_discovery_modules_layout} §4 via printf/heredoc in the same execute_series (files only — no inline validate chain).
-    note module_paths, scaffold_summary, stackgen_yaml_summary. Defer validate to validate-and-test §2.2. Stop.
+    Greenfield discovery only. read_notes issue_details issue_or_pr_number. FIRST tool: ONE ${ubuntu_tool_prefix}_execute_series — spawn-context Discovery command (single $). NEVER load_skill. note module_paths fmt_exit discovery_greenfield_validated module_quality_summary from stdout. Stop.
+
+Template J — "quality-loop rework" (`implement-module` after NEEDS_REVISION, `module_paths` non-empty):
+  agent_name: "implement-module-discovery-scaffold" when discovery_repo=true; else "implement-module-scaffold" (non-discovery only).
+  tool_names: match spawn contract (${ubuntu_tool_prefix}_execute_series, note, read_notes).
+  max_tool_iterations: 48, max_llm_calls: ${subagent_budgets.script_runner_max_llm_calls}, timeout_seconds: ${discovery_scaffold_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    QUALITY-LOOP REWORK. read_notes module_paths module_quality_gaps test_summary_tail. Fix ONLY gaps under existing module_paths[0] — do NOT greenfield scaffold.
+    ONE execute_series: shell edits per test_summary_tail, then spawn-context Validate (MODULE_PATH=module_paths[0]). Planner goal ≤800 chars — host replaces with spawn contract.
+    FORBIDDEN: validate-and-test-runner, load_skill, pasted heredocs in goal, implement-module-scaffold when discovery_repo=true.
+    note fmt_exit validate_exit test_exit module_quality_summary test_summary_tail from stdout. Stop.
 
 ========================================================================
 8) Failure & fallback paths (use these BEFORE looping with more discovery subagents)
@@ -538,15 +589,24 @@ d) BLOCKER: "module path ambiguous" (`module_resolution_confidence` = "ambiguous
      → On answer, persist the chosen path back to `module_paths` and continue. NO new discovery subagents.
 
 e) TRANSIENT INFRA: Ubuntu sidecar / MCP tool errors (`lazy init failed`, `tool … not found after recovery`, `context deadline exceeded`, `connection refused` on `terraform-bot-ubuntu_*` tools) during **check-info-and-clone** or **implement-module** — especially right after pod create or cluster rollout.
-     → Retry the same tool call up to **3 times** with **15s** backoff between attempts (note `infra_retry=<n>` each time).
-     → Do **NOT** post Template E ("Workflow blocked") for these errors until retries are exhausted.
+     → Retry the **same spawn-context command** (clone-pack / stage-runner) up to **3 times** with **15s** backoff (note `infra_retry=<n>` each time).
+     → **NOT §8(e):** `tfbot_pack_error=`, missing `TFBOT_*_B64` env, `clone-pack.sh: not found` — use §8(g); never substitute ad-hoc `git clone`. `base64: invalid input` with TFBOT env set → wrong `$$` in command (single `$` only), not infra retry.
+     → Do **NOT** post Template E for pure MCP transport errors until retries are exhausted.
      → If the tool succeeds on retry, continue the stage normally.
      → If still failing after 3 retries, note `stage_summary:<current_stage>` value="blocked: Ubuntu MCP sidecar unavailable after retries; operator should check integration pod in guild sandbox namespace" and run Template E once.
+
+g) BLOCKER: terraform-bot script pack not materialized (`tfbot_pack_error=missing_pack`, `TFBOT_*_B64` unset in Ubuntu integration env, `clone-pack.sh: not found`).
+     → **Operator config** — run `tofu apply` for `terraform_bot` / `script_pack_version` on **`terraform-bot-ubuntu`**, then **recycle** that integration's sidecar. This is **not** PAT/auth failure and **not** §8(e).
+     → **`base64: invalid input` with TFBOT env present:** agent used `$$` in execute_series (PID expansion) — note `clone_blocker=wrong_shell_dollar_escape`; re-run with spawn-context command (single `$`). Do not recycle sidecar for this case.
+     → note `stage_summary:check-info-and-clone` (or current stage) `blocked: terraform-bot Ubuntu integration missing TFBOT_*_B64 env; tofu apply + recycle terraform-bot-ubuntu sidecar`
+     → STOP. Do **NOT** spawn a second clone subagent with manual `git clone` / HTTPS token URL / `gh repo clone`.
+     → `check-info-blocked-gate` routes to `create-pr` for Template E.
 
 f) FALLBACK: "module path not_found" (`module_resolution_confidence` = "not_found").
      Decision tree:
        1. Inspect `issue_details.body` for greenfield intent ("create a new module", "scaffold", "add module", "missing module", "new <provider>-<service>", "add from registry", "terraform registry", explicit "create").
-           2. If `discovery_repo=true` (see §0c / `${sop_discovery_modules_layout}`) AND greenfield intent → spawn **Template I** (`implement-module-discovery-scaffold`) per discovery layout SOP §4 — do NOT use Template H on discovery repos.
+           2. If `discovery_repo=true` (see §0c / `${sop_discovery_modules_layout}`) AND greenfield intent → spawn **Template I** (`implement-module-discovery-scaffold`) per discovery layout SOP §4 — do NOT use Template H or **Template G** (`implement-module-scaffold`) on discovery repos.
+       2b. If `module_quality_rework=true` and `module_paths` is non-empty → spawn **Template J** only (§5i) — fix gaps; never re-scaffold from scratch on discovery repos.
        3. Else if greenfield intent is unambiguous → **prefer Template H** (`implement-module-registry-wrap`): search `https://registry.terraform.io/v1/modules/search`, pick a published module + version, add a thin wrapper + `*.tftest.hcl`, run validate/test. This is the default for "new module" issues on generic module repos.
        4. If Template H leaves `registry_wrap_failed=true` OR `module_paths` still empty → fall back to **Template G** (`implement-module-scaffold`) from scratch in the same stage (still counts as one logical follow-up — do NOT spawn a third registry retry).
        5. Else (no greenfield intent) → call `ask_clarifying_question` exactly ONCE: "I couldn't find a `<hint>` module in `<repository_full_name>`. Should I (a) add one from the Terraform Registry (wrapper + tests + PR), (b) scaffold without registry, (c) use a different repo, or (d) skip?" Map answers to Template H / Template G / Template I (discovery) / blocked respectively.

@@ -24,3 +24,20 @@ output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
   value       = local.resolved_aws_integration_name
 }
+
+output "remote_runner_name" {
+  description = "Configured remote runner name when set."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].runner_name : ""
+}
+
+output "remote_runner_cli_start_command" {
+  description = "aiden-runner start command when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].cli_start_command : null
+  sensitive   = true
+}
+
+output "remote_runner_helm_install_command" {
+  description = "Helm install command when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : null
+  sensitive   = true
+}

@@ -2,36 +2,33 @@ Skill: Orchestration for **multi-cloud monorepo state splitting** — logical gr
 
 Keywords: terraform state split, monorepo, opentofu, tfstate, aws, azure, gcp, azurerm, google, tags, logical groups, appstack, stackgen mcp, state mv, moved block, import, convergence, remote runner, ubuntu cli, guild workflow, orphan module.
 
-## Workflow DAG (lean — 7 LLM stages)
+## Workflow DAG (lean v2 — 7 stages, script-heavy)
 
 ```
 ingest-and-split                              (script: preflight → download-state → split-manifest)
- → split-input-gate                          (conditional_skip — missing URI / ingest script-pack failure)
- → split-loop-gate                            (loop_stage — GO_BACK to ingest-and-split if count_reconciliation_ok != "true"; fan-in ingest output)
- → split-ingest-blocked-gate                  (conditional_skip — fan-in ingest + loop; skip on script_pack / reconcile / GO_BACK)
- → registry-and-import-codegen               (FAST: scaffold + import {} + registry mapping)
-   ├→ hcl-hydrate-per-group                  (parallel: tofu preflight → plan per group)
-   ├→ materialize-stackgen-appstacks         (parallel: StackGen MCP per group)
+ → ingest-blocked-gate                        (conditional_skip — missing URI / script-pack / reconcile false; NO GO_BACK loops)
+ → registry-and-import-codegen               (script: scaffold + prepare-parallel-artifacts + IaC PR via cp sync)
+   ├→ shell-converge-matrix                  (parallel: ONE script runner — hydrate-and-plan-matrix over sample groups)
+   ├→ materialize-appstacks-coordinator      (parallel: 4× appstack-materialize-runner-batch-<NN> in one fan-out)
    └→ orphans-secondary-pipeline             (parallel, optional: skip when orphans_bundle empty)
-                                             └→ multi-shard-plan-convergence
-                                                 → multi-shard-plan-infra-gate            (conditional_skip — tofu missing → final-gate)
-                                                 → multi-shard-plan-loop-gate
-                                                 → final-gate-and-memory
+                                             → final-gate-and-memory
 ```
 
-**Removed (2026-05):** separate `ingest-monolith`, `discover-db-anchors`, `allocate-related-resources`, `count-reconcile-loop` — four architect turns collapsed into one script-driven `ingest-and-split` stage. Split logic is deterministic Python, not LLM reasoning.
+**Removed (2026-05 v2):** `split-input-gate`, `split-loop-gate`, `split-ingest-blocked-gate`, `iac-pr-fast-path-gate`, `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, `multi-shard-plan-*` — false GO_BACK fan-in and architect probe thrash (trace `7b78ad9d`). HCL hydration + plan zero-diff now run in **`shell-converge-matrix`** via deterministic `hydrate-and-plan-matrix` script command; AppStack MCP uses pre-built **`batch_payloads.json`** from registry stage.
 
-The parallel layer matters because `hcl-hydrate-per-group` and `materialize-stackgen-appstacks` have **no real data dependency** on each other: MCP **`bulk_add_resources_to_appstack`** only needs `identifier` + `resource_type` (+ optional `configuration`) from the registry mapping, not the hydrated `generated.tf` bodies. Running them sequentially (the pre-split shape) was the single biggest source of primary-workflow wall-time on large states; per-address singular `add_resource_to_appstack` loops were the dominant MCP cost inside materialization — use bulk tools (integrations **PR #349**, max **${bulk_add_resources_max_per_call}** resources / **${bulk_connect_resources_max_per_call}** connections per call, chunk at **${bulk_resources_chunk_size}** / **${bulk_connections_chunk_size}**).
+**Removed (2026-05 v1):** separate `ingest-monolith`, `discover-db-anchors`, `allocate-related-resources`, `count-reconcile-loop` — collapsed into `ingest-and-split`.
+
+The parallel layer matters because **`shell-converge-matrix`** (tofu hydrate/plan) and **`materialize-appstacks-coordinator`** (StackGen MCP) have **no real data dependency** on each other: MCP **`bulk_add_resources_to_appstack`** only needs `identifier` + `resource_type` from the registry mapping, not hydrated `generated.tf` bodies. **`prepare-parallel-artifacts`** (registry stage) writes `sample_group_ids.json`, `batch_payloads.json`, and `identifier_map.json` so coordinators never spawn `*-extract-payloads` probe agents.
 
 **Disjoint note-key ownership in the parallel layer** (no cross-reads between siblings):
 
 | Stage | Owns | Reads (from registry-and-import-codegen upstream) |
 |-------|------|---------------------------------------------------|
-| `hcl-hydrate-per-group` | `hcl_hydration_status:<group_id>`, appends `import_failed_*` entries to `orphans_bundle` | `reverse_iac_summary`, `logical_group_manifest`, `repo_clone_path` |
-| `materialize-stackgen-appstacks` | `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>`, `stackgen_appstack_membership_report`, `stackgen_env_profile:<group_id>`, `stackgen_plan_run:<group_id>` | `registry_mapping_report`, `logical_group_manifest`, `orphans_bundle` (read-only snapshot) |
-| `orphans-secondary-pipeline` | `secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline` | `orphans_bundle` (snapshot at entry; the hydrate stage may append concurrently), `logical_group_manifest`, `iac_repository_url` |
+| `shell-converge-matrix` | `hcl_hydration_status:<group_id>`, `multi_plan_zero_diff_ok` | `sample_group_ids.json`, `groups/<group_id>/`, `reverse_iac_summary` |
+| `materialize-appstacks-coordinator` | `stackgen_appstack_map`, `stackgen_appstack_membership:<group_id>`, `stackgen_appstack_membership_report` | `batch_payloads.json`, `identifier_map.json`, `logical_group_manifest` |
+| `orphans-secondary-pipeline` | `secondary_workflow_payload`, `stage_summary:orphans-secondary-pipeline` | `orphans_bundle` (snapshot at entry) |
 
-`multi-shard-plan-convergence` then fans in: `hcl_hydration_status:* = plan_no_changes=true` for every group, `stackgen_appstack_membership:* = ok=true` for every group, and the orphan secondary handoff outcome.
+`final-gate-and-memory` fans in all three parallel branches: `multi_plan_zero_diff_ok: "true"` on sample groups, `stackgen_appstack_membership_report` (partial OK when `large_state_sample_mode=true`), and orphan handoff outcome.
 
 ## Stage entry protocol — `read_notes` → disk-mirror → cold-start fast-fail
 
@@ -49,11 +46,10 @@ Every stage starts with this exact sequence — no probes, no synchronous questi
 | Stage | Required keys (after read_notes + disk-mirror) | Discoverable, do not ask |
 |-------|------------------------------------------------|--------------------------|
 | `ingest-and-split` | workflow inputs: `monolith_state_uri` / `tfstate_file`, optional `iac_repository_url`, optional `grouping_strategy` / `max_resources_per_appstack` | — |
-| `registry-and-import-codegen` | `logical_group_manifest`, `group_state_paths`, `count_reconciliation_ok`, `monolith_state_local_path`, optional `repo_clone_path` | StackGen `resource_type` via `get_supported_resource_types`; MCP via `search_tools` |
-| `hcl-hydrate-per-group` (parallel) | `logical_group_manifest`, `repo_clone_path`, `reverse_iac_summary` (scaffold paths from prior stage), `registry_mapping_report`, `orphans_bundle` | per-group `tofu init` + `tofu plan -generate-config-out` is fully independent — fan out parallel `hcl-hydrate-runner-batch-<NN>` children |
-| `materialize-stackgen-appstacks` (parallel) | `logical_group_manifest`, `repo_clone_path`, `registry_mapping_report`, `reverse_iac_summary`, `orphans_bundle` (snapshot), optional `stackgen_project_name` | StackGen MCP attached → `search_tools`; human-readable project **name** (not UUID) → `me` if not in notes. Per-group MCP is independent — fan out parallel `appstack-materialize-runner-batch-<NN>` children. Does NOT read `hcl_hydration_status:*` — peer, not upstream |
-| `orphans-secondary-pipeline` (parallel) | `orphans_bundle` (snapshot at entry), `logical_group_manifest`, `iac_repository_url` | — |
-| `multi-shard-plan-convergence` (3-way fan-in) | `logical_group_manifest`, `repo_clone_path`, `hcl_hydration_status:<group_id>` (per group), `stackgen_appstack_map`, `stackgen_appstack_membership:*` | — |
+| `registry-and-import-codegen` | `logical_group_manifest`, `group_state_paths`, `count_reconciliation_ok`, `monolith_state_local_path`, `batch_payloads_path`, optional `repo_clone_path`, `pr_url` | StackGen `resource_type` via `get_supported_resource_types`; MCP via `search_tools` |
+| `shell-converge-matrix` (parallel) | `sample_group_ids.json` (from registry), `hcl_hydration_status:*`, `multi_plan_zero_diff_ok` | ONE `shell-converge-matrix-runner` with CONVERGE_EXECUTE_SERIES — **no** `hcl-hydrate-runner-batch-*` children |
+| `materialize-appstacks-coordinator` (parallel) | `batch_payloads.json`, `large_state_sample_group_ids` | Spawn **4×** `appstack-materialize-runner-batch-<NN>` in **one** `flow_type:"parallel"` message — max **1** create_agent fan-out on lead |
+| `orphans-secondary-pipeline` (parallel) | `orphans_bundle` (snapshot at entry), `logical_group_manifest`, `iac_repository_url` | Max 2 tool turns — skip when empty |
 | `final-gate-and-memory` | `count_reconciliation_ok`, `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report` + every required `submit_evidence` item | — |
 
 ## When `ask_clarifying_question` is appropriate (and when it isn't)
@@ -87,9 +83,21 @@ The Guild workflow's per-stage notes store appears to be **scoped per-stage exec
 
 ## Subagent-spawn discipline
 
-Prefer delegating each stage's subgoal to a dedicated subagent (via `create_agent`) rather than doing all the shell work in the architect's own context. Subagents run in isolated context windows with only the tools they need, which keeps token usage low and the architect free to coordinate. Spawn subagents freely — just apply the discipline below.
+Prefer delegating each stage's subgoal to a dedicated subagent (via `create_agent`) rather than doing all the shell work in the architect's own context. Subagents run in isolated context windows with only the tools they need, which keeps token usage low and the architect free to coordinate.
 
-- **Stable subagent name = subgoal id.** Use `<stage_id>-runner` for the main per-stage runner — e.g. `ingest-monolith-runner`, `discover-db-anchors-runner`, `registry-and-import-codegen-runner`, `multi-shard-plan-runner`. For finer-grained child subgoals use `<stage_id>-<verb>-<noun>`; for parallel batch fan-out use `<stage_id>-runner-batch-<NN>` (e.g. `hcl-hydrate-runner-batch-01..NN`, `appstack-materialize-runner-batch-01..NN`, `multi-shard-plan-runner-batch-01..NN`). **Never** use suffixes like `-v2`, `-scripts`, `-scripts-full`, or one-off experiment names like `test-*`, `recovery-probe` — those signal retry-thrash, not re-planning.
+### Coordinator hard caps (mandatory — trace `7b78ad9d`)
+
+| Stage | Max `create_agent` calls on lead | Allowed subagent names |
+|-------|----------------------------------|------------------------|
+| `ingest-and-split` | 2 (runner + one retry) | `ingest-and-split-runner` only |
+| `registry-and-import-codegen` | 1 | `registry-and-import-codegen-runner` only |
+| `shell-converge-matrix` | 1 | `shell-converge-matrix-runner` only |
+| `materialize-appstacks-coordinator` | 1 fan-out message | `appstack-materialize-runner-batch-01` … `batch-04` |
+| `orphans-secondary-pipeline` | 0 | No subagents — read_notes + note/notify only |
+
+**Forbidden suffixes (never spawn):** `*-probe`, `*-disk-mirror`, `*-extract-payloads`, `*-read-payloads`, `*-v2`, `*-scripts`, `recovery-probe`, `hcl-hydrate-runner-batch-*` (script owns hydration).
+
+- **Stable subagent name = subgoal id.** Use `<stage_id>-runner` for script stages; parallel AppStack fan-out uses `appstack-materialize-runner-batch-<NN>`. **Never** use suffixes like `-v2`, `-scripts`, `-scripts-full`, or one-off experiment names like `test-*`, `recovery-probe` — those signal retry-thrash, not re-planning.
 - **`task_type="terminal_calling"`** for shell-only subagents. The default `planning` is twice as expensive per round-trip and unnecessary for "write a file and run a script."
 - **`goal` length ≤ 1000 characters.** Write the actual `jq` / bash to `$HOME/.<workflow_run_id>/scripts/...` via `${ubuntu_tool_prefix}_create_files`; the `goal` references the script **path**, not the script body.
 - **No retry-thrash on the same subgoal.** If a subagent doesn't converge (timeout, partial output, refusal), **re-plan** the subgoal — split it into smaller children, change tool list, or change `task_type` — and spawn the next attempt with a clearly different name (e.g. `<stage_id>-runner-build-seeds`). Re-running an identical spawn payload is the anti-pattern; either decompose further or fall back to in-line `${ubuntu_tool_prefix}_*` for that one subgoal.
@@ -115,20 +123,18 @@ At **`ingest-and-split`** the architect is a **coordinator only**:
 
 1. **`agent_name` MUST be exactly `ingest-and-split-runner`** — never suffix variants (`ingest-and-split-split-runner`, `ingest-and-split-verify-*`, `ingest-and-split-disk-probe`).
 2. **Architect tools on this stage:** `read_notes`, `note`, `create_agent` only — **never** `${ubuntu_tool_prefix}_execute_*` (runner owns shell).
-3. **INGEST STOP RULE:** when `read_notes` shows `count_reconciliation_ok: "true"` AND `logical_group_count >= 10` AND `logical_group_manifest_path` present → `note stage_summary:ingest-and-split=ok` → final line → **return**. Runner must `note()` every handoff key from stdout first (trace `437e7c10`).
-4. **Max 2 runner spawns** (initial + one retry on failure). Trace `d0bb9462`: thrashed past 107-group success — do not repeat.
+3. **INGEST STOP RULE:** when `read_notes` shows `count_reconciliation_ok: "true"` AND `logical_group_count >= 10` AND `logical_group_manifest_path` present → `note stage_summary:ingest-and-split=ok` → final line → **return**. Runner must `note()` handoff keys from **`$WORK_ROOT/.work/ingest-handoff.txt`** or **`$WORK_ROOT/notes.json`** — **not** execute_series stdout (trace `88b0393c`: stdout truncates on 12k+ resource states).
+4. **INGEST RETRY:** one re-spawn only, **same spawn_contract goal verbatim** — never a custom goal describing download/split steps. **`logical_group_count=unknown` + execute_series < 60s** → runner skipped **spawn_monolith_uri pre-write** or `MONOLITH_URI_unset` (trace **8c7ea4ad**) — not missing embed. Missing `script_pack_version` after a **long** series → embed not pasted — not PAT/reconcile failure.
+5. **Max 2 runner spawns** (initial + one retry on failure). Trace `d0bb9462`: thrashed past 107-group success — do not repeat.
 
 ### create_agent goal template — `ingest-and-split-runner`
 
+Use **spawn_contract goal verbatim** — do not use the legacy template below.
+
 ```
 agent_name: ingest-and-split-runner
-tool_names: ["${ubuntu_tool_prefix}_execute_command","${ubuntu_tool_prefix}_execute_series","note","read_notes"]
-task_type: terminal_calling
-max_llm_calls: ${subagent_budgets.script_runner_max_llm_calls}
-max_tool_iterations: ${subagent_budgets.script_runner_max_tool_iterations}
-timeout_seconds: ${subagent_budgets.script_runner_timeout_seconds}
-goal: |
-  WORK_ROOT=$HOME/.<workflow_run_id> (preflight creates it if missing). read_notes monolith_state_uri first. ONE execute_series via bash -s heredoc _embed_dbsplit_run ingest-and-split WORK_ROOT "$URI" — never /bin/sh. Export DBSPLIT_EMBEDDED=1 DBSPLIT_ALLOCATE_SHA256=${script_pack_allocate_sha256}. note handoff keys + count_reconciliation_ok. No create_files / search_skill / mkdir probes.
+goal: (copy from spawn_contract — read_notes → write .work/spawn_monolith_uri → paste INGEST_EXECUTE_SERIES → cat .work/ingest-handoff.txt → note handoff keys)
+context: includes INGEST_EXECUTE_SERIES_B64 + INGEST_EXECUTE_SERIES_DECODE_COMMAND (pack ${script_pack_version}) — create_files then execute_series; never paste heredoc
 ```
 
 ## Large-state auto-promote heuristic
@@ -146,6 +152,18 @@ Rationale: **`tag_seeded_connectivity` with cap `0` (unlimited)** keeps dependen
 
 **Module defaults (when webhook omits fields):** `iac_repository_url` → `${default_iac_repository_url}` (if set); `default_branch` → `${default_branch}`; `stackgen_project_name` → `${stackgen_project_name_default}`.
 
+## Large-state sampling (> 40 logical groups)
+
+Monoliths that split into **more than 40** `group_id` entries still scaffold **all** groups under `groups/<group_id>/` for the IaC PR, but **AppStack MCP**, **HCL hydration**, and **plan convergence** operate on a **sample of 20 groups** (sorted `group_id`, first 20) so wall-time stays bounded:
+
+```
+large_state_sample_mode = (logical_group_count > 40)
+large_state_sample_size = min(20, logical_group_count)
+large_state_sample_group_ids = first N group_ids from logical_group_manifest
+```
+
+Each parallel downstream stage recomputes this at entry if notes are missing. **`stackgen_appstack_membership_report`** must include `"partial": true`. Evidence at final gate accepts sample-only AppStack/hydration/plan proof when `large_state_sample_mode=true`.
+
 ## Evidence gate at `final-gate-and-memory`
 
 Before declaring success, verify a successful `submit_evidence` call exists in this workflow run for each `required_items` entry of **`db-monorepo-state-split-evidence`**:
@@ -158,6 +176,17 @@ Before declaring success, verify a successful `submit_evidence` call exists in t
 - `multi_shard_plan_zero_diff_evidence`
 
 If any are missing OR `count_reconciliation_ok != "true"` OR `multi_plan_zero_diff_ok != "true"`, this stage **MUST** fail with `notify({status:'evidence_missing', missing_items:[…]})`. Returning "vacuous gate complete" is a workflow defect — it produced silent no-op runs in `019e20308ea374c8bbc134d5c0ef0860`.
+
+## IaC repo PR handoff (final gate)
+
+When `iac_repository_url` resolved and upstream gates pass, open a **pull request** — never push directly to `default_branch`:
+
+1. `cd $repo_clone_path` (from notes / disk mirror).
+2. One `${ubuntu_tool_prefix}_execute_series`: `git checkout -B split/<workflow_run_id>` → `git add groups/` → `git commit` → `git push -u origin split/<workflow_run_id>`.
+3. Same series or follow-up: `gh pr create --base <default_branch> --head split/<workflow_run_id> --title "Split monolith tfstate (<workflow_run_id>)" --body "<tables>"`.
+4. `note("iac_pr_url", "<url>")`, `note("iac_push_status", "ok"|"failed")`, `note("iac_push_branch", "split/<workflow_run_id>")`.
+
+Requires **write-scope** `GIT_TOKEN` on the Ubuntu integration (same secret as clone). If push succeeds but `gh pr create` fails (e.g. duplicate branch), `note iac_push_status=failed` and include the branch name in `notify` so operators can open the PR manually.
 
 ## Remote runner vs Ubuntu CLI
 
@@ -218,17 +247,17 @@ Production traces **`9771916a56b3`** and **`1e0ebb22`** showed architect/runner 
 1. **`WORK_ROOT=$HOME/.<workflow_run_id>/`** — from stagerunner `[Workflow execution]` header. **WORK_ROOT may not exist yet** — `cmd_preflight` creates it; never treat a missing directory as a hard blocker or run standalone `mkdir` probes.
 2. **`execute_series` `working_dir` MUST be `/` or `/home/integration`** — never `WORK_ROOT` before preflight (trace `5740880b`: chdir fails).
 3. **Architect never runs Ubuntu tools** (except `cat …/notes.json` at stage entry). Spawn exactly one `<stage_id>-runner` subagent; wait; `note` handoff keys.
-3. **One `execute_series` per runner turn** — paste the terraform-rendered block between `---BEGIN INGEST_EXECUTE_SERIES---` / `---END INGEST_EXECUTE_SERIES---` **verbatim** into ONE `execute_series` command (after `export MONOLITH_URI='…'`). The block fetches canonical scripts from **private** `appcd-dev/solutions` via **`gh api`** (or GitHub REST with `GITHUB_TOKEN`/`GH_TOKEN`/`GIT_TOKEN`) — never unauthenticated `raw.githubusercontent.com` (404), never base64/inline ~700-line Python in tool JSON (trace `135a18bc` truncation → SHA mismatch). Use **`/bin/bash << 'DBSPLIT_INGEST_EXECUTE'`** (never `/bin/sh`).
+3. **Ingest runner tool order:** (a) `read_notes monolith_state_uri`; (b) ONE `execute_command` → `printf '%s' '<uri>' > $WORK_ROOT/.work/spawn_monolith_uri`; (c) ONE **`create_files`** → `$WORK_ROOT/.work/ingest-embed.b64` from **`INGEST_EXECUTE_SERIES_B64`** (verbatim, no printf wrapper); (d) ONE `execute_series` (`timeout_seconds=${subagent_budgets.script_runner_timeout_seconds}`, `working_dir=/`) — command = **`INGEST_EXECUTE_SERIES_DECODE_COMMAND`** exactly (`base64 -d …/ingest-embed.b64 | /bin/bash`). **Never** paste heredoc or `printf '%s' '<b64>'` (trace **f23d78e0** / **ffc0a822**: EOF/quoting). Pack **${script_pack_version}** — scripts via `gh api` inside embed.
 4. **`DBSPLIT_EMBEDDED=1` is mandatory** — stage-runner rejects direct `$WORK_ROOT/scripts/stage-runner.sh` invocation.
 5. **`DBSPLIT_ALLOCATE_SHA256=${script_pack_allocate_sha256}`** — sha256 gate for `allocate_manifest.py` (script pack version **${script_pack_version}**).
 6. **`submit_evidence` only at `final-gate-and-memory`** — never during ingest/discover/MCP stages.
 7. **No `load_skill`** when `[Runbook Context]` / `### Runbook:` already inlined the SOP.
 8. **Mirror `stackgen_project_name`** at ingest when workflow input or module default **`${stackgen_project_name_default}`** is non-empty.
-9. **Ingest input normalization (architect, before spawn):** resolve `monolith_state_uri` from inputs (`monolith_state_uri`, `tfstate_file`), nested JSON in user message, or prose URLs; `note("monolith_state_uri", …)`. If empty → `blocked:missing_monolith_state_uri: "true"` and **do not spawn** runner (`split-input-gate` skips downstream). After **two runner failures**, emit `blocked:three_runner_attempts_failed: "true"` — never spawn inline-python or `*-direct-runner` recovery agents.
+9. **Ingest input normalization (architect, before spawn):** resolve `monolith_state_uri` from inputs (`monolith_state_uri`, `tfstate_file`), nested JSON in user message, or prose URLs; `note("monolith_state_uri", …)`. If empty → `blocked:missing_monolith_state_uri: "true"` and **do not spawn** runner (`ingest-blocked-gate` skips downstream). After **two runner failures**, emit `blocked:three_runner_attempts_failed: "true"` — never spawn inline-python or `*-direct-runner` recovery agents.
 10. **Absolute paths in Ubuntu tools:** spawn contract resolves `WORK_ROOT={{work_root}}` to the integration scratch directory. Pass that **literal path** in every `execute_series` command and as the `ingest-and-split` argument — **never** `$WORK_ROOT`, `$HOME`, or other unexpanded variables inside tool JSON (production trace `09ff14b8ad27`).
-11. **Hydrate infra preflight:** before any `tofu plan`, run `command -v tofu || command -v terraform`. Missing binary → `blocked:ubuntu_infra_tofu_missing: "true"` and return — do **not** route all addresses to `orphans_bundle` (`multi-shard-plan-infra-gate` skips the plan loop).
+11. **Hydrate infra preflight:** `hydrate-and-plan-matrix` script command runs `command -v tofu || command -v terraform` internally. Missing binary → `blocked:ubuntu_infra_tofu_missing: "true"` and `multi_plan_zero_diff_ok: "false"` — final-gate reads these notes (no separate plan loop gates).
 
-**Canonical execute_series (paste verbatim from spawn context — fetches scripts via authenticated GitHub API; ~2KB bootstrap):**
+**Canonical execute_series (paste verbatim from spawn context — base64 embed bootstrap; ~2KB):**
 
 ```bash
 /bin/bash <<'DBSPLIT_INGEST_EXECUTE'
@@ -237,7 +266,7 @@ export HOME=${ubuntu_integration_home}
 WORK_ROOT="${ubuntu_integration_home}/.{{workflow_run_id}}"
 MONOLITH_URI="<monolith_state_uri_or_tfstate_file>"
 mkdir -p "$WORK_ROOT/scripts"
-# gh api repos/appcd-dev/solutions/contents/...?ref=${script_pack_git_ref} (or curl + GITHUB_TOKEN)
+# base64-decode allocate_manifest.py + stage-runner.sh from spawn context
 # verify SHA ${script_pack_allocate_sha256}, then:
 export DBSPLIT_EMBEDDED=1
 export DBSPLIT_ALLOCATE_SHA256="${script_pack_allocate_sha256}"
@@ -245,11 +274,15 @@ bash -s ingest-and-split "$WORK_ROOT" "$MONOLITH_URI" < "$WORK_ROOT/scripts/stag
 DBSPLIT_INGEST_EXECUTE
 ```
 
-Spawn context includes the full terraform-rendered block between `---BEGIN INGEST_EXECUTE_SERIES---` / `---END INGEST_EXECUTE_SERIES---` — paste **verbatim** into ONE `execute_series` command (after `export MONOLITH_URI='…'`).
+After success, handoff keys are in **`$WORK_ROOT/notes.json`** and **`$WORK_ROOT/.work/ingest-handoff.txt`** — runner `note()`s from those files, not stdout.
 
-**Commands:** `preflight WORK_ROOT` | `download-state WORK_ROOT [URI]` | `discover-anchors WORK_ROOT [STATE_PATH]` | `allocate-manifest WORK_ROOT [STATE_PATH] [STRATEGY] [CAP]` | `ingest-and-split WORK_ROOT [URI]` | `verify-script-pack WORK_ROOT`
+Spawn context includes **`INGEST_EXECUTE_SERIES_B64`** and **`INGEST_EXECUTE_SERIES_DECODE_COMMAND`** — `create_files` the B64, then run decode command in `execute_series` **after** writing `.work/spawn_monolith_uri`. Do not paste the raw heredoc block.
+
+**Commands:** `preflight WORK_ROOT` | `download-state WORK_ROOT [URI]` | `discover-anchors WORK_ROOT [STATE_PATH]` | `allocate-manifest WORK_ROOT [STATE_PATH] [STRATEGY] [CAP]` | `ingest-and-split WORK_ROOT [URI]` | `verify-script-pack WORK_ROOT` | `prepare-parallel-artifacts WORK_ROOT` | `hydrate-and-plan-matrix WORK_ROOT` | `iac-pr-pipeline WORK_ROOT [REPO] [BRANCH] [RUN_ID]`
 
 **Anti-patterns (production failures):**
+- Pasting INGEST_EXECUTE_SERIES **without** writing `.work/spawn_monolith_uri` first → **~14s** series, `error=MONOLITH_URI_unset`, empty handoff (trace **8c7ea4ad**).
+- `note("monolith_state_uri", "monolith_state_uri=https://…")` — wrong value shape; use `note("monolith_state_uri", "https://…")` for audit only; execution URI goes in **spawn_monolith_uri** file.
 - `bash "$WORK_ROOT/scripts/stage-runner.sh" ingest-and-split …` → **script_pack_error** (agent-authored runner).
 - `${ubuntu_tool_prefix}_create_files` writing `stage-runner.sh` / `allocate_manifest.py` on ingest runner.
 - `search_skill` / `find /tmp` discovery loops before running the series above.
@@ -343,7 +376,7 @@ Anti-pattern: writing a single `generated.tf.json` per group "because it's easie
 |-----|---------|
 | `repo_clone_path` | Local clone for IaC + scripts (use `$HOME/.<workflow_run_id>/repo`; see **Ephemeral workspace** below) |
 | `monolith_state_uri` | s3://, gcs://, https://, Google Drive link, or path for monolith state. **Alias:** `tfstate_file` (cron/webhook payloads) |
-| `blocked:missing_monolith_state_uri` | `"true"` when ingest could not resolve a state URI — `split-input-gate` skips to `final-gate-and-memory` |
+| `blocked:missing_monolith_state_uri` | `"true"` when ingest could not resolve a state URI — `ingest-blocked-gate` skips to `final-gate-and-memory` |
 | `iac_repository_url` | HTTPS or SSH clone URL for IaC repo. **Alias:** `iac_repo_url`. May be omitted for state-only analysis runs |
 | `monolith_state_local_path` | Downloaded `terraform.tfstate` or `json` snapshot path (writable; under `$HOME/.<workflow_run_id>/` when the default workspace is read-only) |
 | `monolith_resource_count` | Integer: total resource **instances** in monolith (after filters) |
@@ -427,7 +460,7 @@ When emitting "Blocking Items for Iteration N" in `stage_summary:*` or final `no
 
 When `orphans_bundle` is non-empty after registry / AppStack mapping, build `secondary_workflow_payload` and **invoke** **`orphan-iac-module-authoring`** — use workflow-start tooling if present; otherwise `notify` with JSON.
 
-In **`db-monorepo-state-split-convergence`**, this handoff (**`orphans-secondary-pipeline`**) is wired to start **after** `registry-and-import-codegen` **in the 3-way parallel layer** alongside **`hcl-hydrate-per-group`** and **`materialize-stackgen-appstacks`**. That reduces wall-clock time: HCL hydration, AppStack MCP work, and orphan kickoff do not serialize on each other. **`multi-shard-plan-convergence`** then **fans in** — it waits until **all three** branches complete before the TF / StackGen plan matrix.
+In **`db-monorepo-state-split-convergence`**, orphan handoff (**`orphans-secondary-pipeline`**) runs **in the 3-way parallel layer** alongside **`shell-converge-matrix`** and **`materialize-appstacks-coordinator`**. **`final-gate-and-memory`** fans in from all three branches.
 
 **Concurrency hygiene:** concurrent stages share the same workflow **notes** store. Prefer **disjoint keys** per branch (`hcl_hydration_status:<group_id>`, `stackgen_appstack_map`, `stackgen_mcp_errors`, `secondary_workflow_payload`, `stage_summary:…`) and avoid two stages rewriting the same JSON blob without read-modify-write discipline. The one shared blob in the parallel layer is **`orphans_bundle`** — `hcl-hydrate-per-group` may append `import_failed_*` entries to it; `orphans-secondary-pipeline` and `materialize-stackgen-appstacks` should snapshot the bundle at their stage entry and operate on the snapshot, with the bundle's true final state observed by `multi-shard-plan-convergence` and `final-gate-and-memory`.
 
@@ -437,12 +470,12 @@ Guild's execution plan computes **topological layers** from `stage_depends_on`. 
 
 | Layer (conceptual) | Stages | Why |
 |--------------------|--------|-----|
-| After registry-and-import-codegen (3-way parallel) | `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, `orphans-secondary-pipeline` | Hydration is `tofu plan -generate-config-out` per group; MCP only needs `identifier` + `resource_type` (registry mapping); orphan handoff only needs `orphans_bundle`. No cross-reads between siblings. |
-| Fan-in | `multi-shard-plan-convergence` | Needs `hcl_hydration_status:<group_id>=true` per group, **`stackgen_appstack_map`** (or skip note), and orphan branch finished (even if skipped when `orphans_bundle` empty). |
+| After registry-and-import-codegen (3-way parallel) | `shell-converge-matrix`, `materialize-appstacks-coordinator`, `orphans-secondary-pipeline` | Script hydrate/plan, MCP AppStacks, orphan kickoff — no cross-reads between siblings. |
+| Fan-in | `final-gate-and-memory` | Needs `multi_plan_zero_diff_ok`, `stackgen_appstack_membership_report`, orphan branch finished. |
 
 Earlier steps stay **linear**: ingest → discover → allocate → count → registry-and-import-codegen — each depends on prior artifacts.
 
-**Per-group parallel fan-out inside hydration and AppStack materialization:** within `hcl-hydrate-per-group`, spawn parallel children `hcl-hydrate-runner-batch-<NN>` (each owning a disjoint group_id range, `flow_type:"parallel"`, `task_type="coding"`). Per-group `tofu init` + `tofu plan -generate-config-out` is fully independent, so this is the highest-leverage spot for subagent fan-out on shell work. Within `materialize-stackgen-appstacks`, spawn parallel children `appstack-materialize-runner-batch-<NN>` (same `flow_type:"parallel"` pattern; each child owns a disjoint group_id range and runs the full create → add → membership gate → connect flow for its slice). Per-group MCP work has no cross-group dependency — only `stackgen_appstack_membership:<group_id>` and `stackgen_appstack_map[group_id]` keys must stay disjoint per child; the lead merges the roll-up report after fan-in. Target 8–16 batch children for ~160 groups; halve concurrency on MCP 429 / rate-limit errors. The same batch pattern applies inside `multi-shard-plan-convergence` (`multi-shard-plan-runner-batch-<NN>`).
+**Parallel coordinator pattern:** `materialize-appstacks-coordinator` spawns **4×** `appstack-materialize-runner-batch-<NN>` in **one** `flow_type:"parallel"` message using pre-built `batch_payloads.json`. **`shell-converge-matrix`** uses **one** `shell-converge-matrix-runner` with CONVERGE_EXECUTE_SERIES — no per-group LLM hydration children.
 
 ## Integration boundaries
 

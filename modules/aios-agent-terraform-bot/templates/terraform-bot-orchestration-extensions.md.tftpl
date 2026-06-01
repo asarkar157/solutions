@@ -5,8 +5,8 @@
 | Stage | Owns (write) |
 |-------|----------------|
 | `check-info-and-clone` | trigger fields, `issue_details`, `repo_clone_path`, `repo_head_sha`, `gate_result` |
-| `implement-module` | `target_module_hints`, `module_paths`, `module_resolution_confidence`, `registry_*`, `scaffold_summary` |
-| `validate-and-test` | `validation_summary`, `static_security_findings`, `test_summary`, `quality_check_*`, `module_quality_summary` |
+| `implement-module` | `target_module_hints`, `module_paths`, `module_resolution_confidence`, `registry_*`, `scaffold_summary`, `discovery_greenfield_validated`, `quality_check_*`, `module_quality_summary` (discovery greenfield inline validate) |
+| `validate-and-test` | `validation_summary`, `static_security_findings`, `test_summary`, `test_summary_file`, `test_summary_tail`, `validate_markers_file`, `module_quality_gaps`, `quality_check_*`, `module_quality_summary` |
 | `create-pr` | `pr_url`, `pr_deferred`, `working_branch`, `registered_versions`, final `stage_summary:create-pr` |
 
 Optional soft context: `deployment_impact` may be noted in `validate-and-test` or `create-pr` when `graph_query` was run inline — never a hard gate.
@@ -24,23 +24,29 @@ Optional soft context: `deployment_impact` may be noted in `validate-and-test` o
 | Independent per-module validate/test | `${ubuntu_tool_prefix}_execute_parallel` or parallel subagents — not N `execute_command` in one turn |
 | Shell-heavy stage work (clone / validate / PR / discovery check) | **ONE** `${ubuntu_tool_prefix}_execute_series` embedding `stage-runner.sh` via heredoc (script-pack §0–§2) |
 
-Inside each `execute_series`, target **≤ 270s** per step (~300s integration ceiling). Script-runner subagent goals **≤ 1000 chars** — say `load_skill` **`${module_prefix}-workflow-script-pack`** and run the §2 block for the stage; do **not** paste the full heredoc into the goal.
+Inside each `execute_series`, target **≤ 270s** per step (~300s integration ceiling). Planner subagent spawn goals **≤ ~800 chars** — Guild may truncate oversized goals; spawn contracts **replace** `goal` when the subagent name matches (orchestration §5d). Never paste full shell/Python/heredoc fix scripts in the goal — use spawn-context **Clone / Validate / Discovery** lines and `read_notes` (`test_summary_tail`, `module_quality_gaps`). **do NOT** `load_skill` on embedded stages.
 
-**Script pack (§3h).** The Ubuntu MCP container may reset between **separate** tool calls — **never** `create_files` workflow scripts or module files in one call and validate in another. Embed `stage-runner.sh` in a single `execute_series` per Ubuntu subagent. `WORK_ROOT=$HOME/.<workflow_run_id>` (from `[Workflow execution]` header).
+**Script pack (§3h).** The Ubuntu MCP container may reset between **separate** tool calls — **never** `create_files` workflow scripts or module files in one call and validate in another. Embed `stage-runner.sh` in a single `execute_series` per Ubuntu subagent. `WORK_ROOT` = spawn-context absolute path (typically `/home/integration/.<workflow_run_id>` — never paste `$HOME/.wf-*` in shell paths; trace `e57f96aee494`).
+
+**Shell `$` in execute_series:** copy spawn-context commands verbatim. Use **single `$`** for `$PD`, `$TFBOT_*`, `$WORK_ROOT`. **Never `$$`** before a variable name — bash treats `$$` as the shell PID and breaks pack decode (`base64: invalid input`; trace `c72004698186`).
+
+**HalGuard cost control (§3i).** Paste-only `task_type=terminal_calling` runners must keep planner prompts minimal — spawn with short goals, paste embed verbatim, **never** `load_skill` `${module_prefix}-workflow-script-pack` on embedded stages. HalGuard pre-checks on 100k+ token prompts drove ~35% of run cost in audits. Workflow metadata `halguard_skip_subagent_task_types=terminal_calling` signals Guild to skip or batch HalGuard for these subagents.
 
 **Subagent spawn discipline** (matches `aios-agent-db-state-splitter`):
 - Stable name: `<stage_id>-runner` or approved `<stage_id>-<phase>` from §5b — **never** `-v2`, `recovery-probe`, `verify-auth`.
 - `task_type="terminal_calling"` for shell-heavy subagents.
 - If a subagent does not converge, **re-plan** (smaller scope, different tools) — do not re-run the same payload under a new name.
-- **Planner iteration budget:** Guild raises tool iterations to **40** for `terraform-module-update` stages — still batch notes per §3i so the budget goes to `create_agent`, not atomic `note` calls.
+- **Planner iteration budget:** Host raises tool iterations to **40** for `terraform-module-update` stages — still batch notes per §3i so the budget goes to subagent spawns, not atomic `note` calls.
 
 ========================================================================
 3e) Workflow shape (terraform-module-update) — linear 4 steps
 ========================================================================
 
 ```
-check-info-and-clone → check-info-blocked-gate → implement-module → validate-and-test → validate-infra-gate → validate-loop-gate → create-pr
+check-info-and-clone → check-info-blocked-gate → implement-module → validate-greenfield-skip-gate → validate-and-test → validate-infra-gate → validate-draft-pr-gate → validate-loop-gate → create-pr
 ```
+
+**Discovery greenfield fast-path** (`validate-greenfield-skip-gate`): when `implement-module-discovery-scaffold` echoed `discovery_greenfield_validated=true` (scaffold + validate in one embed), skip **`validate-and-test`** and jump to **`validate-infra-gate`** — avoids duplicate validate runners and GO_BACK loops for init errors caught at scaffold time.
 
 **Intake fast-path** (`check-info-blocked-gate`): when clone **actually failed** in `check-info-and-clone` (`clone_blocker=*` or `stage_summary:check-info-and-clone=blocked`), skip directly to **`create-pr`** for one GitHub-only blocker comment — do not run implement/validate. **`gh_env_present=false` alone is NOT a skip trigger** when `repo_clone_path` is set (public anonymous clone).
 
@@ -48,11 +54,27 @@ check-info-and-clone → check-info-blocked-gate → implement-module → valida
 
 **Infra fast-path** (`validate-infra-gate`): when `module_quality_summary: BLOCKED`, skip the rework loop and jump to **`create-pr`** for a GitHub-only blocked comment — do not re-scaffold.
 
-**Quality rework loop** (`validate-loop-gate`) returns to **`implement-module`** when `module_quality_summary` is `NEEDS_REVISION` (code FAIL only — bounded by `module_quality_max_iterations`). `create-pr` always runs after the gates finish (PASS, BLOCKED, or max iterations).
+**Quality rework loop** (`validate-loop-gate`) returns to **`implement-module`** when `module_quality_summary` is `NEEDS_REVISION` (code FAIL only — bounded by `module_quality_max_iterations`). Exits the loop on `PASS` **or** `BLOCKED` (infra / terminal failure). `create-pr` always runs after the gates finish (PASS, BLOCKED, or max iterations).
+
+**PR on fmt+init+validate pass:** `validate-and-test-runner` opens a **draft** PR only when `pr_eligible_fmt_validate=true` (`fmt_exit=0`, `init_exit=0`, `validate_exit=0`). **No PR** on init/validate failure — rework loop fixes HCL/`variables.tf.json`, then re-run validate. Test-only `NEEDS_REVISION` may still open a draft PR. `create-pr` comments on the issue once `pr_url` exists or after max-iter notify.
+
+**Draft PR fast-path (`validate-draft-pr-gate`, default):** when `pr_eligible_fmt_validate=true` (fmt+init+validate) or `pr_url` is set, skip `validate-loop-gate` → `create-pr` opens the draft PR + issue comment (test fixture gaps do not require three rework iterations). Set `continue_quality_loop_after_draft_pr=true` to loop on test failures before `create-pr` when no `pr_url` yet. Runner stdout uses `pr_deferred=<reason>` (never bare `true`) when commit did not produce `pr_url`.
+
+**create-pr precedence (trace 573f84aa9000):** When loop-gate JSON contains `max iterations reached` and `pr_url` is still empty, use **step 1** (default: draft `create-pr-runner` when `module_paths` is set) — not §3b. Set `draft_pr_on_max_iterations_exhausted=false` for notify-only.
+
+**Stage-boundary spawn rules (hard):**
+| Stage | Allowed Ubuntu runners | Forbidden |
+|-------|------------------------|-----------|
+| `check-info-and-clone` | `check-info-and-clone-clone` | `implement-module-*`, `validate-and-test-runner`, `create-pr-*`, `load_skill` |
+| `implement-module` | `implement-module-discovery-scaffold` (discovery + Template J rework), `implement-module-registry-wrap`, `implement-module-scaffold` (**non-discovery only**) | `validate-and-test-runner`, `create-pr-*`, `load_skill`, `implement-module-scaffold` when `discovery_repo=true` |
+| `validate-and-test` | `validate-and-test-runner` | `implement-module-*`, `create-pr-*`, `load_skill` |
+| `create-pr` | `create-pr-runner`, `create-pr-register`, `create-pr-notify`, `create-pr-comment` | `validate-and-test-runner`, `implement-module-*`, `create-pr-evidence-submit` (not in spawn_contracts — use architect `submit_evidence`) |
 
 ========================================================================
 3f) Evidence gate (`create-pr`)
 ========================================================================
+
+When `pr_url` is set and the issue comment is posted, required evidence may document `validation_summary` + `pr_url` even if `module_quality_summary` is still `NEEDS_REVISION` (draft PR + fixture gaps). Optional checklist items (`stackgen_registration_evidence`, full PASS) must not block the comment.
 
 Before declaring workflow success, verify `submit_evidence` for every **required** item on checklist **`terraform-bot-module-update-evidence`**:
 
@@ -79,11 +101,11 @@ Do **not** use to recover `repository_full_name`, `repo_clone_path`, or prior-st
 
 Load **`${module_prefix}-workflow-script-pack`** before spawning Ubuntu script-runner subagents.
 
-1. `WORK_ROOT=$HOME/.<workflow_run_id>` — copy `workflow_run_id` from the stagerunner `[Workflow execution]` header verbatim.
+1. `WORK_ROOT` from spawn context / clone stdout (`repo_clone_path` parent) — absolute path; do not use literal `$HOME/.wf-*` in execute_series commands.
 2. Each Ubuntu subagent: `load_skill` script-pack → **ONE** `execute_series` with the §2 block (`_embed_tfbot_run` + heredoc). **Forbidden:** `create_files` for scripts or module files that must survive to a **later** tool call.
 3. Runner stdout `key=value` lines are mirrored to `$WORK_ROOT/notes.json` inside the same shell; subagents still `note` the same keys for planner handoff.
-4. **Discovery scaffold** (`implement-module-discovery-scaffold`): `max_llm_calls=${subagent_budgets.hcl_author_max_llm_calls}`, `task_type=terminal_calling` — ONE execute_series: §2.5 `discovery-check`, then write all discovery layout files via `printf`/heredoc/python **in that same series** (see discovery-modules-layout §4). Optional inline `terraform fmt` only in the same series — full validate belongs in `validate-and-test`.
-5. **Registry wrap / greenfield scaffold** (Templates H/G): ONE execute_series for registry `curl`/`jq` when needed; write wrapper HCL via shell in the **same** series. Defer deep validate to `validate-and-test` §2.2.
-6. **Never omit `max_llm_calls`** on create_agent — omitted values often land at ~15 and fail mid-run with `[stop_agent_error] max LLM calls (15) exceeded`. See orchestration §5e for the full table.
+4. **Discovery scaffold** (`implement-module-discovery-scaffold`): `max_llm_calls=${subagent_budgets.script_runner_max_llm_calls}`, `task_type=terminal_calling` — ONE execute_series: §2.5 `discovery-check`, write all discovery layout files, **then inline `stage-runner validate`** in the **same** series (see discovery-modules-layout §4). Echo `discovery_greenfield_validated=true` — `validate-greenfield-skip-gate` skips duplicate `validate-and-test`. **Forbidden:** `load_skill`, separate validate runner.
+5. **Registry wrap / greenfield scaffold** (Templates H/G): ONE execute_series for registry `curl`/`jq` when needed; write wrapper HCL via shell in the **same** series. Defer deep validate to `validate-and-test` §2.2 unless discovery greenfield (inline validate above).
+6. **Spawn contracts must set `max_llm_calls`** — omitted values often land at ~15 and fail mid-run with `[stop_agent_error] max LLM calls (15) exceeded`. See orchestration §5e for the full table.
 7. **Empty tool args:** never call `${ubuntu_tool_prefix}_execute_series` with `{}` or missing `commands` — Guild rejects with `commands is required`.
 8. **`[SubagentFailure]` blocks:** when the prior stage message includes `[SubagentFailure]`, read the failure summary; do not re-spawn the same subagent name with the same goal. Fix root cause (usually split execute_series or missing webhook fields) before retry.

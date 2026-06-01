@@ -12,9 +12,11 @@ When `repository_full_name` ∈ {${discovery_repositories_list}}:
   2. Load skill `${sop_discovery_layout_name}` BEFORE module resolution or greenfield scaffold. It overrides generic `modules/` layout rules.
 %{ endif ~}
   4. In `implement-module`, use discovery layout SOP §2 for existence checks under `aws/`, `gcp/`, `azurerm/` — never `modules/` or `terraform/modules/`.
-  5. In `implement-module`, when `not_found` + greenfield: spawn **Template I** (`implement-module-discovery-scaffold`) per discovery layout SOP §4 — **do NOT** spawn Template H (registry wrap) on these repos.
-  6. Approved subagent name for this stage additionally includes: `implement-module-discovery-scaffold`.
+  5. In `implement-module`, when `not_found` + greenfield: spawn **Template I** (`implement-module-discovery-scaffold`) per discovery layout SOP §4 — **do NOT** spawn Template H (registry wrap) or **Template G** (`implement-module-scaffold`) on these repos.
+  5b. When `module_quality_rework=true` and `module_paths` is set: spawn **Template J** only — patch files under existing `module_paths`; inline validate via spawn-context Validate; **never** greenfield `discovery-scaffold` from scratch.
+  6. Approved subagent name for this stage: **`implement-module-discovery-scaffold` only** (not `implement-module-scaffold`).
   7. **Forbidden in `check-info-and-clone`** before the label gate passes: `graph_query`, `load_skill` (including this layout SOP), `check-info-and-clone-fetch` when title/body/labels are already in the webhook payload.
+  8. **Forbidden whenever `discovery_repo=true`:** `implement-module-scaffold`, `implement-module-registry-wrap`, custom spawn goals with pasted shell/Python/heredoc bodies (use spawn contract + `read_notes` instead).
 
 ========================================================================
 2a-discovery) Resolution override (discovery repos only)

@@ -1,0 +1,49 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  channel_ok
+  environment_ok
+  not is_blocked_substring
+}
+
+# --- Slack channel allowlist (skipped when empty) ---
+channel_ok if { not ${channels_gate_enabled} }
+channel_ok if {
+  some c in [${channels_rego_literals}]
+  contains(_text, c)
+}
+
+# --- Environment tag allowlist (skipped when empty) ---
+environment_ok if { not ${environments_gate_enabled} }
+environment_ok if {
+  some e in [${environments_rego_literals}]
+  contains(_text, e)
+}
+
+# --- Blocked substrings ---
+is_blocked_substring if {
+  ${blocked_gate_enabled}
+  some b in [${blocked_substrings_rego_literals}]
+  contains(_text, b)
+}
+
+deny contains msg if {
+  not channel_ok
+  msg := "Slack channel not in allowed ingest list"
+}
+
+deny contains msg if {
+  not environment_ok
+  msg := "Slack message missing required environment tag"
+}
+
+deny contains msg if {
+  is_blocked_substring
+  msg := "Slack message contains blocked substring"
+}

@@ -5,7 +5,7 @@ permalink: architecture/
 nav_order: 20
 ---
 
-How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots. The **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** is the authoritative list of every shipped module (inputs, outputs, and copy-paste snippets). For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
+How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots. The **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** is the authoritative list of every shipped module (inputs, outputs, and copy-paste snippets). The **[Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %})** maps customer deployment profiles (SaaS, PrivateSaaS, multi-tenant, self-hosted) to those modules. For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
 
 ## Layered dependency graph
 
@@ -34,6 +34,13 @@ graph TD
         A_LFO["aios-agent-langfuse-observer"]
         A_SOC["aios-agent-soc-analyst"]
         A_TFB["aios-agent-terraform-bot"]
+        A_AZS["aios-agent-azure-saas-sre"]
+        A_STR["aios-agent-sre-ticket-resolution"]
+        A_MTR["aios-agent-multitenant-sre-rca"]
+        A_PSD["aios-agent-privatesaas-devops-sre"]
+        A_PS["aios-agent-privatesaas-sre"]
+        A_PSG["aios-agent-privatesaas-gitops-sre"]
+        A_SHI["aios-agent-selfhosted-infra"]
     end
 
     subgraph "Layer 1 — Integrations"
@@ -45,6 +52,16 @@ graph TD
         I_SL["aios-integration-slack"]
         I_GH["aios-integration-github"]
         I_CH["aios-integration-clickhouse"]
+        I_DD["aios-integration-datadog"]
+        I_PD["aios-integration-pagerduty"]
+        I_SN["aios-integration-servicenow"]
+        I_CF["aios-integration-confluence"]
+        I_PA["aios-integration-paloalto"]
+        I_FH["aios-integration-firehydrant"]
+        I_IT["aios-integration-internal-tool"]
+        I_GL["aios-integration-gitlab"]
+        I_AC["aios-integration-argocd"]
+        I_SQ["aios-integration-sonarqube"]
     end
 
     subgraph "Layer 0 — Foundation"
@@ -71,6 +88,32 @@ graph TD
     A_PS --> I_AWS
     A_LFO --> I_LF
     A_TFB --> I_GH
+    A_AZS --> I_AZ
+    A_AZS --> I_DD
+    A_AZS --> I_PD
+    A_AZS --> I_CF
+    A_STR --> I_SN
+    A_STR --> I_GR
+    A_STR --> I_AWS
+    A_STR --> I_SL
+    A_MTR --> I_DD
+    A_MTR --> I_GCP
+    A_MTR --> I_AWS
+    A_MTR --> I_GH
+    A_MTR --> I_SL
+    A_PSD --> I_GR
+    A_PSD --> I_AWS
+    A_PSD --> I_PA
+    A_PS --> I_GR
+    A_PS --> I_GCP
+    A_PS --> I_FH
+    A_PS --> I_IT
+    A_PSG --> I_GL
+    A_PSG --> I_AC
+    A_PSG --> I_SQ
+    A_PSG --> I_AWS
+    A_PSG --> I_SL
+    A_SHI --> I_AWS
 
     %% Layer 2 → Layer 0
     A_SRE --> F
@@ -85,6 +128,20 @@ graph TD
     A_SOC --> P
     A_TFB --> F
     A_TFB --> P
+    A_AZS --> F
+    A_AZS --> P
+    A_STR --> F
+    A_STR --> P
+    A_MTR --> F
+    A_MTR --> P
+    A_PSD --> F
+    A_PSD --> P
+    A_PS --> F
+    A_PS --> P
+    A_PSG --> F
+    A_PSG --> P
+    A_SHI --> F
+    A_SHI --> P
 
     %% Layer 1 → Layer 0
     I_AWS --> F
@@ -130,6 +187,13 @@ The table below is a **snapshot** of several heavily used agent modules (agent /
 | aios-agent-iac-drift-detective | 1 | 1 | 1 | — | — |
 | aios-agent-sre-incident-commander | 1 | 1 | 1 | — | — |
 | aios-agent-schedules | — | — | — | — | — |
+| aios-agent-azure-saas-sre | 3 | 4 | 1 | — | 1 |
+| aios-agent-sre-ticket-resolution | 3 | — | 1 | — | — |
+| aios-agent-multitenant-sre-rca | 4 | — | 2 | — | — |
+| aios-agent-privatesaas-devops-sre | 3 | — | 2 | — | — |
+| aios-agent-privatesaas-sre | 3 | — | 2 | — | — |
+| aios-agent-privatesaas-gitops-sre | 3 | — | 2 | — | — |
+| aios-agent-selfhosted-infra | 3 | — | 3 | — | — |
 
 </details>
 

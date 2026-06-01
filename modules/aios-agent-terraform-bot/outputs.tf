@@ -41,6 +41,33 @@ output "webhook_trigger_endpoint" {
   value       = trimspace(var.webhook_trigger_base_url) == "" ? "" : "${trimsuffix(trimspace(var.webhook_trigger_base_url), "/")}/api/v1/webhooks/trigger"
 }
 
+output "remote_runner_name" {
+  description = "Configured remote runner name when `remote_runner_name` is set; empty string otherwise."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].runner_name : ""
+}
+
+output "remote_runner_created" {
+  description = "True when this apply registered a new sg_remote_runner (`create_remote_runner = true`)."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].created : false
+}
+
+output "remote_runner_mothership_url" {
+  description = "Mothership URL embedded in install commands (provider stackgen_url). Empty when runner was not created in this apply."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].mothership_url : ""
+}
+
+output "remote_runner_cli_start_command" {
+  description = "Copy-paste aiden-runner start command when `create_remote_runner` is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].cli_start_command : null
+  sensitive   = true
+}
+
+output "remote_runner_helm_install_command" {
+  description = "Copy-paste Helm install for aiden-runner when `create_remote_runner` is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : null
+  sensitive   = true
+}
+
 output "webhook_ingress_payload_url" {
   description = "Full StackGen trigger URL with `apiKey` when `webhook_trigger_base_url` is set and the webhook token is non-empty; null otherwise."
   sensitive   = true

@@ -21,6 +21,12 @@ Optional when not PASS:
 
 Also include the same keys in `workflow_notes_snapshot` (`quality_check_*`, `module_quality_summary`). When NEEDS_REVISION (code quality only), set `module_quality_rework=true` in the snapshot. When **BLOCKED** (integration infra), do **NOT** set `module_quality_rework=true` — `validate-infra-gate` skips the rework loop.
 
+**Test failure handoff (mandatory — trace 573f84aa9000):** When `validate-and-test-runner` or discovery inline validate stdout includes `test_exit=1`, the architect MUST copy into `workflow_notes_snapshot` and the stage closing message:
+  - `validate_markers_file` (absolute path under WORK_ROOT)
+  - `test_summary_file` and `test_summary_tail` (last ~40 lines of `tofu test` / `terraform test` stderr from stage-runner)
+  - `module_quality_gaps` when present on stdout (first Error lines)
+Never summarize test failures without quoting `test_summary_tail` — subagent output truncation caused three blind rework loops in production.
+
 **Iteration budget:** Only `validate-loop-gate` (`loop_stage`) counts rework cycles (max ${module_quality_max_iterations}) for `NEEDS_REVISION` only — never for `BLOCKED`. Do NOT maintain a separate `module_quality_iteration` counter or emit `GIVE_UP` from agent stages — loop exhaustion is detected from loop gate JSON (`Reason` contains `max iterations reached`).
 
 ========================================================================
@@ -45,6 +51,10 @@ Map exit codes to sentinels (never guess from prose):
   validate_exit=<0|1>
   test_exit=<0|1>
   binary=<tofu|terraform version line>
+  validation_summary=<one-line fmt/init/validate/test summary>
+  test_summary_file=<absolute path to tf-test.out when test ran>
+  test_summary_tail="<escaped last lines of test output when test_exit≠0>"
+  module_quality_gaps=test: <first Error line> (when test_exit≠0)
 
 `module_quality_summary: PASS` is allowed ONLY when all three `quality_check_*` lines are `PASS` AND §3 criteria hold AND runner stdout included the `fmt_exit=` / `binary=` lines above.
 
@@ -104,26 +114,32 @@ Use **FAIL** / **NEEDS_REVISION** only when shell commands ran and reported non-
 5) Iterate stage rules (single remediation pass per visit)
 ========================================================================
 
-1. `read_notes` for `module_quality_gaps`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
+1. `read_notes` once for `module_quality_gaps`, `test_summary_tail`, `validate_markers_file`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
 2. When `module_paths` is empty after validate: the loop returns to `implement-module` (Templates H/G/I) — do NOT open a PR until paths exist and validate PASS.
-   When `module_paths` is non-empty: spawn ONE Ubuntu subagent `module-quality-iterate-remediate` that:
-     - Fixes ONLY the listed gaps (and discovery layout SOP if `discovery_repo=true`).
-     - Re-runs `${sop_install_validate_test}` steps 1, 2, 2b, 4 inside each `module_paths` entry.
-     - Re-validates stackgen.yaml on discovery repos when applicable.
-     - Commits to the existing `working_branch` when set (do NOT open a PR when `pr_deferred=true`).
-3. Re-run the same shell checks as §2 and re-emit all four sentinel lines in stage output and notes.
+   When `module_paths` is non-empty: planner spawns **Template J** (orchestration §7) — **one** approved implement subagent, not a custom goal:
+     - `discovery_repo=true` → `implement-module-discovery-scaffold` only.
+     - `discovery_repo=false` → `implement-module-scaffold` only.
+     - Subagent: fix ONLY `module_quality_gaps` / `test_summary_tail` under existing `module_paths[0]`; then spawn-context **Validate** in the **same** `execute_series` (forbidden: `validate-and-test-runner` from `implement-module`).
+     - Planner goal ≤800 chars; quote gaps in `context`, not as pasted fix scripts.
+3. Re-emit sentinels from runner stdout (`fmt_exit=`, `module_quality_summary=`, `test_summary_tail` when `test_exit=1`) in `workflow_notes_snapshot` and the stage closing message.
 
 ========================================================================
 6) Merge stage rework (when loop returns)
 ========================================================================
 
 When `module_quality_rework=true` or `module_quality_gaps` is non-empty in notes, `implement-module` MUST:
-- Treat gap list as the authoritative fix list (do not re-scaffold from scratch unless paths are empty).
-- Clear stale `test_summary`, `validation_summary`, and all `quality_check_*` notes before re-validating.
+- Follow orchestration **Template J** and §5i — one subagent, short spawn goal (spawn contract replaces goal text).
+- Treat `module_quality_gaps` + `test_summary_tail` as the authoritative fix list (do not re-scaffold from scratch when `module_paths` is non-empty).
+- On discovery repos: never spawn `implement-module-scaffold`; use `implement-module-discovery-scaffold` with gap fixes + inline validate only.
+- Clear stale `test_summary`, `validation_summary`, and all `quality_check_*` in the **new** `workflow_notes_snapshot` after rework stdout — do not trust pre-loop PASS lines.
 - Append to `stage_summary:implement-module` that this is a quality-loop rework (budget enforced by `validate-loop-gate`).
 
 ========================================================================
-7) Deferred PR (when enabled)
+7) PR timing vs test failures (trace 910c35875165 — fixture gaps)
 ========================================================================
 
-When `pr_deferred=true`, `create-pr` opens the PR only after `module_quality_summary` is PASS with all `quality_check_*` sentinels PASS (see `defer_pr_until_quality_pass`).
+**Default (`defer_pr_until_quality_pass=true`):** `validate-and-pr` opens a PR when **fmt**, **init**, and **validate** all pass (`pr_eligible_fmt_validate=true`) — even when `tofu test` fails because `*.tftest.hcl` omits optional variables (`ordered_placement_strategy`, `placement_constraints`, `service_registries`, `timeouts`, etc.) or uses unsupported `mock_data` blocks. That is **not** a reason to defer the PR: ship a **draft** with `test_summary_tail` in the body.
+
+**After fmt+init+validate pass:** `validate-draft-pr-gate` (default) jumps to `create-pr` even when tests fail — do not burn `module_quality_max_iterations` on `basic.tftest.hcl` fixture gaps alone. `create-pr` opens the draft PR when `pr_url` is still empty. If validate stdout has `pr_deferred=missing_repo_or_issue` or `push_auth`, fix spawn env / PAT — not a policy deferral. Enable `continue_quality_loop_after_draft_pr` to loop test fixes before PR when desired.
+
+Defer PR when `pr_deferred=init_failed`, `validate_failed`, or `fmt_failed` — fix via `validate-loop-gate` → `implement-module` (Template J), then re-validate. When `defer_pr_until_quality_pass=false`, PR opens only after full PASS (tests included).

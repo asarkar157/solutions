@@ -1,60 +1,133 @@
-/bin/bash <<'TFBOT_CLONE_EXECUTE'
 set -euo pipefail
 export HOME=${ubuntu_integration_home}
 export GIT_TERMINAL_PROMPT=0
-WORK_ROOT="{{work_root}}"
-mkdir -p "$WORK_ROOT"
+: "$${WORK_ROOT:?export WORK_ROOT before clone one-liner}"
+mkdir -p "$${WORK_ROOT}"
+
+is_placeholder_clone_url() {
+  local url="$${1:-}"
+  case "$$url" in
+    ""|*example.com/example*|*github.com/example/*|*github.com/example.git*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Auth URL via printf only — never sed with $${user}:$${token} (breaks tftpl / goal processors).
+git_clone_url() {
+  local url="$${1:-}"
+  local tok="$${2:-}"
+  if [[ "$$url" =~ ^git@ ]]; then
+    printf '%s' "$$url"
+    return 0
+  fi
+  if [[ "$$url" =~ ^https://[^/@]+@ ]]; then
+    printf '%s' "$$url"
+    return 0
+  fi
+  if [ -n "$$tok" ] && [[ "$$url" =~ ^https://github\.com/ ]]; then
+    printf 'https://x-access-token:%s@github.com/%s' "$$tok" "$${url#https://github.com/}"
+    return 0
+  fi
+  printf '%s' "$$url"
+}
 
 parse_trigger_json() {
   local raw="$${TRIGGER_JSON:-}"
-  [ -n "$raw" ] || return 1
-  REPO_CLONE_URL="$(printf '%s' "$raw" | jq -r 'if (.repository.clone_url // "") != "" then .repository.clone_url else "https://github.com/" + .repository.full_name + ".git" end')"
-  DEFAULT_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
-  ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+  [ -n "$$raw" ] || return 1
+  REPO_CLONE_URL="$$(printf '%s' "$$raw" | jq -r 'if (.repository.clone_url // "") != "" then .repository.clone_url else "https://github.com/" + .repository.full_name + ".git" end')"
+  DEFAULT_BRANCH="$$(printf '%s' "$$raw" | jq -r '.repository.default_branch // "main"')"
+  ISSUE_OR_PR="$$(printf '%s' "$$raw" | jq -r '.issue.number // .pull_request.number // empty')"
 }
 
-if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
+hydrate_clone_params() {
+  if [ -n "$${TRIGGER_JSON_B64:-}" ]; then
+    TRIGGER_JSON="$$(printf '%s' "$$TRIGGER_JSON_B64" | base64 -d)"
+    export TRIGGER_JSON
+  fi
+  if [ -z "$${TRIGGER_JSON:-}" ] && [ -f "$${WORK_ROOT}/.trigger.json" ]; then
+    TRIGGER_JSON="$$(cat "$${WORK_ROOT}/.trigger.json")"
+    export TRIGGER_JSON
+  fi
+  if [ -n "$${REPO_CLONE_URL:-}" ] && [ -n "$${DEFAULT_BRANCH:-}" ] && [ -n "$${ISSUE_OR_PR:-}" ]; then
+    return 0
+  fi
   parse_trigger_json || true
+}
+
+# Agent-invented placeholders (trace 9d8958e4: example/example.git) must not block TRIGGER_JSON fallback.
+if is_placeholder_clone_url "$${REPO_CLONE_URL:-}"; then
+  unset REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR
 fi
 
 if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
+  hydrate_clone_params || true
+fi
+
+if [ -z "$${REPO_CLONE_URL:-}" ] || [ -z "$${DEFAULT_BRANCH:-}" ] || [ -z "$${ISSUE_OR_PR:-}" ]; then
+  echo "clone_blocker=missing_clone_params"
   echo "error=missing_clone_params"
-  echo "hint=export REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR from read_notes, architect context, or TRIGGER_JSON webhook payload"
+  echo "hint=export REPO_CLONE_URL DEFAULT_BRANCH ISSUE_OR_PR from read_notes (single-quoted) then CLONE_ONE_LINER — FORBIDDEN: TRIGGER_JSON='{...}' inline (shell parse error); use TRIGGER_JSON_B64 only if notes empty"
+  exit 1
+fi
+
+if is_placeholder_clone_url "$${REPO_CLONE_URL}"; then
+  echo "clone_blocker=placeholder_url"
+  echo "error=placeholder_clone_url url=$${REPO_CLONE_URL}"
+  echo "hint=copy repository_clone_url from read_notes or TRIGGER_JSON — PAT is not the problem for example.com"
   exit 1
 fi
 
 git_token="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}"
-if [ -n "$git_token" ]; then
-  export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
+if [ -n "$$git_token" ]; then
+  export GIT_TOKEN="$$git_token" GH_TOKEN="$$git_token" GITHUB_TOKEN="$$git_token"
   gh auth setup-git 2>/dev/null || true
   git config --global user.name "stackgen-terraform-bot"
   git config --global user.email "terraform-bot@stackgen.local"
+  echo "gh_env_present=true"
+else
+  echo "gh_env_present=false"
 fi
 
-effective_url="$REPO_CLONE_URL"
-if [ -n "$git_token" ] && [[ "$REPO_CLONE_URL" =~ ^https://github\.com/ ]] && [[ ! "$REPO_CLONE_URL" =~ ^https://[^/@]+@ ]]; then
-  effective_url="https://x-access-token:$${git_token}@github.com/$${REPO_CLONE_URL#https://github.com/}"
-fi
+effective_url="$$(git_clone_url "$${REPO_CLONE_URL}" "$$git_token")"
 
-repo_dir="$WORK_ROOT/repo"
-if [ -d "$repo_dir" ] && [ ! -d "$repo_dir/.git" ]; then
-  rm -rf "$repo_dir"
+repo_dir="$${WORK_ROOT}/repo"
+if [ -d "$$repo_dir" ] && [ ! -d "$$repo_dir/.git" ]; then
+  rm -rf "$$repo_dir"
 fi
-if [ ! -d "$repo_dir/.git" ]; then
-  if [ -n "$git_token" ]; then
-    git clone "$effective_url" "$repo_dir"
-  else
-    git -c credential.helper= clone "$effective_url" "$repo_dir"
+if [ ! -d "$$repo_dir/.git" ]; then
+  if ! git clone "$$effective_url" "$$repo_dir" 2>"$${WORK_ROOT}/clone.err"; then
+    if [ ! -s "$${WORK_ROOT}/clone.err" ]; then
+      echo "clone_blocker=network"
+    elif grep -qiE 'authentication|403|401|permission|denied|could not read Username' "$${WORK_ROOT}/clone.err"; then
+      echo "clone_blocker=auth_or_network"
+    elif grep -qiE 'not found|404|Repository not found' "$${WORK_ROOT}/clone.err"; then
+      echo "clone_blocker=repo_not_found_or_auth"
+    else
+      echo "clone_blocker=network"
+    fi
+    cat "$${WORK_ROOT}/clone.err" >&2 || true
+    exit 1
   fi
 else
-  git -C "$repo_dir" fetch --all --prune
+  git -C "$$repo_dir" fetch --all --prune
 fi
 
-git -C "$repo_dir" switch "$DEFAULT_BRANCH" 2>/dev/null \
-  || git -C "$repo_dir" switch -c "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+if ! git -C "$$repo_dir" switch "$${DEFAULT_BRANCH}" 2>"$${WORK_ROOT}/clone.err"; then
+  if ! git -C "$$repo_dir" switch -c "$${DEFAULT_BRANCH}" "origin/$${DEFAULT_BRANCH}" 2>>"$${WORK_ROOT}/clone.err"; then
+    echo "clone_blocker=branch"
+    cat "$${WORK_ROOT}/clone.err" >&2 || true
+    exit 1
+  fi
+fi
 
-sha="$(git -C "$repo_dir" rev-parse HEAD)"
-echo "repo_clone_path=$repo_dir"
-echo "repo_head_sha=$sha"
+sha="$$(git -C "$$repo_dir" rev-parse HEAD)"
+mkdir -p "$${WORK_ROOT}/.pack"
+# stage-runner.sh is materialized in validate/discovery one-liners — keep clone b64 small enough for LLM to paste CLONE_ONE_LINER verbatim.
+echo "stage_runner_path=$${WORK_ROOT}/.pack/stage-runner.sh"
+echo "stage_runner_materialize=deferred_to_validate"
+echo "repo_clone_path=$$repo_dir"
+echo "repo_head_sha=$$sha"
+echo "repository_clone_url=$${REPO_CLONE_URL}"
 echo "script_pack_version=${script_pack_version}"
-TFBOT_CLONE_EXECUTE

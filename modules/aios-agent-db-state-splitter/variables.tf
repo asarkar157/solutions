@@ -9,7 +9,7 @@ variable "stackgen_mcp_integration_name" {
     `add_resource_to_appstack`, `connect_resources`, `create_appstack_action_run`,
     `get_appstacks`, env profiles, snapshots, etc.; see **`stackgen-mcp-consumer-tool-catalog-sop`**
     for the user-MCP matrix). This module no longer supports the "TF-only, no AppStack
-    materialization" mode: the `materialize-stackgen-appstacks` stage is mandatory and the
+    materialization" mode: the `materialize-appstacks-coordinator` stage is mandatory and the
     `db-monorepo-state-split-evidence` checklist requires AppStack membership artifacts.
   EOT
   type        = string
@@ -141,21 +141,41 @@ variable "name_suffix" {
 
 variable "remote_runner_name" {
   description = <<-EOT
-    Optional Guild remote runner name (operator-provisioned). When set, SOPs instruct fan-out
-    `tofu plan` / heavy reads to run on that runner when the agent has a remote-runner tool;
-    otherwise plans run in the Ubuntu CLI sandbox. This module does not create runners — the
-    StackGen provider exposes `sg_remote_runner` / `sg_remote_runners` as read-only data sources.
+    Optional Guild remote runner name. When set, SOPs instruct fan-out `tofu plan` / heavy reads on that
+    runner when attached. Set `create_remote_runner = true` to register `sg_remote_runner` (provider **>= 0.1.23**)
+    and surface CLI/Helm install commands in module outputs for on-prem deployment (outbound-only to mothership).
   EOT
   type        = string
   default     = ""
 }
 
+variable "create_remote_runner" {
+  description = "When true, creates `sg_remote_runner` via `aios-remote-runner`. Requires non-empty `remote_runner_name`."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.create_remote_runner || trimspace(var.remote_runner_name) != ""
+    error_message = "create_remote_runner requires a non-empty remote_runner_name."
+  }
+}
+
+variable "remote_runner_description" {
+  description = "Runner description when `create_remote_runner` is true."
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_labels" {
+  description = "Optional runner labels when `create_remote_runner` is true."
+  type        = map(string)
+  default     = {}
+}
+
 variable "remote_runner_attach_to_agent" {
   description = <<-EOT
-    When true, looks up `remote_runner_name` with `data.sg_remote_runner` and sets `remote_runners`
-    on the Guild agent so tool dispatch may use that runner (provider **>= 0.1.13**). Requires a
-    non-empty `remote_runner_name` and provider `project_id` / `org_id` when the API is org-scoped.
-    Leave false to only document the runner in SOPs without Terraform-level attachment.
+    When true, sets `remote_runners` on the Guild agent (requires non-empty `remote_runner_name`).
+    Leave false to only document the runner in SOPs until the runner is online.
   EOT
   type        = bool
   default     = false
@@ -176,12 +196,13 @@ variable "workflow_skill_refs" {
   description = <<-EOT
     Optional extra skill_refs per primary-workflow stage binding. Keys:
     "db-monorepo-state-split-convergence::<stage_id>" where stage_id is one of:
-    ingest-and-split, registry-and-import-codegen, hcl-hydrate-per-group, materialize-stackgen-appstacks,
-    orphans-secondary-pipeline, multi-shard-plan-convergence, final-gate-and-memory.
-    Legacy keys (ingest-monolith, discover-db-anchors, allocate-related-resources, count-reconcile-loop) are
-    merged into ingest-and-split — map extra skills to ingest-and-split instead.
-    Note: `hcl-hydrate-per-group`, `materialize-stackgen-appstacks`, and `orphans-secondary-pipeline`
-    are the 3-way parallel layer after `registry-and-import-codegen`; `multi-shard-plan-convergence`
+    ingest-and-split, ingest-blocked-gate, registry-and-import-codegen, shell-converge-matrix,
+    materialize-appstacks-coordinator, orphans-secondary-pipeline, final-gate-and-memory.
+    Legacy keys (ingest-monolith, discover-db-anchors, hcl-hydrate-per-group,
+    materialize-stackgen-appstacks, multi-shard-plan-convergence) are merged via try() fallbacks
+    on the new stage ids — map extra skills to the v2 stage ids above.
+    Note: `shell-converge-matrix`, `materialize-appstacks-coordinator`, and `orphans-secondary-pipeline`
+    are the 3-way parallel layer after `registry-and-import-codegen`; `final-gate-and-memory`
     fans in from all three.
     **Avoid duplicating runbooks:** each stage already has `runbook_refs` + `skill_refs` from this module.
     Adding the same `*-sop` name here forces Guild to prepend `[Skills] load_skill` for content already

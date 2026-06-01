@@ -68,6 +68,8 @@ module "foundation" {
 
 **Deployment catalog (`data.sg_app` / `data.sg_apps`):** Catalog installations expose **`integrations`** (list). The older **`integration_map`** attribute was removed upstream.
 
+**Remote runners (>= 0.1.23):** Resource `sg_remote_runner` registers aiden-runner and exposes computed `cli_start_command` / `helm_install_command` (mothership = provider `stackgen_url`). AIOS module [`modules/aios-remote-runner`](../modules/aios-remote-runner) wraps create/lookup; agent modules `aios-agent-terraform-bot`, `aios-agent-db-state-splitter`, and `aios-agent-iac-drift-detective` accept `create_remote_runner`.
+
 **Read-only lookups:** The provider also ships Guild data sources such as `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, and `sg_agent_diaries` (Insights), plus `sg_remote_runner` / `sg_remote_runners`. Use them in root modules for discovery, outputs, or tooling; set provider `project_id` when the API is org-scoped. See the provider repo [`docs/index.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/docs/index.md) and `tofu providers schema -json` for the authoritative schema.
 
 **`sg_agent_schedule`:** Current provider versions use `target_type` and `target_name` (agent or workflow), matching `sg_webhook`. The `aios-agent-schedules` module uses `target_name` and optional `target_type` instead of the legacy `agent_name` argument—update module callers accordingly.

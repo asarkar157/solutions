@@ -1,0 +1,61 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  priority_ok
+  tenant_ok
+  not is_blocked
+}
+
+# --- Priority allowlist (skipped when empty) ---
+priority_ok if { not ${priorities_gate_enabled} }
+priority_ok if {
+  some p in [${priorities_rego_literals}]
+  regex.match(sprintf(`\b%s\b`, [p]), _text)
+}
+
+# --- Tenant allowlist (skipped when empty) ---
+tenant_ok if { not ${tenant_ids_gate_enabled} }
+tenant_ok if {
+  some t in [${tenant_ids_rego_literals}]
+  contains(_text, sprintf("${tenant_tag_key}:%s", [t]))
+}
+tenant_ok if {
+  some t in [${tenant_ids_rego_literals}]
+  contains(_text, sprintf("${tenant_tag_key}=%s", [t]))
+}
+tenant_ok if {
+  some t in [${tenant_ids_rego_literals}]
+  regex.match(sprintf(`"${tenant_tag_key}"\s*:\s*"%s"`, [t]), _text)
+}
+tenant_ok if {
+  some t in [${tenant_ids_rego_literals}]
+  regex.match(sprintf(`\btenant[_-]?id[=:]\s*"?%s"?`, [t]), _text)
+}
+
+# --- Blocked services/tags (skipped when list empty) ---
+is_blocked if {
+  ${blocked_gate_enabled}
+  some b in [${blocked_services_rego_literals}]
+  contains(_text, b)
+}
+
+deny contains msg if {
+  not priority_ok
+  msg := "Datadog alert priority not in allowed ingest list"
+}
+
+deny contains msg if {
+  not tenant_ok
+  msg := "Datadog alert tenant_id not in allowed ingest list"
+}
+
+deny contains msg if {
+  is_blocked
+  msg := "Datadog alert matches blocked service or tag ingest rule"
+}

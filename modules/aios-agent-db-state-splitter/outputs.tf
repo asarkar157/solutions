@@ -5,6 +5,33 @@ output "agent_names" {
   }
 }
 
+output "remote_runner_name" {
+  description = "Configured remote runner name when set; empty string otherwise."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].runner_name : ""
+}
+
+output "remote_runner_created" {
+  description = "True when this apply registered sg_remote_runner (create_remote_runner = true)."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].created : false
+}
+
+output "remote_runner_mothership_url" {
+  description = "Mothership URL from provider stackgen_url when runner was created in this apply."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].mothership_url : ""
+}
+
+output "remote_runner_cli_start_command" {
+  description = "aiden-runner start command when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].cli_start_command : null
+  sensitive   = true
+}
+
+output "remote_runner_helm_install_command" {
+  description = "Helm install command when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : null
+  sensitive   = true
+}
+
 output "stackgen_mcp_auto_approve_policy_id" {
   description = "Intervention policy id for stackgen-mcp_* companion policy (db-state-split-stackgen-mcp-auto-approve); MCP tools are auto-approved via sg_agent.auto_approve_tools."
   value       = sg_policy.db_state_split_stackgen_mcp_auto_approve.id

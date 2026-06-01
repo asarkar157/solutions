@@ -3,7 +3,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.20, < 0.2.0"
+      version = ">= 0.1.23, < 0.2.0"
     }
   }
 }
@@ -68,15 +68,38 @@ variable "workflow_skill_refs" {
 
 variable "remote_runner_name" {
   description = <<-EOT
-    Optional Guild remote runner name. When `remote_runner_attach_to_agent` is true, looked up with
-    `data.sg_remote_runner` and set on `sg_agent.remote_runners`.
+    Optional Guild remote runner name. Set `create_remote_runner = true` to register `sg_remote_runner` and
+    expose CLI/Helm install outputs for on-prem `terraform plan` (provider >= 0.1.23).
   EOT
   type        = string
   default     = ""
 }
 
+variable "create_remote_runner" {
+  description = "When true, creates sg_remote_runner via aios-remote-runner. Requires non-empty remote_runner_name."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.create_remote_runner || trimspace(var.remote_runner_name) != ""
+    error_message = "create_remote_runner requires a non-empty remote_runner_name."
+  }
+}
+
+variable "remote_runner_description" {
+  description = "Runner description when create_remote_runner is true."
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_labels" {
+  description = "Optional runner labels when create_remote_runner is true."
+  type        = map(string)
+  default     = {}
+}
+
 variable "remote_runner_attach_to_agent" {
-  description = "When true, attach `remote_runner_name` to the drift agent. Requires non-empty `remote_runner_name`."
+  description = "When true, attach remote_runner_name to the drift agent. Requires non-empty remote_runner_name."
   type        = bool
   default     = false
 
@@ -125,16 +148,21 @@ module "aws_integration" {
   existing_secret_id = var.aws_secret_id
 }
 
-data "sg_remote_runner" "iac_drift_detective" {
-  count = var.remote_runner_attach_to_agent ? 1 : 0
-  name  = trimspace(var.remote_runner_name)
+module "remote_runner" {
+  count  = trimspace(var.remote_runner_name) != "" ? 1 : 0
+  source = "../aios-remote-runner"
+
+  create_runner = var.create_remote_runner
+  name          = trimspace(var.remote_runner_name)
+  description   = trimspace(var.remote_runner_description) != "" ? trimspace(var.remote_runner_description) : "Remote runner for ${local.agent_name} (terraform plan / drift scan behind the customer firewall)."
+  labels        = var.remote_runner_labels
 }
 
 resource "sg_agent" "iac_drift_detective" {
   name           = local.agent_name
   persona        = file("${path.module}/personas/drift-detective.md")
   model_names    = compact(var.model_names)
-  remote_runners = length(data.sg_remote_runner.iac_drift_detective) > 0 ? toset([data.sg_remote_runner.iac_drift_detective[0].name]) : null
+  remote_runners = var.remote_runner_attach_to_agent && length(module.remote_runner) > 0 ? toset([module.remote_runner[0].runner_name]) : null
   integrations = compact([
     local.resolved_github_integration_name,
     local.resolved_aws_integration_name,
