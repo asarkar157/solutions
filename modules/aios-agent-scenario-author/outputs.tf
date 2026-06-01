@@ -71,7 +71,7 @@ output "webhook_ingress_payload_url" {
   EOT
   sensitive   = true
   value = (
-    var.enable_webhook && trimspace(var.webhook_trigger_base_url) != "" && trimspace(try(sg_webhook.github_scenario_request[0].token, "")) != ""
+    var.enable_webhook && trimspace(var.webhook_trigger_base_url) != "" && try(sg_webhook.github_scenario_request[0].token, null) != null && trimspace(sg_webhook.github_scenario_request[0].token) != ""
     ) ? format(
     "%s/api/v1/webhooks/trigger?apiKey=%s%s",
     trimsuffix(trimspace(var.webhook_trigger_base_url), "/"),

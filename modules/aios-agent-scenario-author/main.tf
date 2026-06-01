@@ -388,4 +388,7 @@ resource "sg_webhook" "github_scenario_request" {
   target_name = sg_workflow.scenario_request_triage.name
   action      = "A GitHub issue was filed on the configured solutions-style repository (default `appcd-dev/solutions`). Inspect the payload (repository_full_name, issue.number, issue.labels) and route to the scenario-request-triage workflow. The workflow's analyze-issue stage enforces the repo + label gate; do not pre-filter here."
   enabled     = true
+
+  # Forces token materialization in state when the API omits token on read (plan:use_state).
+  token_rotation = "v1"
 }
