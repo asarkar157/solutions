@@ -1,0 +1,22 @@
+# =============================================================================
+# Scenario: monorepo-services-split — example tfvars
+# =============================================================================
+#   make demo SCENARIO=monorepo-services-split
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"
+stackgen_project_id = ""
+
+openai_api_key    = ""
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+github_token = "ghp_replace_me"
+
+# Public Java Maven multi-module — JUnit/Surefire, per-domain modules (circuitbreaker, retry, bulkhead, …)
+github_repo_url = "https://github.com/resilience4j/resilience4j"
+default_branch  = "main"
+
+enable_cursor_integration   = false
+cursor_mcp_integration_name = ""
+enable_github_webhook       = false

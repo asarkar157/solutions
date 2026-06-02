@@ -1,0 +1,36 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export MONOREPO_SPLIT_EMBEDDED=1
+export SCRIPT_PACK_VERSION="${script_pack_version}"
+
+${monosplit_resolve_env_body}
+
+WORK_ROOT="$(monosplit_resolve_work_root)" || exit 1
+export WORK_ROOT
+mkdir -p "$WORK_ROOT/.work" "$WORK_ROOT/scripts"
+[ -f "$WORK_ROOT/notes.json" ] || echo '{}' >"$WORK_ROOT/notes.json"
+
+if [ -z "$${WORKFLOW_RUN_ID:-}" ]; then
+  echo "work_root_error=missing_workflow_run_id" >&2
+  exit 1
+fi
+if [ -f "$WORK_ROOT/notes.json" ]; then
+  wf="$(jq -r '.workflow_run_id // empty' "$WORK_ROOT/notes.json" 2>/dev/null || true)"
+  if [ -n "$wf" ] && [ "$wf" != "$WORKFLOW_RUN_ID" ]; then
+    echo "warning: WORKFLOW_RUN_ID in notes.json ($wf) differs from environment ($WORKFLOW_RUN_ID). Ignoring." >&2
+  fi
+fi
+export WORKFLOW_RUN_ID
+
+monosplit_seed_work_root_notes
+monosplit_resolve_default_branch
+if ! monosplit_resolve_repo_url; then
+  echo "blocked:missing_github_repo_url" >&2
+  exit 1
+fi
+
+${monosplit_install_script_pack_body}
+
+bash "$WORK_ROOT/scripts/stage-runner.sh" clone-and-scan \
+  "$WORK_ROOT" "$GITHUB_REPO_URL" "$DEFAULT_BRANCH" "$WORKFLOW_RUN_ID"
+cat "$WORK_ROOT/notes.json" 2>/dev/null || echo '{}'

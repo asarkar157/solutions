@@ -1,0 +1,12 @@
+# CCE compliance repo scan (audit-evidence / regulatory-scope)
+
+When the assessment scope includes a **GitHub repository URL**, clone on Ubuntu and run CCE before AWS/GitHub API evidence collection.
+
+1. Clone to `$WORK_ROOT/repo` (use GitHub PAT from sidecar env).
+2. Extract CCE pack: `mkdir -p "$(dirname "$CCE_PACK_DIR")" && echo "$CCE_PACK_B64" | base64 -d | tar -xz -C "$(dirname "$CCE_PACK_DIR")"`
+3. `bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$WORK_ROOT/repo" "$${CCE_USE_CASE:-audit-evidence}" "$WORK_ROOT/cce_report.json"`
+4. Summarize `summary.by_provider` and top entitlements for the compliance report; `note` `cce_report_path`, `cce_scan_status`.
+
+For **regulatory-scope** assessments, set `CCE_USE_CASE=regulatory-scope` on the Ubuntu integration env or export before scan.
+
+Skip when `SKIP_CCE=1`.

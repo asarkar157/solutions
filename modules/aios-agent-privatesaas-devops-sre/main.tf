@@ -326,7 +326,7 @@ resource "sg_workflow" "privatesaas_incident_response" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
 
   triggers = [
@@ -461,7 +461,7 @@ resource "sg_workflow" "privatesaas_connectivity_audit" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "30"
+    planner_max_tool_iterations = 30
   }
 
   triggers = [

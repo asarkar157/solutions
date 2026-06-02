@@ -21,15 +21,21 @@ locals {
 
   aws_integration_name    = "${local.module_prefix}-aws${local.suffix}"
   github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+  sop_cce_compliance_scan = "cce-compliance-repo-scan${local.suffix}"
 
-  provision_aws    = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
-  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_aws        = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
+  provision_github     = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_ubuntu_cce = var.enable_cce && trimspace(var.existing_ubuntu_integration_name) == "" && (trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != "")
 
   resolved_aws_integration_name = trimspace(var.existing_aws_integration_name) != "" ? var.existing_aws_integration_name : (
     local.provision_aws ? module.aws_integration[0].integration_name : ""
   )
   resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
     local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu_cce ? module.ubuntu_integration[0].integration_name : ""
   )
 }
 
@@ -47,6 +53,26 @@ module "github_integration" {
 
   integration_name   = local.github_integration_name
   existing_secret_id = var.github_secret_id
+}
+
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu_cce ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = ["gh", "git", "curl", "jq", "cce"]
+  env_vars = {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = var.cce_use_case
+  }
 }
 
 # =============================================================================
@@ -70,6 +96,7 @@ resource "sg_agent" "compliance_auditor" {
   integrations = compact([
     local.resolved_aws_integration_name,
     local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
   ])
 }
 
@@ -124,6 +151,13 @@ resource "sg_runbook_sop" "audit_log_analysis" {
   description = trimspace(templatefile("${path.module}/templates/audit-log-analysis.md", {}))
 }
 
+resource "sg_runbook_sop" "cce_compliance_repo_scan" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_compliance_scan
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-compliance-repo-scan.md.tftpl", {}))
+}
+
 resource "sg_evidence_checklist" "compliance_assessment_evidence" {
   name        = local.evidence_assessment_name
   description = "Proof-of-work for SOC2 / change-management / audit-log review stages before publishing a compliance report."
@@ -172,7 +206,7 @@ resource "sg_workflow" "compliance_assessment" {
 
   stage_bindings = [
     { stage_id = "access-controls-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_access_review.name], skill_refs = concat(["compliance-soc2-access-controls"], try(var.workflow_skill_refs["compliance-assessment::access-controls-review"], [])) },
-    { stage_id = "change-management-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.soc2_change_management.name], skill_refs = concat(["compliance-change-management-evidence"], try(var.workflow_skill_refs["compliance-assessment::change-management-review"], [])) },
+    { stage_id = "change-management-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = compact(concat([sg_runbook_sop.soc2_change_management.name], var.enable_cce ? [sg_runbook_sop.cce_compliance_repo_scan[0].name] : [])), skill_refs = concat(["compliance-change-management-evidence"], var.enable_cce ? [local.sop_cce_compliance_scan] : [], try(var.workflow_skill_refs["compliance-assessment::change-management-review"], [])) },
     { stage_id = "audit-log-review", agent_ref = sg_agent.compliance_auditor.name, runbook_refs = [sg_runbook_sop.audit_log_analysis.name], skill_refs = concat(["compliance-audit-log-review"], try(var.workflow_skill_refs["compliance-assessment::audit-log-review"], [])) },
     # conditional_skip (llm_eval): LLM evaluates whether the evidence collected from the
     # 3 review stages meets SOC2/GDPR audit quality standards. If evidence is sufficient,

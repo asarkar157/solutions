@@ -186,6 +186,18 @@ variable "remote_runner_attach_to_agent" {
   }
 }
 
+variable "enable_cce" {
+  description = "When true, embeds CCE script pack on the Ubuntu integration for optional application-repo entitlement scans (iac-alignment)."
+  type        = bool
+  default     = true
+}
+
+variable "application_repo_url" {
+  description = "Optional GitHub URL of the application repo to CCE-scan alongside Terraform state split (empty skips app CCE)."
+  type        = string
+  default     = ""
+}
+
 variable "enable_github_webhook" {
   description = "When true, creates sg_webhook targeting the primary split workflow (GitHub issue/PR ingress)."
   type        = bool

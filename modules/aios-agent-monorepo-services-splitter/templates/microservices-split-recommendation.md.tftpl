@@ -1,0 +1,48 @@
+Skill: **Microservices split recommendation** — service catalog + migration phases + **per-service test strategy**.
+
+## Inputs
+
+- Prior analyst notes + `boundary_scan.json` (including `test_inventory`, `test_frameworks`, `test_confidence_score`)
+- `split_strategy` default: **ddd**
+
+## Procedure
+
+1. **Target service catalog** — for each service: name, repo path (`services/<name>/`), APIs, data ownership, team topology note, rationale.
+2. **Per-service test strategy** (required for every catalog entry):
+   - **Framework**: Go `go test`, Java JUnit 5 + Maven Surefire / Gradle `test`, TS Vitest or Jest (match detected `test_frameworks`).
+   - **Coverage target**: e.g. maintain or improve package-level coverage on extracted paths (`go test -coverprofile`, JaCoCo, Vitest `--coverage`).
+   - **Migration order**: **tests-first strangler** — (a) add/port unit tests in monolith for boundary code, (b) extract contract (OpenAPI/proto), (c) move implementation with green suite, (d) add consumer-driven contract tests at the new boundary.
+   - **Confidence gate**: extracted service PR blocked until language-appropriate unit suite passes in CI.
+3. **Migration phases** — strangler fig ordering; contract-first steps; shared-DB vs split-DB tradeoffs; **never cut a high-coupling package without tests** unless phase 0 is "add unit tests".
+4. **Risk register** — circular deps, god packages, transactional boundaries, **packages_without_tests** at proposed cut lines.
+5. Write `service-catalog.yaml` and `migration-phases.md` content to work root paths for guidance PR stage. Include `testing-strategy.md` section or per-service `test_strategy` YAML fields.
+6. **AGENTS.md (IDE agents)** — `note(key=agents_md_analyst_sections, …)` with markdown: what the repo does, main bounded contexts, conventions you observed in code/README/CONTRIBUTING. The guidance PR runner merges this with deterministic scan output into repo-root `AGENTS.md` ([agents.md](https://agents.md/) format). Do not invent build commands — cite `boundary_scan.json` `test_inventory` only.
+
+## Language-specific commands (reference)
+
+| Language | Baseline gate | Coverage |
+|----------|---------------|----------|
+| Go | `go test ./... -race -count=1` | `go test ./... -coverprofile=coverage.out` |
+| Java | `mvn test` or `./gradlew test` | JaCoCo / Surefire reports |
+| TS/JS | `pnpm test` / `npm test` per workspace package | `vitest run --coverage` or `jest --coverage` |
+
+## Contract vs unit at boundaries
+
+- **Unit tests** — fast, in-process; primary split confidence gate per service.
+- **Contract tests** (Pact, Spring Cloud Contract) — add when a service boundary is cut; run in consumer and provider CI independently.
+- **Integration / Testcontainers** — module boundaries only; do not replace unit coverage for extraction decisions.
+
+## Anti-patterns (call out explicitly)
+
+- Distributed monolith (shared DB + synchronous chatty calls)
+- Fine-grained services without independent deployability
+- Shared DB split without migration plan
+- **Extracting code with no unit tests and no migration plan**
+
+## Outputs (notes)
+
+- `service_catalog_with_rationale=true`
+- `migration_phases_documented=true`
+- `per_service_test_strategy_documented=true`
+- `service-catalog.yaml` path under `$HOME/.<workflow_run_id>/`
+- Optional: `agents_md_analyst_sections` note (domain overview for AGENTS.md)

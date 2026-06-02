@@ -24,6 +24,7 @@ plugins:
 header_pages:
   - index.md
   - module-catalog.md
+  - monorepo-services-splitter.md
   - use-case-catalog.md
   - onboarding/index.md
   - architecture.md

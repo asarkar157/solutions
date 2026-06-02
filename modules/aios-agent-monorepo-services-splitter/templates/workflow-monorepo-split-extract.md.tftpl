@@ -1,0 +1,13 @@
+Workflow: **monorepo-services-split-extract**
+
+**Guild metadata:** `halguard_skip_subagent_task_types=terminal_calling`, `planner_max_tool_iterations=12`
+
+**Required inputs:** `github_repo_url`, `plan_artifact_path` (or `prior_workflow_run_id`)
+
+**Optional:** `split_mode` (`scaffold_only` | `extract`), `target_service_names`, `default_branch`
+
+**Stages:** load-approved-plan → plan-blocked-gate → scaffold-service-layout → cursor-refactor-services (conditional) → open-extract-pr → extract-evidence-gate
+
+**Cold start:** extract without a prior analysis run stops at `plan-blocked-gate` (`blocked:missing_plan_artifact`). Run **`monorepo-services-split-analysis`** first and seed `plan_artifact_path` or `prior_workflow_run_id`.
+
+**Evidence:** scaffold layout, extract PR URL; optional `cursor_delegation_summary`.

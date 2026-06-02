@@ -305,7 +305,7 @@ resource "sg_workflow" "pagerduty_saas_incident_response" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
 
   triggers = [

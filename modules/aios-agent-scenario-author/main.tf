@@ -200,7 +200,7 @@ resource "sg_workflow" "scenario_request_triage" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
 
   triggers = [

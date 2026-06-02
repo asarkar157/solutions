@@ -40,6 +40,24 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub PAT is wired, provisions Ubuntu + CCE for sdk-uplift / tech-debt scans before Cursor implementation."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration."
+  type        = string
+  default     = ""
+}
+
+variable "cce_use_case" {
+  description = "Default CCE lens for feature-development code context (sdk-uplift, tech-debt-inventory, golden-path-enforcement)."
+  type        = string
+  default     = "sdk-uplift"
+}
+
 variable "existing_slack_integration_name" {
   description = "Optional Guild integration name to share an existing Slack integration."
   type        = string

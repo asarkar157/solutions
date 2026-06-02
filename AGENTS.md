@@ -131,6 +131,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-linear` | Linear integration |
 | `modules/aios-integration-clickhouse` | ClickHouse integration |
 | `modules/aios-integration-ubuntu` | Ubuntu / CLI integration |
+| `modules/aios-cce-scripts` | Shared CCE bash pack (`CCE_PACK_B64`) + outputs for agent modules; see `docs/cce-agent-integrations.md` |
 | `modules/aios-integration-cursor` | Cursor integration |
 | `modules/aios-integration-datadog` | Datadog observability integration (official MCP) |
 | `modules/aios-integration-pagerduty` | PagerDuty incident-management integration |
@@ -150,6 +151,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-software-engineering` | Feature development workflow |
 | `modules/aios-agent-repo-to-iac` | GitHub repo URL → IaC via StackGen MCP (`repository-to-iac` workflow) |
 | `modules/aios-agent-db-state-splitter` | Multi-cloud monorepo TF state → logical groups, optional StackGen AppStacks (MCP), registry mapping, orphan workflow (`db-monorepo-state-split-convergence`) |
+| `modules/aios-agent-monorepo-services-splitter` | Application monorepo (Go/JS/TS/Java) → boundary scan, DDD split guidance PR, optional service scaffold/extract + Cursor (`monorepo-services-split-analysis` / `monorepo-services-split-extract`) |
 | `modules/aios-agent-supply-chain-security` | Supply chain scan workflow and policies |
 | `modules/aios-agent-compliance-auditor` | Compliance assessment workflow |
 | `modules/aios-agent-cost-optimizer` | FinOps / cost workflow |

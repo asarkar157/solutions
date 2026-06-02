@@ -1,0 +1,13 @@
+Workflow: **monorepo-services-split-analysis**
+
+**Guild metadata:** `halguard_skip_subagent_task_types=terminal_calling`, `planner_max_tool_iterations=12`
+
+**Required inputs:** `github_repo_url`
+
+**Optional:** `default_branch`, `target_languages`, `split_strategy`, `max_recommended_services`
+
+**Stages:** clone-and-boundary-scan → analyze-coupling-and-contexts → synthesize-split-plan → open-guidance-pr → final-evidence-gate
+
+**Triggers:** intent `monorepo-split`, `split-monorepo-services`, `microservices-split-analysis`
+
+**Evidence:** boundary scan, bounded context map, service catalog, migration phases, guidance PR URL.

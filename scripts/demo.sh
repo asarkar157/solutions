@@ -68,6 +68,7 @@ scenario_pitch() {
     pipeline-insights)  echo "Our CI is a mess; what do you actually see? (read-only GitHub pipeline + release intelligence)";;
     incident-triage)    echo "We get 200 Grafana alerts a day. (Grafana -> cloud-routed RCA -> Slack)";;
     repo-to-iac)        echo "Take a legacy repo and make IaC out of it. (GitHub URL -> StackGen MCP -> generated IaC)";;
+    monorepo-services-split) echo "Monolith codebase split guidance + optional extract scaffold. (GitHub clone -> boundary scan -> guidance PR)";;
     clean-tenant-reset) echo "Wipe to a known baseline between demos. (foundation + policies only)";;
     *)                  return 1;;
   esac
@@ -170,7 +171,7 @@ doctor() {
       ;;
   esac
   case "${scenario}" in
-    pipeline-insights|repo-to-iac)
+    pipeline-insights|repo-to-iac|monorepo-services-split)
       info "Checking GitHub"
       check_var GITHUB_TOKEN required "GITHUB_TOKEN" || fail=1
       ;;
@@ -181,7 +182,7 @@ doctor() {
       check_var GRAFANA_SERVER required "GRAFANA_SERVER" || fail=1
       check_var GRAFANA_TOKEN required "GRAFANA_TOKEN" || fail=1
       ;;
-    repo-to-iac)
+    repo-to-iac|monorepo-services-split)
       info "Checking GitHub repo URL"
       check_var GITHUB_REPO_URL required "GITHUB_REPO_URL" || fail=1
       ;;

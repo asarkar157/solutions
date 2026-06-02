@@ -22,6 +22,7 @@ locals {
   sop_module_compliance         = "${local.module_prefix}-module-compliance-sop${local.suffix}"
   sop_stackgen_registration     = "${local.module_prefix}-stackgen-registration-sop${local.suffix}"
   sop_discovery_modules_layout  = "${local.module_prefix}-discovery-modules-layout-sop${local.suffix}"
+  sop_cce_pr_review             = "${local.module_prefix}-cce-pr-cloud-review${local.suffix}"
   discovery_modules_enabled     = length(var.discovery_modules_repository_full_names) > 0
   discovery_legacy_issue_labels = ["analyze-request"]
   ubuntu_integration_home       = "/home/integration"
@@ -201,6 +202,11 @@ module "github_integration" {
 }
 
 # Ubuntu sandbox: PAT via secret_ref_ids → GIT_TOKEN/GH_TOKEN env; gh/git installed at boot.
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
 module "ubuntu_integration" {
   count  = trimspace(var.existing_ubuntu_integration_name) == "" ? 1 : 0
   source = "../aios-integration-ubuntu"
@@ -210,16 +216,27 @@ module "ubuntu_integration" {
     var.github_secret_id,
     trimspace(var.stackgen_token_secret_id) != "" ? var.stackgen_token_secret_id : "",
   ])
-  install_tools = ["tofu", "terraform", "gh", "git", "curl"]
-  env_vars = {
-    TFBOT_PACK_DIR            = local.tfbot_pack_dir
-    TFBOT_SCRIPT_PACK_VERSION = local.script_pack_version
-    TFBOT_CLONE_PACK_B64      = base64encode(local.clone_pack_script)
-    TFBOT_STAGE_RUNNER_B64    = base64encode(local.stage_runner_script)
-    TFBOT_CLONE_PACK_SHA256   = local.script_pack_clone_sha256
-    TFBOT_STAGE_RUNNER_SHA256 = local.script_pack_runner_sha256
-    TFBOT_ALLOW_DIRECT        = "1"
-  }
+  install_tools = concat(
+    ["tofu", "terraform", "gh", "git", "curl"],
+    var.enable_cce ? ["cce", "jq"] : [],
+  )
+  env_vars = merge(
+    {
+      TFBOT_PACK_DIR            = local.tfbot_pack_dir
+      TFBOT_SCRIPT_PACK_VERSION = local.script_pack_version
+      TFBOT_CLONE_PACK_B64      = base64encode(local.clone_pack_script)
+      TFBOT_STAGE_RUNNER_B64    = base64encode(local.stage_runner_script)
+      TFBOT_CLONE_PACK_SHA256   = local.script_pack_clone_sha256
+      TFBOT_STAGE_RUNNER_SHA256 = local.script_pack_runner_sha256
+      TFBOT_ALLOW_DIRECT        = "1"
+    },
+    var.enable_cce ? {
+      CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+      CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+      CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+      CCE_USE_CASE     = "change-control"
+    } : {},
+  )
 }
 
 module "remote_runner" {
@@ -490,6 +507,13 @@ resource "sg_runbook_sop" "workflow_script_pack" {
   description = local.workflow_script_pack_body
 }
 
+resource "sg_runbook_sop" "cce_pr_cloud_review" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_pr_review
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-pr-cloud-review.md.tftpl", {}))
+}
+
 resource "sg_runbook_sop" "terraform_bot_orchestration" {
   name    = local.sop_orchestration_name
   approve = true
@@ -540,8 +564,7 @@ resource "sg_workflow" "terraform_module_update" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations       = "40"
-    terminal_calling_halguard_mode    = "paste_only_minimal_planner"
+    planner_max_tool_iterations       = 40
     halguard_skip_subagent_task_types = "terminal_calling"
   }
 
@@ -634,11 +657,13 @@ resource "sg_workflow" "terraform_module_update" {
     {
       stage_id  = "check-info-and-clone"
       agent_ref = sg_agent.terraform_module_manager.name
-      runbook_refs = [
-        sg_runbook_sop.terraform_bot_orchestration.name,
-      ]
+      runbook_refs = compact(concat(
+        [sg_runbook_sop.terraform_bot_orchestration.name],
+        var.enable_cce ? [sg_runbook_sop.cce_pr_cloud_review[0].name] : [],
+      ))
       skill_refs = concat(
         [local.sop_orchestration_name],
+        var.enable_cce ? [local.sop_cce_pr_review] : [],
         try(var.workflow_skill_refs["terraform-module-update::check-info-and-clone"], []),
       )
       spawn_contracts = local.spawn_contracts_check_info_and_clone
@@ -655,7 +680,8 @@ resource "sg_workflow" "terraform_module_update" {
         3. Build `issue_details` JSON from parsed webhook fields (§0b step 3) when `issue.title` or `pull_request.title` is present — **do NOT** spawn `check-info-and-clone-fetch`. Fetch ONLY when title is absent after JSON parse.
         4. **Only after steps 1–3:** if `repo_clone_path` empty, spawn ONE `check-info-and-clone-clone`. **Subagent goal MUST match the spawn contract verbatim** — never `load_skill terraform-bot-workflow-script-pack` or `_embed_tfbot_run` (trace `9d8958e4`). Pass **context** lines: `repository_clone_url=…`, `repository_default_branch=…`, `issue_or_pr_number=…` so the clone runner uses spawn-context inline pack ensure + `${local.tfbot_pack_dir}/clone-pack.sh clone` (requires `TFBOT_*_B64` on Ubuntu integration env — recycle sidecar after apply). Runner: ONE execute_series — `working_dir=${local.ubuntu_integration_home}` or omit; **never** `working_dir=WORK_ROOT` before clone. **FORBIDDEN:** `TRIGGER_JSON='{"…"}'` in `commands[0].command`; `CLONE_ONE_LINER`; truncating commands.
         5. **Clone outcome:** BLOCKED when `clone_blocker=*` OR `repo_clone_path` empty. `tfbot_pack_error=` → **§8(g)** (`tofu apply` + recycle `terraform-bot-ubuntu`). `base64: invalid input` on pack ensure with TFBOT env present → `clone_blocker=wrong_shell_dollar_escape` (**$$** in execute_series — use single **$**; trace `c72004698186`). `base64: invalid input` with empty TFBOT env → missing_script_pack. **FORBIDDEN** ad-hoc `git clone` or HTTPS token clone fallback (PAT may be fine). `clone_blocker=placeholder_url` → **agent invented URL**. `clone_blocker=auth_or_network` → PAT/scope. If `gh_env_present=false` but `repo_clone_path` set (public clone), note `clone_auth_mode=anonymous` + `push_requires_token=true` and **continue**.
-        6. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:check-info-and-clone` + echo handoff keys (§3b).
+        6. When CCE enabled and clone succeeded: spawn ONE Ubuntu subagent per `${local.sop_cce_pr_review}` (PR entitlement delta) before closing the stage.
+        7. `note` one `workflow_notes_snapshot` JSON (§3i) + `stage_summary:check-info-and-clone` + echo handoff keys (§3b).
 
         Forbidden: spawning clone before step 1 notes; placeholder clone URLs; `graph_query`; org-wide `gh repo list`; auth-verify-only subagents; `check-info-and-clone-fetch` when webhook has `issue.labels` + `issue.title`; `create-pr-notify` on clone failure in this stage; `load_skill` on clone runner; `working_dir=WORK_ROOT` or `working_dir=$HOME/.wf-*` on clone execute_series; raw PAT in goals; `{}` execute_series payloads; `/root/.wf-*` paths.
       EOT

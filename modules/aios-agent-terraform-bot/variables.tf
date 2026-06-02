@@ -47,6 +47,12 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true, embed CCE script pack on the Ubuntu integration for change-control and pre-deploy IAM review (PR entitlement delta)."
+  type        = bool
+  default     = true
+}
+
 variable "existing_ubuntu_integration_name" {
   description = <<-EOT
     Optional. When set, this module SKIPS provisioning its own `terraform-bot-ubuntu`

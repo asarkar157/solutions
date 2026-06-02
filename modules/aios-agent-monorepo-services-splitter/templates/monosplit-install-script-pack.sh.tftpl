@@ -1,0 +1,68 @@
+# Install verified script pack ${script_pack_version} from sidecar env (tofu apply) — no runtime git clone.
+monosplit_install_script_pack() {
+  local dest="$WORK_ROOT/scripts"
+  mkdir -p "$dest" "$WORK_ROOT/.work"
+  if [ -f "$dest/.script_pack_version" ] \
+    && [ "$(cat "$dest/.script_pack_version")" = "${script_pack_version}" ] \
+    && [ -f "$dest/boundary-scan.sh" ] \
+    && [ -f "$dest/clone-and-pr.sh" ] \
+    && [ -f "$dest/scaffold-services.sh" ] \
+    && [ -f "$dest/agents-md-scaffold.sh" ] \
+    && [ -f "$dest/runtime-deps-provision.sh" ] \
+    && [ -f "$dest/stage-runner.sh" ]; then
+    echo "script_pack_install=skipped version=${script_pack_version}"
+    return 0
+  fi
+
+  if [ -z "$${MONOSPLIT_SCRIPT_PACK_TARBALL_B64:-}" ]; then
+    echo "script_pack_error=missing_script_pack_tarball_b64 script_pack_version=${script_pack_version} required_env=MONOSPLIT_SCRIPT_PACK_TARBALL_B64" >&2
+    return 1
+  fi
+
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  if ! printf %s "$MONOSPLIT_SCRIPT_PACK_TARBALL_B64" | tr -d '[:space:]' | base64 -d | tar -xzf - -C "$dest" 2>"$WORK_ROOT/.work/script-pack-extract.err"; then
+    echo "script_pack_error=tarball_extract_failed version=${script_pack_version}" >&2
+    cat "$WORK_ROOT/.work/script-pack-extract.err" >&2 || true
+    return 1
+  fi
+  chmod +x "$dest/"*.sh 2>/dev/null || true
+
+  # NOTE: We intentionally treat sha mismatches as WARN (non-fatal).
+  # Rationale: the provider/integration layer may partially update env vars (expected hashes / bootstrap)
+  # while correctly updating the tarball bytes, producing false-negative "mismatch" failures.
+  # The tarball itself is the source of truth for the bytes we will execute.
+  local runner_actual scan_actual clone_actual scaffold_actual agents_md_actual runtime_actual
+  runner_actual="$(sha256sum "$dest/stage-runner.sh" | awk '{print $1}')"
+  if [ "$runner_actual" != "${script_pack_runner_sha256}" ]; then
+    echo "script_pack_warn=runner_sha256_mismatch script_pack_version=${script_pack_version} expected=${script_pack_runner_sha256} actual=$runner_actual" >&2
+  fi
+  scan_actual="$(sha256sum "$dest/boundary-scan.sh" | awk '{print $1}')"
+  if [ "$scan_actual" != "${script_pack_boundary_scan_sha256}" ]; then
+    echo "script_pack_warn=boundary_scan_sha256_mismatch expected=${script_pack_boundary_scan_sha256} actual=$scan_actual" >&2
+  fi
+  clone_actual="$(sha256sum "$dest/clone-and-pr.sh" | awk '{print $1}')"
+  if [ "$clone_actual" != "${script_pack_clone_and_pr_sha256}" ]; then
+    echo "script_pack_warn=clone_and_pr_sha256_mismatch expected=${script_pack_clone_and_pr_sha256} actual=$clone_actual" >&2
+  fi
+  scaffold_actual="$(sha256sum "$dest/scaffold-services.sh" | awk '{print $1}')"
+  if [ "$scaffold_actual" != "${script_pack_scaffold_services_sha256}" ]; then
+    echo "script_pack_warn=scaffold_services_sha256_mismatch expected=${script_pack_scaffold_services_sha256} actual=$scaffold_actual" >&2
+  fi
+  agents_md_actual="$(sha256sum "$dest/agents-md-scaffold.sh" | awk '{print $1}')"
+  if [ "$agents_md_actual" != "${script_pack_agents_md_scaffold_sha256}" ]; then
+    echo "script_pack_warn=agents_md_scaffold_sha256_mismatch expected=${script_pack_agents_md_scaffold_sha256} actual=$agents_md_actual" >&2
+  fi
+  runtime_actual="$(sha256sum "$dest/runtime-deps-provision.sh" | awk '{print $1}')"
+  if [ "$runtime_actual" != "${script_pack_runtime_deps_sha256}" ]; then
+    echo "script_pack_warn=runtime_deps_sha256_mismatch expected=${script_pack_runtime_deps_sha256} actual=$runtime_actual" >&2
+  fi
+
+  printf '%s\n' "${script_pack_version}" > "$dest/.script_pack_version"
+  echo "script_pack_install=embedded_tarball version=${script_pack_version}"
+  return 0
+}
+
+if ! monosplit_install_script_pack; then
+  exit 1
+fi

@@ -39,6 +39,18 @@ variable "stackgen_mcp_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for cloud entitlement discovery before StackGen MCP synthesis."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration."
+  type        = string
+  default     = ""
+}
+
 variable "name_suffix" {
   description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
   type        = string

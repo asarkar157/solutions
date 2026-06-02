@@ -78,7 +78,7 @@ Reference table: `templates/terraform-bot-orchestration-extensions.md.tftpl` §3
 
 | # | Check | Pass criteria |
 |---|--------|---------------|
-| 2.15 | Workflow metadata | `terminal_calling_halguard_mode`, `halguard_skip_subagent_task_types` set |
+| 2.15 | Workflow metadata | `halguard_skip_subagent_task_types`, `planner_max_tool_iterations` (integer) set per Guild WorkflowMetadata |
 | 2.16 | Orchestration §3i | Documents paste-only runners, no `load_skill` on embedded stages |
 | 2.17 | **Guild-side** (out of module) | Confirm Guild honors metadata or HalGuard cost remains high — see §6 |
 

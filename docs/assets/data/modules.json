@@ -2296,6 +2296,81 @@
       "usage": "module \"db_state_splitter\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-db-state-splitter?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n  # stackgen_mcp_integration_name = module.stackgen_mcp.integration_name\n}"
     },
     {
+      "id": "aios-agent-monorepo-services-splitter",
+      "name": "Monorepo services split",
+      "desc": "Application monolith → microservices in two Guild workflows: analysis (clone, boundary scan, DDD synthesis, guidance PR with service-catalog.yaml + AGENTS.md) then extract (plan gate, scaffold services/<name>/, optional Cursor, extract PR). Go/JS/TS/Java; B64 Ubuntu script pack; unit-test confidence gates; PR-only to same repo. See docs/monorepo-services-splitter.md.",
+      "layer": 2,
+      "tags": [
+        "platform",
+        "github",
+        "ubuntu",
+        "monorepo",
+        "microservices",
+        "ddd",
+        "cursor",
+        "software-engineering",
+        "use-case"
+      ],
+      "icon": "🔀",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "github_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_names",
+          "t": "object({github,ubuntu_cli})",
+          "r": false
+        },
+        {
+          "n": "enable_cursor_integration",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "existing_cursor_mcp_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_github_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "default_split_strategy",
+          "t": "string (ddd|layer|team_topology)",
+          "r": false
+        },
+        {
+          "n": "max_recommended_services",
+          "t": "number",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "github_integration_name",
+        "ubuntu_integration_name",
+        "readonly_default_policy_id",
+        "webhook_id",
+        "webhook_token"
+      ],
+      "usage": "module \"monorepo_services_splitter\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-monorepo-services-splitter?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_secret_id = module.github_integration.secret_id\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n}"
+    },
+    {
       "id": "aios-agent-resource-janitor",
       "name": "Resource Janitor",
       "desc": "Multi-cloud unused-resource detection (≥30 days inactive — Lambda invocations, S3 last-modified, idle compute / disks / public IPs across AWS, Azure, GCP) plus a HITL-gated tag-and-quarantine cleanup workflow with dwell window, blast-radius caps, `dangerous_ops` policy, and an evidence checklist on the destructive workflow.",

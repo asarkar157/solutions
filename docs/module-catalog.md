@@ -25,6 +25,7 @@ permalink: module-catalog/
   > | "What does your CI insight look like?" | `make demo SCENARIO=pipeline-insights` | foundation, policies, integration-github, agent-pipeline-insights, agent-release-tracker, integration-slack |
   > | "Triage 200 Grafana alerts a day." | `make demo SCENARIO=incident-triage` | foundation, policies, integration-grafana, integration-slack, agent-sre, agent-alert-triage |
   > | "Take a legacy repo and make IaC." | `make demo SCENARIO=repo-to-iac` | foundation, policies, integration-github, agent-repo-to-iac |
+  > | "How do we split this monolith into microservices?" | `make demo SCENARIO=monorepo-services-split` | foundation, policies, integration-github, integration-ubuntu, agent-monorepo-services-splitter |
   > | "Wipe to a clean baseline." | `make demo SCENARIO=clean-tenant-reset` | foundation, policies |
   >
   > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}). For **deployment-profile** use cases (Azure SaaS, PrivateSaaS, multi-tenant RCA, self-hosted infra), see the [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}).

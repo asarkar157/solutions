@@ -19,17 +19,23 @@ locals {
   sop_github_pr         = "github-pr-submission${local.suffix}"
   evidence_feature_name = "feature-development-evidence${local.suffix}"
 
-  github_integration_name = "${local.module_prefix}-github${local.suffix}"
-  slack_integration_name  = "${local.module_prefix}-slack${local.suffix}"
+  github_integration_name   = "${local.module_prefix}-github${local.suffix}"
+  slack_integration_name    = "${local.module_prefix}-slack${local.suffix}"
+  ubuntu_integration_name   = "${local.module_prefix}-ubuntu${local.suffix}"
+  sop_cce_migration_context = "cce-linear-migration-context${local.suffix}"
 
-  provision_github = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
-  provision_slack  = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_github     = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
+  provision_slack      = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_ubuntu_cce = var.enable_cce && trimspace(var.existing_ubuntu_integration_name) == "" && (trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != "")
 
   resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
     local.provision_github ? module.github_integration[0].integration_name : ""
   )
   resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
     local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu_cce ? module.ubuntu_integration[0].integration_name : ""
   )
 
   resolved_linear_mcp_integration_name = trimspace(var.existing_linear_mcp_integration_name)
@@ -52,15 +58,38 @@ module "slack_integration" {
   existing_secret_id = var.slack_secret_id
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu_cce ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = ["gh", "git", "curl", "jq", "cce"]
+  env_vars = {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = var.cce_use_case
+  }
+}
+
 # =============================================================================
 # Software Engineering Agent Module
 # =============================================================================
 
 resource "sg_agent" "linear_planner" {
-  name         = local.agent_planner_name
-  persona      = file("${path.module}/personas/linear-planner.md")
-  model_names  = compact(var.model_names)
-  integrations = compact([local.resolved_linear_mcp_integration_name])
+  name        = local.agent_planner_name
+  persona     = file("${path.module}/personas/linear-planner.md")
+  model_names = compact(var.model_names)
+  integrations = compact([
+    local.resolved_linear_mcp_integration_name,
+    local.resolved_ubuntu_integration_name,
+  ])
 
   hitl = {
     always_allowed = concat(
@@ -129,6 +158,13 @@ resource "sg_runbook_sop" "linear_ticket_analysis" {
   description = trimspace(templatefile("${path.module}/templates/linear-ticket-analysis.md", {}))
 }
 
+resource "sg_runbook_sop" "cce_linear_migration_context" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_migration_context
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-linear-migration-context.md.tftpl", {}))
+}
+
 resource "sg_runbook_sop" "cursor_code_authoring" {
   name        = local.sop_cursor_authoring
   approve     = true
@@ -166,7 +202,7 @@ resource "sg_workflow" "feature_development" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   required_inputs        = ["linear_issue_id", "repository"]
   optional_inputs        = ["branch"]
@@ -185,7 +221,7 @@ resource "sg_workflow" "feature_development" {
   ]
 
   stage_bindings = [
-    { stage_id = "analyze-requirements", agent_ref = sg_agent.linear_planner.name, runbook_refs = [sg_runbook_sop.linear_ticket_analysis.id], skill_refs = concat(["sdlc-linear-requirements"], try(var.workflow_skill_refs["feature-development::analyze-requirements"], [])) },
+    { stage_id = "analyze-requirements", agent_ref = sg_agent.linear_planner.name, runbook_refs = compact(concat([sg_runbook_sop.linear_ticket_analysis.id], var.enable_cce ? [sg_runbook_sop.cce_linear_migration_context[0].id] : [])), skill_refs = concat(["sdlc-linear-requirements"], var.enable_cce ? [local.sop_cce_migration_context] : [], try(var.workflow_skill_refs["feature-development::analyze-requirements"], [])) },
     { stage_id = "author-and-test-code", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["analyze-requirements"], runbook_refs = [sg_runbook_sop.cursor_code_authoring.id], skill_refs = concat(["sdlc-cursor-authoring", "sdlc-local-test-loop"], try(var.workflow_skill_refs["feature-development::author-and-test-code"], [])) },
     { stage_id = "submit-pull-request", agent_ref = sg_agent.cursor_developer.name, stage_depends_on = ["author-and-test-code"], runbook_refs = [sg_runbook_sop.github_pr_submission.id], skill_refs = concat(["sdlc-github-pr-flow"], try(var.workflow_skill_refs["feature-development::submit-pull-request"], [])) },
   ]

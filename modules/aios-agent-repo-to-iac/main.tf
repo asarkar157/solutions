@@ -26,15 +26,21 @@ locals {
   evidence_scan_appstack_name = "repo-scan-appstack-github-export-evidence${local.suffix}"
 
   github_integration_name = "${local.module_prefix}-github${local.suffix}"
+  ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+  sop_cce_repo_scan       = "cce-repo-iac-context${local.suffix}"
 
   # `provision_github` must be plan-time known (drives `count`). Consumers
   # often pass a computed `github_secret_id` (e.g. `module.github_pat[0].secret_id`)
   # so we don't inspect it here. The inner aios-integration-github module
   # surfaces a clear error when both inputs are missing.
-  provision_github = trimspace(var.existing_github_integration_name) == ""
+  provision_github     = trimspace(var.existing_github_integration_name) == ""
+  provision_ubuntu_cce = var.enable_cce && trimspace(var.existing_ubuntu_integration_name) == "" && (trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != "")
 
   resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
     local.provision_github ? module.github_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu_cce ? module.ubuntu_integration[0].integration_name : ""
   )
 }
 
@@ -56,6 +62,26 @@ module "github_integration" {
   description        = "GitHub integration owned by the ${local.agent_name} agent (manifest discovery, repo metadata, export PR creation)."
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu_cce ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = ["gh", "git", "curl", "jq", "cce"]
+  env_vars = {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = "cloud-entitlements"
+  }
+}
+
 # =============================================================================
 # Repository → IaC (StackGen MCP + GitHub)
 # =============================================================================
@@ -69,6 +95,7 @@ resource "sg_agent" "repo_iac_architect" {
 
   integrations = compact([
     local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
     var.stackgen_mcp_integration_name != "" ? var.stackgen_mcp_integration_name : null,
   ])
 
@@ -98,6 +125,13 @@ resource "sg_runbook_sop" "repository_discovery" {
   name        = local.sop_repository_discovery_name
   approve     = true
   description = trimspace(templatefile("${path.module}/templates/repository-structure-discovery.md", {}))
+}
+
+resource "sg_runbook_sop" "cce_repo_iac_context" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_repo_scan
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-repo-iac-context.md.tftpl", {}))
 }
 
 resource "sg_runbook_sop" "stackgen_iac_synthesis" {
@@ -215,8 +249,8 @@ resource "sg_workflow" "repository_to_iac" {
     {
       stage_id     = "fetch-repository-metadata"
       agent_ref    = sg_agent.repo_iac_architect.name
-      runbook_refs = [sg_runbook_sop.repository_discovery.name]
-      skill_refs   = concat(["platform-repo-github-discovery"], try(var.workflow_skill_refs["${local.workflow_repo_to_iac_name}::fetch-repository-metadata"], []))
+      runbook_refs = compact(concat([sg_runbook_sop.repository_discovery.name], var.enable_cce ? [sg_runbook_sop.cce_repo_iac_context[0].name] : []))
+      skill_refs   = concat(["platform-repo-github-discovery"], var.enable_cce ? [local.sop_cce_repo_scan] : [], try(var.workflow_skill_refs["${local.workflow_repo_to_iac_name}::fetch-repository-metadata"], []))
       note         = "Architect resolves URL and gathers manifest inventory via GitHub tools."
     },
     {
@@ -352,8 +386,8 @@ resource "sg_workflow" "repo_scan_appstack_github_export" {
     {
       stage_id     = "scan-github-repository"
       agent_ref    = sg_agent.repo_iac_architect.name
-      runbook_refs = [sg_runbook_sop.repository_discovery.name]
-      skill_refs   = concat(["platform-repo-github-scan"], try(var.workflow_skill_refs["${local.workflow_scan_appstack_export_name}::scan-github-repository"], []))
+      runbook_refs = compact(concat([sg_runbook_sop.repository_discovery.name], var.enable_cce ? [sg_runbook_sop.cce_repo_iac_context[0].name] : []))
+      skill_refs   = concat(["platform-repo-github-scan"], var.enable_cce ? [local.sop_cce_repo_scan] : [], try(var.workflow_skill_refs["${local.workflow_scan_appstack_export_name}::scan-github-repository"], []))
       note         = "Architect scans source github_repo_url via GitHub tools."
     },
     {

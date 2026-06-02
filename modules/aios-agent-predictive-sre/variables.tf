@@ -38,6 +38,18 @@ variable "slack_secret_id" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for change-impact analysis on default repos."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration."
+  type        = string
+  default     = ""
+}
+
 variable "existing_github_integration_name" {
   description = "Optional Guild integration name to share an existing GitHub integration."
   type        = string

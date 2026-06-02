@@ -1,0 +1,32 @@
+Skill: **Open guidance PR** — docs under `docs/architecture/` on branch `guild/split-analysis-<workflow_run_id>`.
+
+## Runner
+
+Spawn `guidance-pr-runner` — ONE `execute_series` with `guidance-pr` command.
+
+## PR deliverables
+
+```
+AGENTS.md                    # repo root — IDE agent instructions (https://agents.md/)
+docs/architecture/
+  monorepo-split-analysis.md
+  bounded-context-map.mermaid
+  coupling-matrix.json
+  migration-phases.md
+  service-catalog.yaml
+```
+
+`AGENTS.md` is scaffolded from `boundary_scan.json` (setup, test commands, conventions) plus optional analyst sections from `agents_md_analyst_sections` in notes.
+
+## Success
+
+- `guidance_pr_url` in notes
+- `agents_md_produced=true`
+- `stage_summary:open-guidance-pr=ok`
+
+Never push to `${default_branch}`.
+
+## Blockers
+
+- If `service-catalog.yaml` still contains `example-service`, do **not** open a PR — `synthesize-split-plan` must run first.
+- Never commit markdown containing `[HIDDEN:…]` redaction placeholders — re-run analyst notes or use the deterministic `agents-md-scaffold.sh` output.

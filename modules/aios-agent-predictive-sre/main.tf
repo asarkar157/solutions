@@ -20,11 +20,16 @@ locals {
   grafana_integration_name = "${local.module_prefix}-grafana${local.suffix}"
   aws_integration_name     = "${local.module_prefix}-aws${local.suffix}"
   slack_integration_name   = "${local.module_prefix}-slack${local.suffix}"
+  ubuntu_integration_name  = "${local.module_prefix}-ubuntu${local.suffix}"
+  sop_cce_change_impact    = "cce-change-impact-analysis${local.suffix}"
 
   provision_github  = trimspace(var.github_secret_id) != "" && trimspace(var.existing_github_integration_name) == ""
   provision_grafana = trimspace(var.grafana_secret_id) != "" && trimspace(var.existing_grafana_integration_name) == ""
   provision_aws     = trimspace(var.aws_secret_id) != "" && trimspace(var.existing_aws_integration_name) == ""
   provision_slack   = trimspace(var.slack_secret_id) != "" && trimspace(var.existing_slack_integration_name) == ""
+  provision_ubuntu_cce = var.enable_cce && trimspace(var.existing_ubuntu_integration_name) == "" && (
+    trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != ""
+  )
 
   resolved_github_integration_name = trimspace(var.existing_github_integration_name) != "" ? var.existing_github_integration_name : (
     local.provision_github ? module.github_integration[0].integration_name : ""
@@ -37,6 +42,9 @@ locals {
   )
   resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
     local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu_cce ? module.ubuntu_integration[0].integration_name : ""
   )
 }
 
@@ -72,6 +80,26 @@ module "slack_integration" {
   existing_secret_id = var.slack_secret_id
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu_cce ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = ["gh", "git", "curl", "jq", "cce"]
+  env_vars = {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = "change-impact-analysis"
+  }
+}
+
 # =============================================================================
 # Predictive SRE Agent Module
 # =============================================================================
@@ -86,6 +114,7 @@ resource "sg_agent" "predictive_analyst" {
     local.resolved_grafana_integration_name,
     local.resolved_aws_integration_name,
     local.resolved_slack_integration_name,
+    local.resolved_ubuntu_integration_name,
   ])
 }
 
@@ -113,6 +142,13 @@ resource "sg_runbook_sop" "predictive_degradation" {
   description = trimspace(templatefile("${path.module}/templates/predictive-degradation-analysis.md", {}))
 }
 
+resource "sg_runbook_sop" "cce_change_impact" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_change_impact
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-change-impact-analysis.md.tftpl", {}))
+}
+
 resource "sg_workflow" "predictive_triage" {
   name        = local.workflow_predictive_name
   domain      = "incident-response"
@@ -121,7 +157,7 @@ resource "sg_workflow" "predictive_triage" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   triggers        = [{ field = "incident_title_contains", values = ["degradation", "OOM", "latency creep", "memory leak"], type = "passive" }]
   required_inputs = ["service_name"]
@@ -142,9 +178,9 @@ resource "sg_workflow" "predictive_triage" {
   ]
 
   stage_bindings = [
-    { stage_id = "code-context", agent_ref = var.agent_names.github_agent, skill_refs = concat(["sre-github-deploy-context"], try(var.workflow_skill_refs["predictive-incident-triage::code-context"], [])) },
+    { stage_id = "code-context", agent_ref = var.agent_names.github_agent, runbook_refs = var.enable_cce ? [sg_runbook_sop.cce_change_impact[0].name] : [], skill_refs = concat(["sre-github-deploy-context"], var.enable_cce ? [local.sop_cce_change_impact] : [], try(var.workflow_skill_refs["predictive-incident-triage::code-context"], [])) },
     { stage_id = "metrics-context", agent_ref = var.agent_names.grafana_agent, skill_refs = concat(["sre-grafana-metrics-context"], try(var.workflow_skill_refs["predictive-incident-triage::metrics-context"], [])) },
     { stage_id = "infrastructure-context", agent_ref = var.agent_names.aws_agent, skill_refs = concat(["sre-aws-infra-context"], try(var.workflow_skill_refs["predictive-incident-triage::infrastructure-context"], [])) },
-    { stage_id = "predictive-synergy", agent_ref = sg_agent.predictive_analyst.name, stage_depends_on = ["code-context", "metrics-context", "infrastructure-context"], runbook_refs = [sg_runbook_sop.cross_domain_correlation.name, sg_runbook_sop.predictive_degradation.name], skill_refs = concat(["sre-predictive-correlation", "sre-degradation-forecast"], try(var.workflow_skill_refs["predictive-incident-triage::predictive-synergy"], [])) },
+    { stage_id = "predictive-synergy", agent_ref = sg_agent.predictive_analyst.name, stage_depends_on = ["code-context", "metrics-context", "infrastructure-context"], runbook_refs = compact(concat([sg_runbook_sop.cross_domain_correlation.name, sg_runbook_sop.predictive_degradation.name], var.enable_cce ? [sg_runbook_sop.cce_change_impact[0].name] : [])), skill_refs = concat(["sre-predictive-correlation", "sre-degradation-forecast"], var.enable_cce ? [local.sop_cce_change_impact] : [], try(var.workflow_skill_refs["predictive-incident-triage::predictive-synergy"], [])) },
   ]
 }

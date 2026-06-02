@@ -1,0 +1,41 @@
+Skill: **Scaffold service layout** on extract branch with **language-appropriate unit test stubs**.
+
+## Inputs
+
+- `plan_artifact_path` or `prior_workflow_run_id` notes (required — cold start must stop at plan-blocked-gate)
+- `service-catalog.yaml` from analysis PR, work root, or `docs/architecture/`
+- `github_repo_url` in notes (runner clones repo if needed)
+- `boundary_scan.json` — `test_frameworks` drives Vitest vs Jest stub selection
+
+## Runner
+
+Spawn **`scaffold-services-runner`** only — `scaffold-services` command in embedded stage-runner.
+
+**Forbidden in this stage:** `gh pr create`, opening extract PR, inline scaffold scripts, hand-written `build.gradle.kts` without runner.
+
+Creates `services/<name>/` per catalog entry (supports block YAML and inline `{name:, repo_path:}`):
+
+| Language | Scaffold artifacts |
+|----------|-------------------|
+| Go | `main_test.go` — table-driven example (`t.Run`); run `go test ./... -race` |
+| Java | `build.gradle.kts`, `src/test/java/.../ScaffoldTest.java` — JUnit 5; Gradle includes wired in `settings.gradle.kts` |
+| TypeScript | `<name>.test.ts` — Vitest or Jest stub per detected framework |
+
+Also per service: README (ownership + test gate), Dockerfile stub, CI workflow stub with **test job before build**.
+
+## Validation (script-enforced)
+
+Runner fails unless each service has README ≥120 bytes, test stub, Dockerfile, and Java build file when applicable. Notes must include `scaffold_layout_validated=true` before `open-extract-pr`.
+
+## Pre-scaffold gate
+
+If `test_confidence_score` < 0.4 from analysis scan, note `scaffold_warning=low_test_confidence` and require human approval before extract PR — do not skip test stubs.
+
+## Success
+
+- `scaffold_layout_created=true`
+- `scaffold_layout_validated=true`
+- `scaffold_service_count` > 0
+- `per_service_test_strategy_documented=true`
+
+Extract PR is opened in **`open-extract-pr`** stage only.

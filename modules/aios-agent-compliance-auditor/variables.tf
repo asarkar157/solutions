@@ -55,6 +55,24 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for audit-evidence and regulatory-scope repo scans."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration for CCE scans."
+  type        = string
+  default     = ""
+}
+
+variable "cce_use_case" {
+  description = "Default CCE usage lens for compliance repo scans (see appcd-dev/cce docs/usages)."
+  type        = string
+  default     = "audit-evidence"
+}
+
 variable "name_suffix" {
   description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
   type        = string

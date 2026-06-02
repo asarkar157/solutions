@@ -133,7 +133,7 @@ resource "sg_workflow" "k8s_monitoring" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   triggers        = [{ field = "incident_title_contains", values = ["CrashLoopBackOff", "NodeNotReady"], type = "passive" }]
   required_inputs = ["cluster_name"]
@@ -153,7 +153,7 @@ resource "sg_workflow" "aws_unified_audit" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   runbook_refs    = [sg_runbook_sop.aws_security_audit.name, sg_runbook_sop.aws_cost_analysis.name, sg_runbook_sop.aws_tags_sanity.name]
   example_queries = ["Run a security check on S3 buckets", "Find idle EBS volumes", "Validate tagging compliance"]

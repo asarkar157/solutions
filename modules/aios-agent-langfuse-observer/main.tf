@@ -177,7 +177,7 @@ resource "sg_workflow" "ai_ops_health_scorecard" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   triggers = [
     { field = "schedule", values = ["weekly", "daily"], type = "passive" },

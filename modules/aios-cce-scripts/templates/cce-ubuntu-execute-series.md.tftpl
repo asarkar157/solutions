@@ -1,0 +1,24 @@
+## CCE scan (Ubuntu execute_series)
+
+Run **after** the repo exists at `$${WORK_ROOT}/repo` (or `$repo_clone_path` from notes). Use **single `$`** in execute_series — never `$$`.
+
+**Pack path:** scripts live under `$${cce_pack_dir}` (from sidecar env `CCE_PACK_DIR` or `$HOME/.aios-cce/pack`).
+
+```bash
+export WORK_ROOT='${work_root_example}'
+export PATH="$HOME/.local/bin:$PATH"
+CCE_PACK_DIR="$${CCE_PACK_DIR:-$HOME/.aios-cce/pack}"
+# Ensure pack (first run): mkdir -p "$CCE_PACK_DIR" && echo "$CCE_PACK_B64" | base64 -d | tar -xz -C "$CCE_PACK_DIR"
+
+export CCE_USE_CASE='${cce_use_case}'
+bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$WORK_ROOT/repo" "$${CCE_USE_CASE}" "$WORK_ROOT/cce_report.json" \
+  && jq '{scan_status, summary, sample: (.entitlements[0:5])}' "$WORK_ROOT/cce_report.json"
+```
+
+**PR delta** (`change-control`, `pre-deploy-iam-review`):
+
+```bash
+bash "$CCE_PACK_DIR/cce-pr-delta.sh" delta "$WORK_ROOT/repo" origin/main HEAD "$WORK_ROOT"
+```
+
+Mirror to notes: `cce_scan_status`, `cce_entitlements_total`, `cce_new_entitlement_count` (PR delta), `cce_report_path`.

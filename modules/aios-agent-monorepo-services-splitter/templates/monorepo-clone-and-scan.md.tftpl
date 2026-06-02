@@ -1,0 +1,54 @@
+Skill: **Clone repository and run boundary scan** (Go / TypeScript / Java + **unit test inventory**).
+
+## Runner goal
+
+Spawn `clone-and-boundary-scan-runner` with spawn_contract goal verbatim.
+
+## Script delivery (spawn context — mandatory)
+
+Ubuntu sidecars are **shared** — per-run isolation: **`WORK_ROOT=/home/integration/.<workflow_run_id>/`**. Script pack is **embedded at tofu apply** (sidecar env) — the workflow never clones a tooling repo at runtime.
+
+**Tool order:** `notes_index` → `read_notes` (for `github_repo_url`, `default_branch`) → **one** `execute_series`: prepend `export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<branch>'` then paste **`SCAN_EXECUTE_SERIES_DECODE_COMMAND`** verbatim (single `$` only). **`create_files` is forbidden.**
+
+Session `note()` alone does not write to `$WORK_ROOT/notes.json` on the sidecar — the runner must pass repo URL via those shell exports on the same line as the decode command.
+
+## Test inventory capture (mandatory notes)
+
+After scan, read `$WORK_ROOT/notes.json` and mirror:
+
+- `test_inventory_attached=true`
+- `test_confidence_score` (numeric from JSON)
+- `test_frameworks` (comma-separated or JSON array string)
+- `packages_without_tests` count or top-N list for analyst handoff
+- `runtime_deps_provisioned=true` when Java/Go/Node were installed via apt
+- `baseline_test_status` (`passed` | `failed` | `skipped`) and `baseline_test_run_evidence=true` when suite passed
+
+**Never defer baseline tests** with "Java not available in runner env" — Ubuntu runners have root/sudo; the bootstrap installs required JDK/Go/Node from project signals (`.java-version`, Gradle/Maven, `go.mod`, `package.json`) then runs `test_inventory` recommended commands.
+
+For large Gradle monorepos, set `note(key=baseline_test_command, value=./gradlew :module-a:test :module-b:test)` before spawn to override the default `./gradlew test`.
+
+The scan populates:
+
+| Field | Purpose |
+|-------|---------|
+| `test_inventory` | Per-language counts, frameworks, recommended commands |
+| `test_frameworks` | Detected runners (`go_test`, `junit5`, `vitest`, `jest`, …) |
+| `packages_without_tests` | Packages/workspaces lacking unit tests — split risk |
+| `test_confidence_score` | 0–1 heuristic for analyst gating |
+
+## Success criteria
+
+- `boundary_scan_json_attached=true`
+- `boundary_scan_json_path` under WORK_ROOT
+- `cloud_entitlements` inside `boundary_scan.json` (CCE scan: AWS/GCP/Azure API usage by provider — use for IAM/PoLP hints before split recommendations)
+- `test_inventory_attached=true`
+- `script_pack_version=${script_pack_version}`
+- Final line: `stage_summary:clone-and-boundary-scan=ok` or `blocked:missing_github_repo_url`
+
+## Blocked sentinels
+
+- `blocked:missing_github_repo_url` — no clone (runner did not prepend `GITHUB_REPO_URL` from `read_notes`)
+- `blocked:clone_failed` — auth/network
+- `blocked:boundary_scan_failed` — scan script error
+- `script_pack_error=runner_sha256_mismatch` — **sidecar env stale** (see README “Sidecar env drift”); escalate to platform/infra, then **new workflow run**
+- `script_pack_error=*` — other embed verification or install failure

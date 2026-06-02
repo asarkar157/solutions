@@ -199,7 +199,7 @@ resource "sg_workflow" "supply_chain_scan" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   triggers = [
     { field = "incident_title_contains", values = ["supply chain", "npm", "malicious package", "provenance"], type = "passive" },

@@ -1,0 +1,79 @@
+Skill: Orchestration for **monorepo application-code splitting** — analysis PR, optional extract PR, evidence gates.
+
+## Workflow DAG — analysis
+
+```
+clone-and-boundary-scan → scan-blocked-gate → analyze-coupling-and-contexts → synthesize-split-plan
+  → open-guidance-pr → final-evidence-gate
+```
+
+## Workflow DAG — extract
+
+```
+load-approved-plan → plan-blocked-gate → scaffold-service-layout → cursor-refactor-services (skip if disabled)
+  → open-extract-pr → extract-evidence-gate
+```
+
+**Cold-start extract:** when no prior analysis run exists, `load-approved-plan` emits `blocked:missing_plan_artifact` and stops. `plan-blocked-gate` skips scaffold/Cursor/PR and routes to `extract-evidence-gate` — run **`monorepo-services-split-analysis`** first.
+
+## Unit test confidence gates
+
+Use `boundary_scan.json` test signals as **split confidence gates**:
+
+1. **Before guidance PR** — analyst must cite `test_inventory` and `test_confidence_score`; document `packages_without_tests` for each proposed cut.
+2. **Before extract PR** — Ubuntu runner or architect must run language tests on touched paths:
+   - Go: `go test ./... -race -count=1` (or scoped `./services/<name>/...`)
+   - Java: `mvn test` / `./gradlew test`
+   - TS: `pnpm test` / `npm test` for scaffolded packages
+3. **Block extract** when a **high-coupling package** (high `inbound_edges` in scan) has **no unit tests** and no documented tests-first migration phase — emit `blocked:missing_unit_tests_at_cut_line`.
+4. **Baseline test evidence** — clone-and-scan bootstrap provisions runtimes (apt) and runs `test_inventory` commands on Ubuntu runners. Mirror `baseline_test_status` and `baseline_test_run_evidence=true` when passed. **Never defer** with "Java not available in runner env".
+
+### Test pyramid during decomposition
+
+- **70%+ unit tests** per extracted service (fast, in-process).
+- **Contract tests** at new HTTP/gRPC boundaries (Pact / OpenAPI diff).
+- **Minimal E2E** — only critical user journeys; Testcontainers for DB at module edges, not for every split decision.
+
+## Stage entry protocol (context-efficient)
+
+Use the Pensieve **browse → fetch** pattern to avoid dumping every note body into the prompt:
+
+1. **`notes_index`** — list keys, byte sizes, and 80-char previews plus `total_bytes`. Cheap discovery.
+2. If previews are enough (e.g. you only need `boundary_scan_json_path`), **do not call `read_notes`** — read the file from disk instead (`cat $WORK_ROOT/boundary_scan.json` via runner, or path from preview).
+3. **`read_notes`** — only when you need full note bodies and `total_bytes` from the index is acceptable (< ~32 KiB combined, or stage requires multiple keys).
+4. If `notes_index.count == 0`, fall back to `cat $HOME/.<workflow_run_id>/notes.json` (disk mirror).
+5. Cold-start: `notify` once and return — do not ask operator to re-supply machine artifacts.
+
+After distilling handoff keys into notes, call **`delete_context`** on bulky tool outputs (scan logs, full `read_notes` dumps) to free context budget.
+
+## Execution optimization
+
+- **Shared Ubuntu sidecar** — integration containers are shared across runs. Agents cannot recycle sidecars or re-apply tofu. Isolation is **`WORK_ROOT=/home/integration/.<workflow_run_id>/`** only (clone, scripts, notes, scan artifacts). Never write shared paths like `.monosplit-work`.
+- **Architect = coordinator only** on Ubuntu stages — spawn exactly one runner per script stage.
+- **Script pack delivery (mandatory):** Bootstrap B64 + script tarball are in sidecar env at `tofu apply` — **no runtime tooling-repo clone**. Spawn context carries short **`_*_EXECUTE_SERIES_DECODE_COMMAND`**. Runner: `read_notes` → prepend `export GITHUB_REPO_URL=…` → paste decode on one `execute_series` line. **`execute_command` and `create_files` are forbidden** on runners.
+- **Analyst stages** — no shell; consume `boundary_scan.json` including `test_inventory`.
+
+## HalGuard grounding (mandatory)
+
+- **Never invent repo facts** when scan failed — emit `blocked:runner_failed` or `blocked:missing_scan_artifact`; scan-blocked-gate skips analyst/PR stages.
+- **Terminal runners** (`task_type=terminal_calling`): workflow metadata `halguard_skip_subagent_task_types=terminal_calling` skips HalGuard **PreCheck** on inline bootstrap decode goals (cost control). **PostCheck still runs** on runner stdout summaries.
+- **Architect / analyst**: HalGuard **PostCheck** applies to orchestrator output — cite only paths and note keys from runners, not training-data package inventories.
+- **Forbidden operator instructions:** never tell users to recycle sidecars, re-apply tofu, re-inject `MONOSPLIT_*_B64`, or abandon the current `workflow_run_id` for a new run.
+
+## Blocked sentinels (plan-blocked-gate — extract)
+
+Skip to `extract-evidence-gate` when prior stage output contains a line-anchored sentinel: `^blocked:missing_plan_artifact`, `^blocked:plan_load_failed`, `^plan_loaded=false`, or `^plan_loaded: false`.
+
+## Blocked sentinels (scan-blocked-gate — analysis)
+
+Skip to final evidence when **prior stage output** contains a line-anchored sentinel (regex `(?m)^…` — prose like “No \`blocked:clone_failed\`” must **not** match): `^blocked:…`, `^stage_summary:clone-and-boundary-scan=blocked`, `^clone_blocker=`, `^work_root_error=`, `^script_pack_error=`, `^boundary_scan_json_attached=false`, `^boundary_scan_ok=false`, or `^boundary_scan_ok: false`.
+
+## Scratch paths
+
+All artifacts: `$HOME/.<workflow_run_id>/` (copy `workflow_run_id` from stagerunner header).
+
+Script pack: **${script_pack_version}**
+
+## AGENTS.md (IDE agent onboarding)
+
+Guidance PRs include repo-root **`AGENTS.md`** ([agents.md](https://agents.md/)): setup commands, test inventory, and conventions from `boundary_scan.json`, plus optional analyst sections from `agents_md_analyst_sections` note. Shipped on `guild/split-analysis-*` with `docs/architecture/`.

@@ -1,0 +1,36 @@
+Skill: **Bounded context analysis** from `boundary_scan.json` — including **language-specific unit test coverage**.
+
+## Inputs
+
+- `boundary_scan_json_path` (notes or disk mirror)
+- `test_inventory`, `test_frameworks`, `packages_without_tests`, `test_confidence_score` from scan JSON
+- Optional: `split_strategy` (`ddd` | `layer` | `team_topology`)
+- Optional: `target_languages`, `max_recommended_services`
+
+## Procedure
+
+1. Read scan JSON — languages, modules, shared_libraries, api_surfaces, ci_deploy_units, **test_inventory**.
+2. Map **Conway's law**: infer ownership from paths, CODEOWNERS if present in repo notes.
+3. Draft bounded contexts — name aggregates, ubiquitous language, context boundaries.
+4. **Map test coverage to bounded contexts** (mandatory):
+   - **Go**: For each proposed context, list `packages_without_tests` and `packages_with_tests` from `test_inventory.go`. Flag contexts whose packages lack `*_test.go` co-located tests.
+   - **Java**: Tie contexts to `src/test/java` modules; note JUnit 5 / Surefire presence. Reserve Testcontainers for cross-module integration only — not as a substitute for unit tests at the cut line.
+   - **TypeScript/JavaScript**: Map workspace packages to contexts; note Vitest/Jest/Mocha from `test_frameworks` and packages missing `scripts.test` or `*.test.ts` files.
+5. Produce `bounded-context-map.mermaid` content (store via `note` path or PR prep keys).
+6. Emit coupling heat commentary — high inbound_edges packages are extraction risks; **down-rank cuts through packages with zero unit tests** unless a test migration plan is documented.
+
+## Test confidence interpretation
+
+| `test_confidence_score` | Guidance |
+|-------------------------|----------|
+| ≥ 0.7 | Safe to recommend extraction with existing suites as gates |
+| 0.4–0.7 | Recommend strangler + tests-first; cite gaps in `packages_without_tests` |
+| < 0.4 | Do not recommend hard cut — bootstrap runs baseline tests on Ubuntu (apt install JDK/Go/Node); if `baseline_test_status=failed`, document gaps before any cut |
+
+## Outputs (notes)
+
+- `bounded_context_map_produced=true`
+- `coupling_hotspots` — top N tightly coupled modules
+- `test_coverage_by_context` — JSON or markdown mapping contexts → test signals
+
+Do not run shell commands.

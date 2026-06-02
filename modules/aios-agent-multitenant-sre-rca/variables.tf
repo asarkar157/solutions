@@ -126,6 +126,18 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for incident-scoping on default repos."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration."
+  type        = string
+  default     = ""
+}
+
 variable "slack_bot_token" {
   description = "Slack bot token when provisioning an internal Slack integration."
   type        = string

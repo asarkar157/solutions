@@ -1,0 +1,18 @@
+Skill: **Cursor delegation** for service extraction refactors.
+
+## Preconditions
+
+- `enable_cursor_integration=true` and Cursor MCP attached
+- `split_mode=extract` (not `scaffold_only`)
+- Ubuntu scaffold completed — `working_branch=guild/split-extract-*`
+
+## Procedure
+
+1. `read_notes` — plan JSON, `target_service_names`, repo URL, branch.
+2. Launch Cursor agent with bounded prompt: move/refactor within branch only; no force-push.
+3. Poll `${cursor_tool_prefix}_cursor_agents_get_status` until terminal state.
+4. `note("cursor_delegation_summary", …)` — files touched, services addressed, blockers.
+
+## Skip
+
+When Cursor disabled or `split_mode=scaffold_only` — stage is `conditional_skip`.

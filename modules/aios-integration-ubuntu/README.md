@@ -79,5 +79,5 @@ module "ubuntu_integration" {
 | `integration_name` | `string`       | `"ubuntu-cli"`                                                    | Integration name                                |
 | `integration_image`| `string`       | `"ghcr.io/appcd-dev/stackgen-guild-integration-ubuntu:main"`      | Container image                                 |
 | `secret_ref_ids`   | `list(string)` | `[]`                                                              | Vault secret IDs to inject                      |
-| `install_tools`    | `list(string)` | `[]`                                                              | CLI tools to install at startup                 |
+| `install_tools`    | `list(string)` | `[]`                                                              | CLI tools to install at startup (`tofu`, `terraform`, `awscli`, `kubectl`, `helm`, `gcloud`, `az`, `gh`, `git`, `curl`, `jq`, `gdown`, `cce`, `python3-pip`) |
 | `env_vars`         | `map(string)`  | `{}`                                                              | Extra environment variables                     |

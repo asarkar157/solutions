@@ -101,7 +101,7 @@ resource "sg_workflow" "developer_daily_triage" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
   example_queries = [
     "what are the things pending on my side",

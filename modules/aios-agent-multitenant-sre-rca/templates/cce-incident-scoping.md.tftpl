@@ -1,0 +1,13 @@
+# CCE incident scoping (Ubuntu)
+
+During **cross-signal-investigate**, after identifying suspect service/repo, clone each relevant repo from `${github_default_repos}` on Ubuntu and run CCE.
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>/`
+2. For each repo slug, `gh repo clone` into `$WORK_ROOT/repos/<name>`.
+3. Extract `CCE_PACK_B64` → run `bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$REPO" incident-scoping "$WORK_ROOT/cce-<repo>.json"`.
+4. Filter `entitlements[]` by alert context (e.g. `resource` matches failing AWS/GCP service).
+5. Add to `investigation_report.evidence[]` with `source: cce` and file/line citations.
+
+Use `blast-radius-analysis` lens when the incident targets a specific SDK/API (`CCE_USE_CASE=blast-radius-analysis`).
+
+Skip when `SKIP_CCE=1` or Ubuntu integration not attached.

@@ -3,7 +3,7 @@ terraform {
   required_providers {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
-      # sg_remote_runner create + install commands (>= 0.1.23); spawn_contracts (>= 0.1.21).
+      # sg_remote_runner (>= 0.1.23); sg_agent plan stability + workflow metadata (>= 0.1.23).
       version = ">= 0.1.23, < 0.2.0"
     }
   }
@@ -27,6 +27,7 @@ locals {
   sop_substate_converge_name = "terraform-substate-convergence-sop${local.suffix}"
   sop_orphan_bootstrap_name  = "orphan-iac-module-bootstrap-sop${local.suffix}"
   sop_appstack_playbook_name = "stackgen-appstack-mcp-playbook-sop${local.suffix}"
+  sop_cce_iac_alignment      = "cce-iac-alignment${local.suffix}"
   policy_auto_approve_name   = "db-state-split-stackgen-mcp-auto-approve${local.suffix}"
   evidence_primary_name      = "db-monorepo-state-split-evidence${local.suffix}"
   evidence_orphan_name       = "orphan-iac-module-authoring-evidence${local.suffix}"
@@ -201,13 +202,27 @@ module "github_integration" {
   description        = "GitHub integration owned by the ${local.agent_name} agent (issue/PR triage, gh api). Bound to a shared tenant-level PAT secret."
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
 module "ubuntu_integration" {
   count  = local.provision_ubuntu ? 1 : 0
   source = "../aios-integration-ubuntu"
 
   integration_name = local.ubuntu_integration_name
   secret_ref_ids   = compact([var.github_secret_id, var.aws_secret_id])
-  install_tools    = ["tofu", "terraform", "awscli", "gh", "git", "curl", "jq", "gdown"]
+  install_tools = concat(
+    ["tofu", "terraform", "awscli", "gh", "git", "curl", "jq", "gdown"],
+    var.enable_cce ? ["cce"] : [],
+  )
+  env_vars = var.enable_cce ? {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = "iac-alignment"
+  } : {}
 }
 
 module "aws_integration" {
@@ -332,6 +347,13 @@ resource "sg_runbook_sop" "stackgen_appstack_mcp_playbook" {
   description = trimspace(local.rendered_templates["stackgen-appstack-mcp-playbook.md"])
 }
 
+resource "sg_runbook_sop" "cce_iac_alignment" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_iac_alignment
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-iac-alignment.md.tftpl", {}))
+}
+
 # =============================================================================
 # Evidence checklists — proof-of-work for primary vs orphan workflows
 # =============================================================================
@@ -410,7 +432,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "12"
+    planner_max_tool_iterations = 12
   }
 
   required_inputs = ["monolith_state_uri"]
@@ -587,12 +609,16 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       stage_id         = "materialize-appstacks-coordinator"
       agent_ref        = sg_agent.db_state_split_architect.name
       stage_depends_on = ["registry-and-import-codegen"]
-      runbook_refs = [
-        sg_runbook_sop.stackgen_appstack_mcp_playbook.name,
-        sg_runbook_sop.db_state_split_orchestration.name,
-      ]
+      runbook_refs = compact(concat(
+        [
+          sg_runbook_sop.stackgen_appstack_mcp_playbook.name,
+          sg_runbook_sop.db_state_split_orchestration.name,
+        ],
+        var.enable_cce ? [sg_runbook_sop.cce_iac_alignment[0].name] : [],
+      ))
       skill_refs = concat(
         ["stackgen-appstack-mcp-playbook-sop", "db-state-split-orchestration-sop"],
+        var.enable_cce ? [local.sop_cce_iac_alignment] : [],
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-appstacks-coordinator"], []),
         try(var.workflow_skill_refs["db-monorepo-state-split-convergence::materialize-stackgen-appstacks"], []),
       )
@@ -659,7 +685,7 @@ resource "sg_workflow" "orphan_iac_module_authoring" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
 
   required_inputs        = ["orphans_bundle", "parent_repository_url"]

@@ -3,3 +3,6 @@
 *.tfvars
 *.tfstate.backup
 **/__pycache__/
+
+# Module-generated artifacts (created by OpenTofu providers / tests)
+**/.generated/

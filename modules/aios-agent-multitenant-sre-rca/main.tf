@@ -36,6 +36,8 @@ locals {
   aws_integration_name     = "${local.module_prefix}-aws${local.suffix}"
   github_integration_name  = "${local.module_prefix}-github${local.suffix}"
   slack_integration_name   = "${local.module_prefix}-slack${local.suffix}"
+  ubuntu_integration_name  = "${local.module_prefix}-ubuntu${local.suffix}"
+  sop_cce_incident_scope   = "cce-incident-scoping${local.suffix}"
 
   provision_datadog = (
     (trimspace(var.datadog_api_key) != "" || trimspace(var.datadog_secret_id) != "")
@@ -60,6 +62,9 @@ locals {
     (trimspace(var.slack_bot_token) != "" || trimspace(var.slack_secret_id) != "")
     && trimspace(var.existing_slack_integration_name) == ""
   )
+  provision_ubuntu_cce = var.enable_cce && trimspace(var.existing_ubuntu_integration_name) == "" && (
+    trimspace(var.github_token) != "" || trimspace(var.github_secret_id) != "" || trimspace(var.existing_github_integration_name) != ""
+  )
 
   resolved_datadog_integration_name = trimspace(var.existing_datadog_integration_name) != "" ? var.existing_datadog_integration_name : (
     local.provision_datadog ? module.datadog_integration[0].integration_name : ""
@@ -75,6 +80,9 @@ locals {
   )
   resolved_slack_integration_name = trimspace(var.existing_slack_integration_name) != "" ? var.existing_slack_integration_name : (
     local.provision_slack ? module.slack_integration[0].integration_name : ""
+  )
+  resolved_ubuntu_integration_name = trimspace(var.existing_ubuntu_integration_name) != "" ? var.existing_ubuntu_integration_name : (
+    local.provision_ubuntu_cce ? module.ubuntu_integration[0].integration_name : ""
   )
 
   priorities_rego_literals       = join(", ", [for p in var.alert_ingest_allowed_priorities : format("%q", lower(p))])
@@ -151,6 +159,26 @@ module "github_integration" {
   github_token       = var.github_token
   existing_secret_id = var.github_secret_id
   description        = "GitHub integration owned by ${local.agent_investigator_name} (commit history and blame for RCA)."
+}
+
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "ubuntu_integration" {
+  count  = local.provision_ubuntu_cce ? 1 : 0
+  source = "../aios-integration-ubuntu"
+
+  integration_name = local.ubuntu_integration_name
+  secret_ref_ids   = compact([var.github_secret_id])
+  install_tools    = ["gh", "git", "curl", "jq", "cce"]
+  env_vars = {
+    CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+    CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+    CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    CCE_USE_CASE     = "incident-scoping"
+  }
 }
 
 module "slack_integration" {
@@ -235,6 +263,7 @@ resource "sg_agent" "rca_investigator" {
     local.resolved_gcp_integration_name,
     local.resolved_aws_integration_name,
     local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
   ])
 }
 
@@ -362,6 +391,13 @@ resource "sg_runbook_sop" "cross_signal_investigation" {
   description = trimspace(templatefile("${path.module}/templates/runbook-cross-signal-investigation.md", local.investigation_template_vars))
 }
 
+resource "sg_runbook_sop" "cce_incident_scoping" {
+  count       = var.enable_cce ? 1 : 0
+  name        = local.sop_cce_incident_scope
+  approve     = true
+  description = trimspace(templatefile("${path.module}/templates/cce-incident-scoping.md.tftpl", local.investigation_template_vars))
+}
+
 resource "sg_runbook_sop" "synthesize_rca" {
   name        = local.sop_synthesize_name
   approve     = true
@@ -415,7 +451,7 @@ resource "sg_workflow" "datadog_multitenant_rca" {
   evidence_checklist_ref = var.enable_evidence_checklist ? sg_evidence_checklist.multitenant_rca[0].name : null
 
   metadata = {
-    planner_max_tool_iterations = "45"
+    planner_max_tool_iterations = 45
   }
 
   triggers = [
@@ -467,9 +503,16 @@ resource "sg_workflow" "datadog_multitenant_rca" {
       stage_id         = "cross-signal-investigate"
       agent_ref        = sg_agent.rca_investigator.name
       stage_depends_on = ["normalize-alert"]
-      runbook_refs     = [sg_runbook_sop.cross_signal_investigation.name]
-      skill_refs       = concat(["mtsre-cross-signal-investigation"], try(var.workflow_skill_refs["datadog-multitenant-rca::cross-signal-investigate"], []))
-      note             = "Cross-signal investigation using Datadog, GCP, AWS, and GitHub integrations."
+      runbook_refs = compact(concat(
+        [sg_runbook_sop.cross_signal_investigation.name],
+        var.enable_cce ? [sg_runbook_sop.cce_incident_scoping[0].name] : [],
+      ))
+      skill_refs = concat(
+        ["mtsre-cross-signal-investigation"],
+        var.enable_cce ? [local.sop_cce_incident_scope] : [],
+        try(var.workflow_skill_refs["datadog-multitenant-rca::cross-signal-investigate"], []),
+      )
+      note = "Cross-signal investigation using Datadog, GCP, AWS, GitHub, and optional Ubuntu CCE incident scoping."
     },
     {
       stage_id         = "synthesize-rca"
@@ -501,7 +544,7 @@ resource "sg_workflow" "datadog_rca_collaboration" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = "30"
+    planner_max_tool_iterations = 30
   }
 
   triggers = [

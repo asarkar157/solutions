@@ -24,6 +24,19 @@ Maps **customer situations** to **Terraform modules** in this library. Each row 
 | PrivateSaaS SRE (Aiden for SRE): FireHydrant + Grafana ingest → GCP + internal console → multi-source runbooks → RCA (document-only prod recommendations) | [`aios-agent-privatesaas-sre`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-privatesaas-sre) | FireHydrant, Grafana, GCP, internal REST API | `privatesaas`, `webhook`, `rca`, **Bifrost LLM** |
 | PrivateSaaS GitOps: Slack `/aiden` for npm/deploy/pipeline failures → GitLab, Argo CD, DynamoDB, SonarQube → optional Ubuntu CLI / remote runner | [`aios-agent-privatesaas-gitops-sre`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-privatesaas-gitops-sre) | GitLab, Argo CD, SonarQube, AWS, Slack, Ubuntu (optional) | `privatesaas`, `gitops`, `webhook`, `remote-runner` |
 | Self-hosted private AWS: CloudFormation stack failure ingest → read-only AWS/CFN investigation → HITL change-set recommendations, drift audit, pre-deploy review | [`aios-agent-selfhosted-infra`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-selfhosted-infra) | AWS, Ubuntu CLI (optional), remote runner (optional) | `selfhosted`, `infra`, `webhook`, `remote-runner` |
+| Application monolith → microservices: boundary scan (Go/Java/JS/TS), DDD guidance PR, optional `services/<name>/` scaffold + extract PR | [`aios-agent-monorepo-services-splitter`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-monorepo-services-splitter) | GitHub, Ubuntu CLI | `github`, `ubuntu`, `monorepo`, `microservices`, `ddd` |
+| Terraform/OpenTofu monolith state → logical groups + optional per-group roots / AppStacks | [`aios-agent-db-state-splitter`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-db-state-splitter) | GitHub, Ubuntu CLI, StackGen MCP (optional) | `terraform`, `iac`, `github`, `ubuntu` |
+
+---
+
+## Monolith → microservices (application + IaC)
+
+For customers splitting **both** application code and infrastructure state:
+
+1. **[Monorepo services split]({% include doc_url.html path="monorepo-services-splitter.md" %})** — `monorepo-services-split-analysis` then `monorepo-services-split-extract` on the application repo.
+2. **[DB state split]({{ site.github.repository_url }}/tree/main/modules/aios-agent-db-state-splitter)** — group Terraform/OpenTofu state and optional AppStack materialization.
+
+Demo scenario: `make demo SCENARIO=monorepo-services-split`.
 
 ---
 
@@ -57,3 +70,4 @@ Maps **customer situations** to **Terraform modules** in this library. Each row 
 | [Module Catalog]({% include doc_url.html path="module-catalog.md" %}) | Filter by tag (`aiden`, `use-case`, `webhook`, deployment profile, tool name) |
 | [Architecture]({% include doc_url.html path="architecture.md" %}) | Layer diagram including new SRE / integration modules |
 | [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) | Runnable `examples/scenarios/` demos for pre-sales (not every use-case row has a scenario yet) |
+| [Monorepo services split]({% include doc_url.html path="monorepo-services-splitter.md" %}) | Analysis → guidance PR → extract workflow guide |

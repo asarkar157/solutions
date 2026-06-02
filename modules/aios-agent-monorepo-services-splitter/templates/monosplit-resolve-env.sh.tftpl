@@ -1,0 +1,61 @@
+monosplit_resolve_work_root() {
+  if [ -n "$${WORK_ROOT:-}" ]; then printf '%s' "$WORK_ROOT"; return 0; fi
+  if [ -n "$${WORKFLOW_RUN_ID:-}" ]; then printf '%s' "/home/integration/.$${WORKFLOW_RUN_ID}"; return 0; fi
+  echo "work_root_error=missing_workflow_run_id" >&2
+  return 1
+}
+
+monosplit_seed_work_root_notes() {
+  local notes="$WORK_ROOT/notes.json"
+  [ -f "$notes" ] || echo '{}' >"$notes"
+  if [ -n "$${GITHUB_REPO_URL:-}" ] || [ -n "$${DEFAULT_BRANCH:-}" ]; then
+    local tmp
+    tmp="$(mktemp)"
+    jq \
+      --arg u "$${GITHUB_REPO_URL:-}" \
+      --arg b "$${DEFAULT_BRANCH:-}" \
+      --arg wf "$${WORKFLOW_RUN_ID:-}" \
+      '. + (if $u != "" then {github_repo_url: $u} else {} end)
+         + (if $b != "" then {default_branch: $b} else {} end)
+         + (if $wf != "" then {workflow_run_id: $wf} else {} end)' \
+      "$notes" >"$tmp" && mv "$tmp" "$notes"
+  fi
+}
+
+monosplit_resolve_repo_url() {
+  if [ -n "$${GITHUB_REPO_URL:-}" ]; then return 0; fi
+  if [ ! -f "$WORK_ROOT/notes.json" ]; then return 1; fi
+  local url
+  url="$(jq -r '.github_repo_url // empty' "$WORK_ROOT/notes.json" 2>/dev/null || true)"
+  if [ -n "$url" ]; then
+    export GITHUB_REPO_URL="$url"
+    return 0
+  fi
+  local inputs
+  inputs="$(jq -r '.inputs // empty' "$WORK_ROOT/notes.json" 2>/dev/null || true)"
+  url="$(printf '%s' "$inputs" | sed -n 's/.*github_repo_url=\([^,]*\).*/\1/p')"
+  if [ -n "$url" ]; then
+    export GITHUB_REPO_URL="$url"
+    return 0
+  fi
+  return 1
+}
+
+monosplit_resolve_default_branch() {
+  if [ -n "$${DEFAULT_BRANCH:-}" ]; then return 0; fi
+  export DEFAULT_BRANCH="${default_branch}"
+  if [ -f "$WORK_ROOT/notes.json" ]; then
+    local branch
+    branch="$(jq -r '.default_branch // empty' "$WORK_ROOT/notes.json" 2>/dev/null || true)"
+    if [ -n "$branch" ]; then
+      export DEFAULT_BRANCH="$branch"
+      return 0
+    fi
+    local inputs
+    inputs="$(jq -r '.inputs // empty' "$WORK_ROOT/notes.json" 2>/dev/null || true)"
+    branch="$(printf '%s' "$inputs" | sed -n 's/.*default_branch=\([^,]*\).*/\1/p')"
+    if [ -n "$branch" ]; then
+      export DEFAULT_BRANCH="$branch"
+    fi
+  fi
+}

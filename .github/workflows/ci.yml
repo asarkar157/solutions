@@ -91,6 +91,27 @@ jobs:
           python3 ./scripts/verify-workflow-stage-bindings.py --self-test
           python3 ./scripts/verify-workflow-stage-bindings.py
 
+  monorepo-splitter-decode-commands:
+    name: Monorepo splitter decode commands
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Validate embed B64, workflow structure, tofu decode commands
+        run: |
+          set -euo pipefail
+          MOD="modules/aios-agent-monorepo-services-splitter"
+          bash "${MOD}/tests/embed_b64_roundtrip_test.sh"
+          bash "${MOD}/tests/workflow_structure_test.sh"
+          bash "${MOD}/tests/scan_blocked_gate_regex_test.sh"
+          bash "${MOD}/tests/decode_command_validate_test.sh"
+          bash "${MOD}/tests/stage_runner_install_test.sh"
+
   opentofu-validate:
     name: OpenTofu validate
     runs-on: ubuntu-latest

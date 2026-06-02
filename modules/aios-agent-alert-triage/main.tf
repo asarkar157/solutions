@@ -99,7 +99,7 @@ resource "sg_workflow" "alert_triage_pipeline" {
 
 
   metadata = {
-    planner_max_tool_iterations = "40"
+    planner_max_tool_iterations = 40
   }
 
 

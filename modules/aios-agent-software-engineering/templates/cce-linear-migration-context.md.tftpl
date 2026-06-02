@@ -1,0 +1,11 @@
+# CCE code context for Linear-driven development
+
+After pulling the Linear ticket and **before** handing off to Cursor, clone `repository` on Ubuntu and run CCE.
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>/` — clone into `$WORK_ROOT/repo`.
+2. Install pack from `CCE_PACK_B64` into `CCE_PACK_DIR`.
+3. `bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$WORK_ROOT/repo" "$${CCE_USE_CASE:-sdk-uplift}" "$WORK_ROOT/cce_report.json"`
+4. Attach to Linear handoff notes: `cce_entitlements_total`, `summary.by_provider`, and up to 10 sample `entitlements` (file/line/method) relevant to the ticket.
+5. Cursor developer should use this JSON as **ground truth** for SDK/cloud touch points — do not guess from imports alone.
+
+Lens options: `sdk-uplift`, `tech-debt-inventory`, `golden-path-enforcement`, `platform-adoption` (set `cce_use_case` on module or `CCE_USE_CASE` env).

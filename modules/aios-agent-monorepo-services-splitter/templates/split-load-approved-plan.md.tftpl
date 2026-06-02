@@ -1,0 +1,39 @@
+Skill: **Load approved split plan** before extract — notes and GitHub MCP only.
+
+## Purpose
+
+Extract workflow **must not** re-run analysis. This stage loads artifacts from a prior **`monorepo-services-split-analysis`** run (or a checked-in plan path). If no plan exists, emit a blocked sentinel and stop — `plan-blocked-gate` skips scaffold, Cursor, and extract PR.
+
+## Allowed tools
+
+- `notes_index`, `read_notes`, `note`
+- `${github_tool_prefix}_*` — fetch guidance PR files, analysis run metadata, `service-catalog.yaml`
+
+## Forbidden on this stage
+
+- **No** `create_agent` / Ubuntu runners — this stage has **no** `spawn_contracts`
+- **No** `${ubuntu_tool_prefix}_execute_command`, `${ubuntu_tool_prefix}_execute_series`, inline shell, heredocs, or hand-written scanners
+- **No** bounded-context analysis, boundary scan, or synthesizing a new `service-catalog.yaml` from training data
+- **No** opening PRs or claiming extract success when plan is missing
+
+## Procedure
+
+1. `notes_index` → `read_notes` for: `plan_artifact_path`, `prior_workflow_run_id`, `github_repo_url`, `guidance_pr_url`, `default_branch`.
+2. Resolve plan:
+   - **`plan_artifact_path`** — verify path exists (e.g. `docs/architecture/service-catalog.yaml` on default branch or guidance PR branch).
+   - **`prior_workflow_run_id`** — load mirrored notes / artifacts from that analysis run; copy `service-catalog.yaml` path into notes.
+3. On success:
+   - `note(key=plan_loaded, value=true)`
+   - `note(key=plan_artifact_path, value=<resolved path>)`
+   - Mirror `service-catalog.yaml` to `$HOME/.<workflow_run_id>/service-catalog.yaml` (or note `service_catalog_yaml_path`).
+4. On failure (both `plan_artifact_path` and `prior_workflow_run_id` empty after `read_notes`, file missing, or analysis run has no catalog):
+   - `note(key=blocked:missing_plan_artifact, value=true)`
+   - `note(key=extract_blocked_reason, value=<plain English: run monorepo-services-split-analysis first>)`
+   - Emit a line-anchored sentinel in your stage output (this is what `plan-blocked-gate` matches):
+     - `blocked:missing_plan_artifact`
+     - `plan_loaded=false`
+   - **Stop immediately** — do not spawn runners or continue to scaffold.
+
+## Downstream
+
+`plan-blocked-gate` matches `blocked:missing_plan_artifact` and skips to `extract-evidence-gate`. Architect submits evidence documenting the block — never fabricates scaffold or PR URLs.

@@ -1,0 +1,9 @@
+# CCE IaC ↔ application alignment (optional)
+
+When `application_repo_url` is provided in workflow input or notes, clone on Ubuntu and run CCE with `CCE_USE_CASE=iac-alignment` (or built-in cloud scan) **before** StackGen AppStack materialization.
+
+1. Clone app repo to `$WORK_ROOT/app-repo`.
+2. Run `cce-scan.sh` per sidecar `CCE_PACK_*` env.
+3. Compare entitlement `provider`/`resource` signals to Terraform resource types in state groups — flag mismatches in notes (`cce_iac_alignment_summary`).
+
+Skip when `application_repo_url` empty or `SKIP_CCE=1`.

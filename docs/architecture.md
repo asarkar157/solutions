@@ -34,6 +34,8 @@ graph TD
         A_LFO["aios-agent-langfuse-observer"]
         A_SOC["aios-agent-soc-analyst"]
         A_TFB["aios-agent-terraform-bot"]
+        A_DBS["aios-agent-db-state-splitter"]
+        A_MON["aios-agent-monorepo-services-splitter"]
         A_AZS["aios-agent-azure-saas-sre"]
         A_STR["aios-agent-sre-ticket-resolution"]
         A_MTR["aios-agent-multitenant-sre-rca"]
@@ -51,6 +53,7 @@ graph TD
         I_LF["aios-integration-langfuse"]
         I_SL["aios-integration-slack"]
         I_GH["aios-integration-github"]
+        I_UB["aios-integration-ubuntu"]
         I_CH["aios-integration-clickhouse"]
         I_DD["aios-integration-datadog"]
         I_PD["aios-integration-pagerduty"]
@@ -88,6 +91,9 @@ graph TD
     A_PS --> I_AWS
     A_LFO --> I_LF
     A_TFB --> I_GH
+    A_DBS --> I_GH
+    A_MON --> I_GH
+    A_MON --> I_UB
     A_AZS --> I_AZ
     A_AZS --> I_DD
     A_AZS --> I_PD
@@ -128,6 +134,10 @@ graph TD
     A_SOC --> P
     A_TFB --> F
     A_TFB --> P
+    A_DBS --> F
+    A_DBS --> P
+    A_MON --> F
+    A_MON --> P
     A_AZS --> F
     A_AZS --> P
     A_STR --> F
@@ -151,6 +161,7 @@ graph TD
     I_LF --> F
     I_SL --> F
     I_GH --> F
+    I_UB --> F
 ```
 
 ## Resource Inventory by Module
@@ -183,6 +194,8 @@ The table below is a **snapshot** of several heavily used agent modules (agent /
 | aios-agent-soc-analyst | 1 | 2 | 2 | 1 | — |
 | aios-agent-stackgen-mcp-policy | 1 | — | — | 1 | — |
 | aios-agent-terraform-bot | 1 | — | 1 | 1 | — |
+| aios-agent-db-state-splitter | 2+ | — | 2 | 1 | — |
+| aios-agent-monorepo-services-splitter | 2–3 | — | 2 | 1 | — |
 | aios-agent-db-optimizer | 1 | 1 | 1 | — | — |
 | aios-agent-iac-drift-detective | 1 | 1 | 1 | — | — |
 | aios-agent-sre-incident-commander | 1 | 1 | 1 | — | — |

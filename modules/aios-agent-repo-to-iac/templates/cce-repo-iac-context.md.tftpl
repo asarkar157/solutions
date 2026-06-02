@@ -1,0 +1,11 @@
+# CCE cloud context for repo → IaC
+
+After resolving `github_repo_url`, clone on **Ubuntu** and run CCE **before** StackGen MCP `create_appstack` / resource wiring.
+
+1. Clone to `$WORK_ROOT/repo`.
+2. Extract `CCE_PACK_B64` to `CCE_PACK_DIR`.
+3. `bash "$CCE_PACK_DIR/cce-scan.sh" scan "$WORK_ROOT/repo" "$WORK_ROOT/cce_report.json"` (built-in cloud filter).
+4. Use `summary.by_provider` and `entitlements[]` to choose StackGen modules and IAM-scoped connections — align IaC with **observed** SDK usage, not README guesses.
+5. `note` `cce_report_path`, `cce_scan_status`, `cce_entitlements_total`.
+
+For IaC alignment against Terraform in-repo, optionally re-run with `CCE_USE_CASE=iac-alignment`.
