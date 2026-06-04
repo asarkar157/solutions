@@ -747,8 +747,9 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
       note            = <<-EOT
         **Coordinator-only (max 1 create_agent fan-out):** `read_notes` → confirm `batch_payloads_path` + `large_state_sample_group_ids` exist (registry stage wrote them). Spawn **exactly 4** parallel children in **one message**: `appstack-materialize-runner-batch-01` … `batch-04` with `flow_type:"parallel"`, each assigned disjoint slices from `batch_payloads.json`. **RETURN immediately** after spawn — do NOT run MCP on the lead.
         **Forbidden:** `*-extract-payloads`, `*-read-payloads`, `*-prep`, `*-probe`, lead `${local.shell_tool_prefix}_execute_*`.
-        Batch children follow stackgen-appstack-mcp-playbook-sop (create → bulk_add → membership gate → bulk_connect). Lead merges `stackgen_appstack_membership_report` after children complete (read notes only — no execute).
+        Batch children follow stackgen-appstack-mcp-playbook-sop (create → bulk_add → membership gate → bulk_connect). Lead merges `stackgen_appstack_membership_report` at **final-gate-and-memory** (read notes only — not in this stage).
         If MCP not attached: `note stackgen_appstack_map=skipped: no_mcp` and return.
+        **Final message format (mandatory):** Title **`## materialize-appstacks-coordinator — Fan-out started (async)`** — NOT "stage complete" for AppStack materialize. State that **4 batch runners are executing** create/bulk_add/membership/connect in parallel. `note("stage_summary:materialize-appstacks-coordinator", "spawned")`. **Do not** claim AppStacks exist yet on the lead. **Do not** use a closing line that reads like workflow closure (avoid sole headline **"Next step: final-gate"**); instead: *"Batch runners in flight; **final-gate-and-memory** will publish the accomplishment report when parallel branches finish."*
       EOT
     },
     {
@@ -787,6 +788,7 @@ resource "sg_workflow" "db_monorepo_state_split_convergence" {
         **Evidence gate:** `submit_evidence` for required checklist items. When `large_state_sample_mode=true`, partial AppStack/hydration evidence is acceptable with `"partial": true`.
         Final `notify` with PR URL + per-group tables. Never emit owner "HCL AUTHOR".
         `note` `stage_summary:final-gate-and-memory` and mirror to `$HOME/.<workflow_run_id>/notes.json`.
+        **Final message format (mandatory — operator/UI rollup):** Title **`## final-gate-and-memory — COMPLETE`**. Include **Evidence Gate — PASSED** table, **Convergence Guards** table, **per-group summary** (group, AppStack ID, resources, membership ok), `pr_url`, and **`stage_summary:final-gate-and-memory=ok`**. This message is the authoritative accomplishment summary (not the materialize coordinator spawn message).
       EOT
     },
   ]

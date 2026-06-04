@@ -9,7 +9,7 @@ Given `monolith_state_uri` + `iac_repository_url`, produce **multiple StackGen A
 `ingest-and-split` → `ingest-blocked-gate` → `registry-and-import-codegen`, then **3-way parallel**:
 
 - **`shell-converge-matrix`** — ONE `shell-converge-matrix-runner` runs `hydrate-and-plan-matrix` (tofu init + generate-config-out + verify plan over sample groups). **No** `hcl-hydrate-runner-batch-*` children.
-- **`materialize-appstacks-coordinator`** — spawn **4×** `appstack-materialize-runner-batch-<NN>` in **one** `flow_type:"parallel"` message using pre-built `batch_payloads.json`.
+- **`materialize-appstacks-coordinator`** — spawn **4×** `appstack-materialize-runner-batch-<NN>` in **one** `flow_type:"parallel"` message using pre-built `batch_payloads.json`. Lead message title **Fan-out started (async)** — never imply AppStacks are already materialized; **`final-gate-and-memory`** publishes the accomplishment report.
 - **`orphans-secondary-pipeline`** — optional; skip when `orphans_bundle` empty (max 2 tool turns).
 
 `final-gate-and-memory` fans in from all three parallel branches.
