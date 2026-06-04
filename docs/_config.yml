@@ -25,6 +25,8 @@ header_pages:
   - index.md
   - module-catalog.md
   - monorepo-services-splitter.md
+  - cce-agent-integrations.md
+  - cce-enterprise-workflows.md
   - use-case-catalog.md
   - onboarding/index.md
   - architecture.md

@@ -17,12 +17,12 @@ output "runbook_sop_names" {
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "remote_runner_name" {

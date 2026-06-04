@@ -1,23 +1,29 @@
-Skill: **Bounded context analysis** from `boundary_scan.json` — including **language-specific unit test coverage**.
+Skill: **Bounded context analysis** from `boundary_scan.json` — including **language-specific unit test coverage** and **CCE coupling signals**.
 
 ## Inputs
 
-- `boundary_scan_json_path` (notes or disk mirror)
-- `test_inventory`, `test_frameworks`, `packages_without_tests`, `test_confidence_score` from scan JSON
+- `boundary_scan_summary` and **`cce_summary`** from notes (compact — never full CCE JSON)
+- `test_inventory`, `test_frameworks`, `packages_without_tests`, `test_confidence_score` from scan summary
+- `cloud_by_provider`, `outbound_coupling_dirs`, `critical_path_dirs` from summaries
 - Optional: `split_strategy` (`ddd` | `layer` | `team_topology`)
 - Optional: `target_languages`, `max_recommended_services`
 
 ## Procedure
 
-1. Read scan JSON — languages, modules, shared_libraries, api_surfaces, ci_deploy_units, **test_inventory**.
+1. Read summaries — languages, module_count, shared_libraries signals, **test_inventory**, **cce_summary.top_directories**.
 2. Map **Conway's law**: infer ownership from paths, CODEOWNERS if present in repo notes.
 3. Draft bounded contexts — name aggregates, ubiquitous language, context boundaries.
-4. **Map test coverage to bounded contexts** (mandatory):
-   - **Go**: For each proposed context, list `packages_without_tests` and `packages_with_tests` from `test_inventory.go`. Flag contexts whose packages lack `*_test.go` co-located tests.
-   - **Java**: Tie contexts to `src/test/java` modules; note JUnit 5 / Surefire presence. Reserve Testcontainers for cross-module integration only — not as a substitute for unit tests at the cut line.
-   - **TypeScript/JavaScript**: Map workspace packages to contexts; note Vitest/Jest/Mocha from `test_frameworks` and packages missing `scripts.test` or `*.test.ts` files.
-5. Produce `bounded-context-map.mermaid` content (store via `note` path or PR prep keys).
-6. Emit coupling heat commentary — high inbound_edges packages are extraction risks; **down-rank cuts through packages with zero unit tests** unless a test migration plan is documented.
+4. **Use CCE coupling** (mandatory when `cce_summary.scan_status=ok`):
+   - Cluster `outbound_coupling_dirs` and `top_directories` by directory prefix → outbound HTTP/gRPC/cloud coupling heat.
+   - Cross `cloud_by_provider` with proposed contexts — flag cuts that split shared cloud SDK usage.
+   - Intersect untested packages with cloud-heavy directories.
+5. **Map test coverage to bounded contexts** (mandatory):
+   - **Go**: For each proposed context, list `packages_without_tests` and packages with `*_test.go`.
+   - **Java**: Tie contexts to `src/test/java` modules; note JUnit 5 / Surefire presence.
+   - **TypeScript/JavaScript**: Map workspace packages to contexts; note Vitest/Jest from `test_frameworks`.
+6. Produce `bounded-context-map.mermaid` content (store via `note` path or PR prep keys).
+7. Emit coupling heat commentary — down-rank cuts through packages with zero unit tests and high outbound coupling.
+8. **Targeted CCE handoff**: if default lenses missed wrappers, `note(cce_rescan_spec)` with `use_case` (lens slug), `recipes`, or `mapper_url` + `folder_scopes`; else `note(cce_rescan_spec_absent=true)`.
 
 ## Test confidence interpretation
 
@@ -25,12 +31,13 @@ Skill: **Bounded context analysis** from `boundary_scan.json` — including **la
 |-------------------------|----------|
 | ≥ 0.7 | Safe to recommend extraction with existing suites as gates |
 | 0.4–0.7 | Recommend strangler + tests-first; cite gaps in `packages_without_tests` |
-| < 0.4 | Do not recommend hard cut — bootstrap runs baseline tests on Ubuntu (apt install JDK/Go/Node); if `baseline_test_status=failed`, document gaps before any cut |
+| < 0.4 | Do not recommend hard cut — cite `baseline_test_status` from notes |
 
 ## Outputs (notes)
 
 - `bounded_context_map_produced=true`
-- `coupling_hotspots` — top N tightly coupled modules
+- `coupling_hotspots` — top N tightly coupled modules (include CCE outbound dirs when present)
 - `test_coverage_by_context` — JSON or markdown mapping contexts → test signals
+- `cce_rescan_spec` OR `cce_rescan_spec_absent=true`
 
 Do not run shell commands.

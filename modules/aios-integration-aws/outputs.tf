@@ -1,6 +1,6 @@
 output "integration_name" {
   description = "Registered name of the AWS integration"
-  value       = sg_guild_integration.aws.name
+  value       = nonsensitive(sg_guild_integration.aws.name)
 }
 
 output "integration_id" {

@@ -1,8 +1,21 @@
 # What CCE adds to the monorepo services splitter
 
-This module’s **clone-and-boundary-scan** stage already produced structural facts: languages, coarse modules, shared libs, API surfaces, CI workflows, and a **test inventory**. **CCE** (Code Context Engine, [`appcd-dev/cce`](https://github.com/appcd-dev/cce)) adds a different lens: **which cloud provider APIs the application code actually calls**, mapped to structured entitlements.
+This module’s **clone-and-boundary-scan** stage produces structural facts plus **CCE critical-path scans** via [`aios-cce-scripts`](../../aios-cce-scripts/) (`cce plan`, `cce run -recipes`, and lens use-case passes).
 
-CCE runs automatically inside `boundary-scan.sh` (via `scripts/cce-cloud-scan.sh`) and lands in `boundary_scan.json` under **`cloud_entitlements`**.
+---
+
+## Three-tier pipeline (cost-aware)
+
+| Tier | Who | What |
+|------|-----|------|
+| **1 — Recipes** | Ubuntu / optional remote runner | `cce run -recipes` on critical-path dirs — catalog ids from `releases.stackgen.com/cce/recipes` |
+| **1 — Lens add-on** | Same runner | Separate `cce-scan.sh scan-use-case` per lens slug from `releases.stackgen.com/cce/lenses` |
+| **2 — Analyst LLM** | split-domain-analyst | Reads **`boundary_scan_summary`** + **`cce_summary` only** — never full entitlement arrays |
+| **3 — Targeted rescan** | architect spawns runner | When analyst notes `cce_rescan_spec` (`use_case`, `recipes`, `mapper_url`, or custom YAML) |
+
+**Tier 1 recipes (default):** `cloud-entitlements`, `microservice-decomposition`, `platform-adoption`.
+
+**Tier 1 lens add-on (default):** `monorepo-intelligence`, `integration-replatforming` — not catalog recipe ids; downloaded from the lens index at scan time.
 
 ---
 
@@ -10,116 +23,80 @@ CCE runs automatically inside `boundary-scan.sh` (via `scripts/cce-cloud-scan.sh
 
 | Power | What it means for split analysis |
 |-------|----------------------------------|
-| **Unknown-repo cloud surface** | Before reading README or guessing, see whether the repo talks to AWS, GCP, Azure, etc., and *which* services (S3, Bedrock, Storage, …). |
-| **Method-level evidence** | Each entitlement includes `file`, `line`, `method` (fully qualified SDK call), and `operation` — citeable in split plans and PRs. |
-| **Per-language passes** | CCE runs once per detected language (`go` → GO, `java` → JAVA, `typescript` → JAVASCRIPT). Polyglot monorepos get separate signal per stack. |
-| **IAM / PoLP hints** | `summary.by_provider` and `entitlements[]` support “this proposed service only needs these API actions” — complements test inventory for **risk** (untested + cloud-heavy packages). |
-| **Analyst grounding** | Split-domain analyst can reason about **deploy boundaries + cloud blast radius**, not only import graphs and test counts. |
-| **Notes mirror** | `cloud_entitlements_scan_status` and `cloud_entitlements_total` are written to `notes.json` for quick HalGuard / orchestration checks. |
-
-CCE does **not** replace boundary scan. It **augments** it:
-
-```
-boundary_scan.json
-├── languages, modules, shared_libraries, api_surfaces, ci_deploy_units  ← structure
-├── test_inventory, test_confidence_score, packages_without_tests       ← test risk
-└── cloud_entitlements                                                  ← cloud API usage (CCE)
-```
+| **Parse-once recipes** | `cce run -recipes …` — one tree-sitter pass per scope for catalog recipes |
+| **Published lens add-on** | Lens-only slugs via `cce-scan.sh` + `CCE_LENS_BASE_URL` (no invalid recipe ids) |
+| **Critical-path scoping** | Large repos: CCE runs on top-N dirs (modules, shared libs, API surfaces, untested packages) |
+| **Small-repo full tree** | When `cce plan` ≤ `cce_full_tree_max_files` (default 800), one full-tree pass |
+| **Outbound coupling** | `microservice-decomposition` → HTTP/gRPC call-site clusters by directory |
+| **Platform adoption** | Direct cloud SDK vs internal platform wrapper call sites |
+| **Monorepo intelligence** | Cross-package cloud/SDK patterns (lens add-on) |
+| **Integration replatforming** | Kafka/SQS/RabbitMQ/HTTP client inventory (lens add-on) |
+| **Custom lens follow-up** | Analyst `cce_rescan_spec` with `use_case` slug → Tier 3 runner |
+| **Compact LLM handoff** | `cce_summary` in notes: counts, `top_directories`, `*_by_provider` — full JSON on disk + guidance PR only |
 
 ---
 
-## What `cloud_entitlements` contains
-
-Typical shape after a successful scan:
+## What `boundary_scan.json` contains (CCE fields)
 
 ```json
 {
-  "scan_status": "ok",
-  "cce_version": "0.0.4",
-  "files_scanned": 120,
-  "entitlements_total": 42,
-  "entitlements_truncated": false,
-  "summary": {
-    "total_entitlements": 42,
-    "by_provider": { "AWS": 30, "GCP": 12 }
+  "cce_recipes": ["cloud-entitlements", "microservice-decomposition", "platform-adoption"],
+  "cce_lens_use_cases": ["monorepo-intelligence", "integration-replatforming"],
+  "cce_plan": { "candidate_file_count": 420, "sample_files": ["..."] },
+  "critical_path_dirs": ["pkg", "internal", "services"],
+  "cce_reports": {
+    "cloud_entitlements": { "scan_status": "ok", "summary": { "by_provider": {} } },
+    "outbound_coupling": { "scan_status": "ok", "top_directories": [] },
+    "platform_adoption": { "scan_status": "ok", "top_directories": [] },
+    "monorepo_intelligence": { "scan_status": "ok", "top_directories": [] },
+    "integration_replatforming": { "scan_status": "ok", "top_directories": [] }
   },
-  "entitlements": [
-    {
-      "provider": "AWS",
-      "resource": "bedrock",
-      "operation": "NewFromConfig",
-      "file": "internal/service/model_sync_bedrock.go",
-      "line": 82,
-      "method": "github.com/aws/aws-sdk-go-v2/service/bedrock.NewFromConfig"
-    }
-  ]
+  "cloud_entitlements": { "scan_status": "ok", "summary": { "by_provider": { "AWS": 12 } } }
 }
 ```
 
-| Field | Use |
-|-------|-----|
-| `scan_status` | `ok` \| `failed` \| `skipped` — whether to trust the block |
-| `summary.by_provider` | Executive view: “this monorepo is AWS-heavy” |
-| `entitlements[]` | Drill-down for service boundaries, IAM tables, migration phases |
-| `entitlements_truncated` | If true, list was capped (default 500); treat as lower bound |
-
 ---
 
-## Where it runs in the workflow
+## Where it runs
 
 ```mermaid
 flowchart LR
   A[Clone target repo] --> B[boundary-scan.sh]
-  B --> C[Structure + tests]
-  B --> D[cce-cloud-scan.sh]
-  D --> E[boundary_scan.json]
-  E --> F[Split-domain analyst]
+  B --> C[cce plan]
+  C --> D[Critical path dirs]
+  D --> E["cce run -recipes scoped"]
+  D --> F["cce-scan lens add-on"]
+  E --> G[boundary_scan.json + cce_summary notes]
+  F --> G
+  G --> H[Analyst LLM]
+  H -->|optional cce_rescan_spec| I[targeted-cce-scan runner]
 ```
 
-1. **Ubuntu sidecar** — `install_tools` includes `cce` (or script self-installs from StackGen releases).
-2. **Scan stage** — after clone, same `WORK_ROOT` as boundary scan.
-3. **Downstream** — analyst reads `boundary_scan_json_path`; inspect `cloud_entitlements` for cloud coupling and split risk.
+1. **Ubuntu sidecar** (default) — `CCE_PACK_B64` + `MONOSPLIT_SCRIPT_PACK_TARBALL_B64` at `tofu apply`.
+2. **Optional remote runner** — `create_remote_runner=true` + `force_remote_runner=true` for very large monorepos.
+
+Skip CCE: `MONOREPO_SPLIT_SKIP_CCE=1` or `enable_cce_enhanced=false`.
 
 ---
 
-## What CCE does *not* do here
+## Variables (operators)
 
-- **No live cloud calls** — static analysis only; no credentials, no account inventory.
-- **No IaC** — does not read Terraform/Kubernetes YAML for IAM roles (code paths only).
-- **No wrapper magic by default** — thin wrappers around boto3/SDKs may need a [custom mapper lens](https://github.com/appcd-dev/cce/blob/main/docs/custom_definition.md) (`-mapper-file`); built-in `-filter cloud` targets direct SDK usage.
-- **Not a split decision engine** — humans/agents still choose bounded contexts; CCE supplies **facts**.
-- **Very large repos** — full-tree scans can be slow or hit CCE limits; entitlement list may be truncated.
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `enable_cce_enhanced` | `true` | Wire `aios-cce-scripts` + pack scan |
+| `cce_recipes` | cloud + microservice-decomposition + platform-adoption | Catalog recipe ids for `cce run -recipes` |
+| `cce_lens_use_cases` | monorepo-intelligence + integration-replatforming | Lens slugs for Tier-1 add-on (`cce-scan.sh`); empty disables |
+| `cce_critical_path_max_dirs` | `8` | Max scoped directory passes |
+| `cce_full_tree_max_files` | `800` | Full-tree threshold from `cce plan` |
+| `create_remote_runner` | `false` | Register aiden-runner for optional shell |
+| `force_remote_runner` | `false` | Use remote runner execute_series instead of Ubuntu |
 
-Skip CCE for a run: `MONOREPO_SPLIT_SKIP_CCE=1` on the sidecar.
-
----
-
-## Practical prompts for readers
-
-When reviewing `boundary_scan.json` for an unknown repo, ask:
-
-1. **Which providers?** → `cloud_entitlements.summary.by_provider`
-2. **Which services share a cloud client?** → group `entitlements` by `resource` + directory prefix
-3. **Does a proposed cut cross cloud SDK usage?** → compare `file` paths to candidate module boundaries
-4. **Is cloud usage in untested code?** → intersect `entitlements[].file` with `packages_without_tests`
-
----
-
-## Install reference (operators)
-
-| Environment | How `cce` arrives |
-|-------------|-------------------|
-| Guild Ubuntu sidecar | `INSTALL_TOOLS=…,cce` via this module’s `install_tools` |
-| Script fallback | `cce-cloud-scan.sh` downloads `releases.stackgen.com/binaries/cce/v0.0.4/…` |
-| Developer laptop | `brew tap stackgenhq/stackgen && brew install cce` |
-| Container | `docker pull ghcr.io/appcd-dev/cce:<tag>` |
-
-Script pack version **20260602.11+** embeds `cce-cloud-scan.sh` in the tarball baked at `tofu apply`.
+Script pack version **20260604.2+** embeds the split recipe/lens scan logic.
 
 ---
 
 ## Related
 
-- Module README — sidecar env drift, script pack versioning
-- [`templates/monorepo-clone-and-scan.md.tftpl`](../templates/monorepo-clone-and-scan.md.tftpl) — runner success criteria
-- CCE project — [`README`](https://github.com/appcd-dev/cce), use cases under `docs/usages/`
+- [`docs/cce-agent-integrations.md`](../../../docs/cce-agent-integrations.md) — module matrix
+- [CCE lens index](https://releases.stackgen.com/cce/lenses/index.json) — Tier 3 `use_case` slugs
+- [CCE recipe catalog](https://releases.stackgen.com/cce/recipes/latest/catalog.json) — Tier 1 `cce_recipes`

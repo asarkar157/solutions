@@ -3,7 +3,9 @@
 set -euo pipefail
 
 GIT_TOKEN="${GIT_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
-export GIT_TOKEN="$GIT_TOKEN" GH_TOKEN="$GIT_TOKEN" GITHUB_TOKEN="$GIT_TOKEN"
+export GIT_TOKEN
+export GH_TOKEN="$GIT_TOKEN"
+export GITHUB_TOKEN="$GIT_TOKEN"
 export GIT_TERMINAL_PROMPT=0
 
 if [ -z "$GIT_TOKEN" ]; then

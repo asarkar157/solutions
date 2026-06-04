@@ -12,7 +12,7 @@ This site is reorganized around **three jobs solutions engineers actually have**
 
 | You are… | Start here | What you get |
 |----------|-----------|--------------|
-| **Demoing Aiden to a prospect in the next 30 minutes** (pre-sales) | [SE playbook]({% include doc_url.html path="se-playbook.md" %}) and [`examples/scenarios/`]({{ site.github.repository_url }}/tree/main/examples/scenarios) | A one-command runnable demo per prospect question (AWS SRE, FinOps, pipeline insights, alert triage, repo → IaC, monorepo split). Each scenario ships with a talk track. |
+| **Demoing Aiden to a prospect in the next 30 minutes** (pre-sales) | [SE playbook]({% include doc_url.html path="se-playbook.md" %}) and [`examples/scenarios/`]({{ site.github.repository_url }}/tree/main/examples/scenarios) | A one-command runnable demo per prospect question (AWS SRE, FinOps, pipeline insights, alert triage, repo → IaC, monorepo split, Bedrock Claude). Each scenario ships with a talk track. |
 | **Migrating a UI-clicked tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR) | [`tools/aios-export/`]({{ site.github.repository_url }}/tree/main/tools/aios-export) | Read-only export of every agent / workflow / remote runner in a Guild tenant — first as a JSON snapshot, then as HCL the customer can version-control. Phase 1 does **not** capture integrations / policies / schedules / secrets / webhooks (no provider data sources yet — hand-merge those); Phase 2 will add manual capture for them. |
 | **Composing your own root from individual modules** (advanced / customers extending the library) | [Onboarding]({% include doc_url.html path="onboarding/index.md" %}) → [Use a module]({% include doc_url.html path="onboarding/04-use-a-module.md" %}) | Step-by-step orientation, machine setup, local CI parity, and the patterns used in `examples/complete/`. |
 
@@ -30,6 +30,8 @@ This site is reorganized around **three jobs solutions engineers actually have**
 | [Module Catalog]({% include doc_url.html path="module-catalog.md" %}) | Interactive module discovery with tag filtering and copy-paste snippets. |
 | [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}) | Customer situation → agent + integration modules (SaaS, PrivateSaaS, multi-tenant, self-hosted). |
 | [Monorepo services split]({% include doc_url.html path="monorepo-services-splitter.md" %}) | Two-workflow monolith → microservices guide (analysis → guidance PR → extract). |
+| [CCE × AIOS integrations]({% include doc_url.html path="cce-agent-integrations.md" %}) | Code Context Engine usage guides mapped to agent modules. |
+| [CCE enterprise workflows]({% include doc_url.html path="cce-enterprise-workflows.md" %}) | Seven enterprise superpowers (IAM gate, incident scope, compliance factory, GitOps scope, CVE reachability) with demo scenarios. |
 | [Onboarding]({% include doc_url.html path="onboarding/index.md" %}) | Guided steps (start here if you are composing your own root). |
 | [Architecture]({% include doc_url.html path="architecture.md" %}) | Layer diagram and how modules relate. |
 | [Repository README]({{ site.github.repository_url }}/blob/main/README.md) | Full reference: modules table, CI, `Makefile`, prerequisites. |

@@ -30,7 +30,14 @@ Drop the prompts below in your talk track. Each one points at a single scenario;
 | "Our CI is a mess, what do you actually see?" | **`pipeline-insights`** | Read-only — no prod creds needed. Lowest-friction first demo; safe even mid-call when you do not have the prospect's AWS yet. |
 | "We get 200 Grafana alerts a day." | **`incident-triage`** | Grafana ingest filter → prior-incident search → PromQL probe → ReAcTree hypothesis RCA → Slack narrative. Demonstrates the "alert fatigue → triaged narrative" pitch. |
 | "We have a legacy repo. Can your platform take it from here?" | **`repo-to-iac`** | Paste a GitHub URL, get IaC. Already runnable today as [`examples/repo-to-iac/`]({{ site.github.repository_url }}/tree/main/examples/repo-to-iac). |
-| "We have a monolith codebase — can you tell us how to split it?" | **`monorepo-services-split`** | Run **`monorepo-services-split-analysis`** first (guidance PR with `service-catalog.yaml`). Extract only after plan approval. Pairs with **`db-state-splitter`** for IaC + app code. [Module guide]({% include doc_url.html path="monorepo-services-splitter.md" %}). |
+| "We have a monolith codebase — can you tell us how to split it?" | **`monorepo-services-split`** | Run **`monorepo-services-split-analysis`** first (guidance PR with `service-catalog.yaml`). Extract only after plan approval. Pairs with **`db-state-splitter`** for IaC + app code. [Module guide]({% include doc_url.html path="monorepo-services-splitter.md" %}). [CCE workflows]({% include doc_url.html path="cce-enterprise-workflows.md" %}). |
+| "New AWS calls slip into prod without IAM review." | **`pre-deploy-iam-gate`** | CCE PR delta → GitHub comment with file:line entitlements. |
+| "We page everyone when KMS fails." | **`incident-triage`** | Enable CCE + `github_default_repos` — scope RCA to repos that call the failing API. |
+| "Auditors want continuous evidence." | **`compliance-evidence-factory`** | Multi-repo CCE pack scan + regulatory digest. |
+| "Argo rollback took down unrelated apps." | **`gitops-incident-scope`** | CCE directory → Argo app correlation. |
+| "Dependabot alert fatigue." | **`cve-reachability-fix`** | CCE f-SBOM prioritization + fix PRs. |
+| "Teams want S3 buckets without `s3:*`." | **`agentic-infra-entitlements`** | CCE on repo-to-iac before developer-request execute. |
+| "We want Claude on AWS Bedrock, not a separate Anthropic key." | **`bedrock-sonnet-demo`** | **`aios-foundation-bedrock`** + AWS SRE agent on `claude-sonnet-bedrock`. IAM role or static AWS keys. [Scenario README]({{ site.github.repository_url }}/tree/main/examples/scenarios/bedrock-sonnet-demo). |
 | "I want to clean state between demos." | **`clean-tenant-reset`** | Minimal foundation + policies, used as a known baseline you can re-apply over a previous demo. |
 
 ## Demo runbook (one screen)

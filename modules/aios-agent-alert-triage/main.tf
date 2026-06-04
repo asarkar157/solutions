@@ -112,6 +112,7 @@ locals {
     local.resolved_grafana_integration_name,
     local.resolved_aws_integration_name,
     local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
   ])
 
   coordinator_integrations = compact([
@@ -436,6 +437,7 @@ resource "sg_workflow" "alert_triage_pipeline" {
   stages = [
     { stage_id = "grafana-ingest-filter", description = "Deterministic Rego filter on raw Grafana webhook payload.", required = true },
     { stage_id = "normalize-alert", description = "Parse Grafana alert and emit normalized_alert JSON.", required = true },
+    { stage_id = "cce-incident-scope", description = "CCE incident-scoping on default service repos — file:line call site proof for affected modules.", required = false },
     { stage_id = "search-prior-incidents", description = "memory_search + graph_query on shared:incidents for similar alerts.", required = true },
     { stage_id = "classify-symptom-cause", description = "Tag alert as symptom vs cause-based for storm triage.", required = true },
     { stage_id = "collect-grafana-signals", description = "Golden signals, related alerts, dashboard links for incident window.", required = true },
@@ -465,9 +467,22 @@ resource "sg_workflow" "alert_triage_pipeline" {
       note             = "Normalize inbound Grafana alert into stable incident envelope."
     },
     {
+      stage_id         = "cce-incident-scope"
+      agent_ref        = sg_agent.rca_investigator.name
+      stage_depends_on = ["normalize-alert"]
+      runbook_refs = compact(concat(
+        local.cce_stages_enabled ? [sg_runbook_sop.cce_incident_scoping[0].name] : [],
+      ))
+      skill_refs = concat(
+        local.cce_stages_enabled ? [local.sop_cce_incident_scope] : [],
+        try(var.workflow_skill_refs["${local.workflow_name}::cce-incident-scope"], []),
+      )
+      note = local.cce_stages_enabled ? "Ubuntu: cce-scan + cce-incident-summarize.sh → note(cce_summary) compact JSON only." : "CCE disabled or Ubuntu not wired — note(cce_scope_status=skipped)."
+    },
+    {
       stage_id         = "search-prior-incidents"
       agent_ref        = sg_agent.grafana_alert_ingest.name
-      stage_depends_on = ["normalize-alert"]
+      stage_depends_on = ["cce-incident-scope"]
       runbook_refs     = [sg_runbook_sop.search_prior_incidents.name]
       skill_refs       = concat(["sre-prior-incident-search"], try(var.workflow_skill_refs["${local.workflow_name}::search-prior-incidents"], []))
       note             = "Search shared:incidents for similar prior alerts before enrichment."
@@ -511,13 +526,13 @@ resource "sg_workflow" "alert_triage_pipeline" {
       stage_id         = "cross-signal-investigate"
       agent_ref        = sg_agent.rca_investigator.name
       stage_depends_on = ["enrich-k8s-context"]
-      runbook_refs = [
-        sg_runbook_sop.cross_signal_investigation.name,
-        sg_runbook_sop.hypothesis_tree_rca.name,
-      ]
+      runbook_refs = compact(concat(
+        [sg_runbook_sop.cross_signal_investigation.name, sg_runbook_sop.hypothesis_tree_rca.name],
+        local.cce_stages_enabled ? [sg_runbook_sop.cce_incident_scoping[0].name] : [],
+      ))
       spawn_contracts = local.spawn_contracts_hypothesis_tree
-      skill_refs      = concat(["sre-cross-signal-investigation", "sre-hypothesis-tree-rca"], try(var.workflow_skill_refs["${local.workflow_name}::cross-signal-investigate"], []))
-      note            = "Coordinator spawns parallel hypothesis subagents via create_agent; merge investigation_report."
+      skill_refs      = concat(["sre-cross-signal-investigation", "sre-hypothesis-tree-rca"], local.cce_stages_enabled ? [local.sop_cce_incident_scope] : [], try(var.workflow_skill_refs["${local.workflow_name}::cross-signal-investigate"], []))
+      note            = "Hypothesis tree: read note(cce_summary) scoped_modules/sample_citations — do not re-clone repos or re-run CCE."
     },
     {
       stage_id         = "synthesize-rca"

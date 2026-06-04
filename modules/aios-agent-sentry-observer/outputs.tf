@@ -5,5 +5,5 @@ output "agent_name" {
 
 output "sentry_integration_name" {
   description = "Sentry Guild integration name (passthrough)."
-  value       = local.resolved_sentry_integration_name
+  value       = nonsensitive(local.resolved_sentry_integration_name)
 }

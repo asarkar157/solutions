@@ -1,0 +1,16 @@
+# CCE incident scoping (Ubuntu)
+
+Stage **cce-incident-scope** (after normalize). Default repos: ${github_default_repos}
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>/` — clone alert-matched repo(s) under `$WORK_ROOT/repos/<slug>/`
+2. Per repo: `bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$REPO" incident-scoping "$WORK_ROOT/cce-<slug>.json"`
+3. Compact summary (script — **no** full `entitlements[]` in notes):
+
+```bash
+bash "$CCE_PACK_DIR/cce-incident-summarize.sh" "$WORK_ROOT/cce-<slug>.json" "$WORK_ROOT/cce-<slug>-summary.json" "<alert_resource>" "<alert_operation>"
+```
+
+4. `note(cce_summary)` = merged compact JSON from `*-summary.json` files; `note(cce_scope_status)`.
+5. Blast-radius lens: `CCE_USE_CASE=blast-radius-analysis` only when alert names a specific SDK.
+
+`SKIP_CCE=1` or no Ubuntu → `note(cce_scope_status=skipped)`.

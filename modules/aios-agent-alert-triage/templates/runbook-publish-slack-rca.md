@@ -8,9 +8,10 @@ Post structured Grafana alert RCA summary to Slack.
 ## Steps
 
 1. Format Slack message with: investigation_id, summary, root_cause, confidence, top evidence links.
-2. Mention when a prior incident pattern was reused from `shared:incidents`.
-3. Include recommended next steps and noise-hygiene hints when storm_context indicates correlated groups.
-4. Post via Slack integration — do not dump raw webhook JSON.
+2. When `cce_summary` is present, include an **affected modules** markdown table (repo/module, provider, file:line call sites) so stakeholders see scoped blast radius — not whole-org noise.
+3. Mention when a prior incident pattern was reused from `shared:incidents`.
+4. Include recommended next steps and noise-hygiene hints when storm_context indicates correlated groups.
+5. Post via Slack integration — do not dump raw webhook JSON.
 
 ## Guardrails
 

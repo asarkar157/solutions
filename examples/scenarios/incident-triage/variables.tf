@@ -48,3 +48,16 @@ variable "slack_bot_token" {
   type        = string
   sensitive   = true
 }
+
+variable "github_token" {
+  description = "GitHub PAT for CCE incident scoping (optional but recommended for evidence-first demo)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_default_repos" {
+  description = "Repos to CCE-scan during incident scoping (org/repo)."
+  type        = list(string)
+  default     = []
+}

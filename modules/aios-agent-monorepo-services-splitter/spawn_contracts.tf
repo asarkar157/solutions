@@ -3,6 +3,8 @@
 # *_EXECUTE_SERIES_DECODE_COMMAND (~300 chars). Runners paste ONE execute_series verbatim.
 
 locals {
+  monosplit_shell_execute_series_tool = local.use_remote_runner_shell ? "${local.shell_tool_prefix}_execute_series" : "${local.resolved_ubuntu_integration_name}_execute_series"
+
   ubuntu_execute_series_shell_dollar_rule = <<-EOT
 Ubuntu execute_series shell: use single $ for variables ($WORK_ROOT, $WORKFLOW_RUN_ID). NEVER $$ before a name — bash expands $$ to the shell PID (e.g. $$WORK_ROOT → 79WORK_ROOT). Copy spawn-context *_EXECUTE_SERIES_DECODE_COMMAND lines verbatim; do not re-escape; do not "fix" or rewrite the bootstrap in memory.
 EOT
@@ -11,14 +13,24 @@ EOT
 SHARED_UBUNTU: The ${local.resolved_ubuntu_integration_name} sidecar is shared by many concurrent workflow runs. Agents have shell only — no power to delete pods, recycle sidecars, or tofu apply. Never tell the operator to do those steps. Per-run isolation: WORK_ROOT=/home/integration/.{{workflow_run_id}}/ (repo, scripts, notes, scans). Decode commands export WORK_ROOT and WORKFLOW_RUN_ID before bootstrap — paste *_EXECUTE_SERIES_DECODE_COMMAND verbatim. Never use /home/integration/.monosplit-work or other shared scratch.
 EOT
 
+  remote_runner_shell_rule = local.use_remote_runner_shell ? trimspace(<<-EOT
+REMOTE_RUNNER: Use ONLY ${local.shell_tool_prefix}_execute_series for embed stages (never Ubuntu execute_*). WORK_ROOT=${local.runner_work_home}/.{{workflow_run_id}}. Decode MONOSPLIT_* B64 from runner script-pack secret when Ubuntu env is unavailable on runner.
+EOT
+  ) : ""
+
   monorepo_spawn_context_base = <<-EOT
 workflow_run_id: {{workflow_run_id}}
-WORK_ROOT: /home/integration/.{{workflow_run_id}}
+WORK_ROOT: ${local.use_remote_runner_shell ? "${local.runner_work_home}/.{{workflow_run_id}}" : "/home/integration/.{{workflow_run_id}}"}
 ubuntu_integration_home: ${local.ubuntu_integration_home}
 script_pack_version: ${local.script_pack_version}
 stage_runner_script_sha256: ${local.script_pack_runner_sha256}
 boundary_scan_script_sha256: ${local.script_pack_boundary_scan_sha256}
+cce_recipes: ${local.cce_recipes_csv}
+cce_lens_use_cases: ${local.cce_lens_use_cases_csv}
+cce_critical_path_max_dirs: ${var.cce_critical_path_max_dirs}
+cce_full_tree_max_files: ${var.cce_full_tree_max_files}
 ${local.ubuntu_shared_integration_rule}
+${local.remote_runner_shell_rule}
 MONOSPLIT_PACK: Bootstrap B64 + script pack tarball are in sidecar env (set at tofu apply). Spawn context has a short *_EXECUTE_SERIES_DECODE_COMMAND only — paste verbatim; never inline B64 in tool JSON. Runners MUST NOT create_files embed scripts. No runtime clone of any tooling repo — only the user's github_repo_url is cloned for analysis.
 ${local.ubuntu_execute_series_shell_dollar_rule}
 HALGUARD: workflow metadata halguard_skip_subagent_task_types=terminal_calling skips PreCheck on task_type=terminal_calling (short decode goals). terminal_calling_halguard_mode=paste_only_minimal_planner — copy decode command verbatim, never load_skill script pack on embed stages. PostCheck still runs on runner stdout.
@@ -28,10 +40,19 @@ EOT
   monorepo_spawn_context_scan = <<-EOT
 ${local.monorepo_spawn_context_base}
 
-SCAN_RUNNER_RULE: notes_index then read_notes for github_repo_url and default_branch. Tool order: ONE execute_series (working_dir=/, timeout_seconds=${local.subagent_budgets.boundary_scan_timeout_seconds}): prepend export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<from read_notes or main>' then paste SCAN_EXECUTE_SERIES_DECODE_COMMAND exactly (same shell line). Bootstrap prefers MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2 (falls back to V1) plus MONOSPLIT_SCRIPT_PACK_TARBALL_B64 from sidecar env — never git-clone tooling repos. On script_pack_error=runner_sha256_mismatch: note blocked:runner_failed and stage_summary:clone-and-boundary-scan=blocked; include INFRA_HANDOFF table (workflow_run_id, script_pack_version=${local.script_pack_version}, expected stage_runner_script_sha256=${local.script_pack_runner_sha256}, actual from stderr). Tell user to contact platform/infra team for Ubuntu sidecar reprovisioning — do NOT instruct recycle sidecars or manual tofu apply. After sidecar is fixed, user starts a NEW workflow run (new workflow_run_id). On 71WORK_ROOT/79WORK_ROOT: clone_blocker=wrong_shell_dollar_escape. On monosplit_pack_error=missing_b64_env or missing_script_pack_tarball_b64: sidecar env missing or stale. On blocked:missing_github_repo_url: prepend exports from read_notes. Success stdout: boundary_scan_json_attached or stage_summary:clone-and-boundary-scan=ok. Forbidden: execute_command, create_files, second execute_series. After success: note() boundary_scan_json_path, boundary_scan_json_attached, test_inventory_attached, runtime_deps_provisioned, baseline_test_status, script_pack_version=${local.script_pack_version}.
+SCAN_RUNNER_RULE: notes_index then read_notes for github_repo_url and default_branch. Tool order: ONE execute_series (working_dir=/, timeout_seconds=${local.subagent_budgets.boundary_scan_timeout_seconds}): prepend export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<from read_notes or main>' then paste SCAN_EXECUTE_SERIES_DECODE_COMMAND exactly (same shell line). Bootstrap prefers MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2 (falls back to V1) plus MONOSPLIT_SCRIPT_PACK_TARBALL_B64 from sidecar env — never git-clone tooling repos. CCE Tier-1: cce plan + cce run -recipes ${local.cce_recipes_csv} on critical-path dirs; Tier-1 lens add-on: cce-scan.sh for ${local.cce_lens_use_cases_csv} (releases.stackgen.com lenses). See boundary_scan_summary.critical_path_dirs. On script_pack_error=runner_sha256_mismatch: note blocked:runner_failed and stage_summary:clone-and-boundary-scan=blocked; include INFRA_HANDOFF table (workflow_run_id, script_pack_version=${local.script_pack_version}, expected stage_runner_script_sha256=${local.script_pack_runner_sha256}, actual from stderr). Tell user to contact platform/infra team for Ubuntu sidecar reprovisioning — do NOT instruct recycle sidecars or manual tofu apply. After sidecar is fixed, user starts a NEW workflow run (new workflow_run_id). On 71WORK_ROOT/79WORK_ROOT: clone_blocker=wrong_shell_dollar_escape. On monosplit_pack_error=missing_b64_env or missing_script_pack_tarball_b64: sidecar env missing or stale. On blocked:missing_github_repo_url: prepend exports from read_notes. Success stdout: boundary_scan_json_attached or stage_summary:clone-and-boundary-scan=ok. Forbidden: execute_command, create_files, second execute_series. After success: note() boundary_scan_json_path, boundary_scan_json_attached, boundary_scan_summary, cce_summary, test_inventory_attached, runtime_deps_provisioned, baseline_test_status, script_pack_version=${local.script_pack_version}.
 
 SCAN_EXECUTE_SERIES_DECODE_COMMAND:
 ${local.monosplit_scan_execute_series_decode_command}
+EOT
+
+  monorepo_spawn_context_targeted_cce = <<-EOT
+${local.monorepo_spawn_context_base}
+
+TARGETED_CCE_RUNNER_RULE: notes_index then read_notes — require cce_rescan_spec in notes. Tool order: ONE execute_series: TARGETED_CCE_EXECUTE_SERIES_DECODE_COMMAND exactly. Spec may use use_case (lens slug from releases.stackgen.com/cce/lenses), recipes (catalog ids), mapper_url, or cce_custom_lens_yaml in notes. After series: note() refreshed cce_summary and targeted_cce_status=ok. If cce_rescan_spec missing: note cce_rescan_spec_absent=true and do not spawn. Forbidden: execute_command, create_files, second execute_series.
+
+TARGETED_CCE_EXECUTE_SERIES_DECODE_COMMAND:
+${local.monosplit_targeted_cce_execute_series_decode_command}
 EOT
 
   monorepo_spawn_context_guidance_pr = <<-EOT
@@ -52,6 +73,33 @@ SCAFFOLD_EXECUTE_SERIES_DECODE_COMMAND:
 ${local.monosplit_scaffold_execute_series_decode_command}
 EOT
 
+  monorepo_spawn_context_synthesize_plan = <<-EOT
+${local.monorepo_spawn_context_base}
+
+SYNTHESIZE_PLAN_RUNNER_RULE: notes_index then read_notes. Require boundary_scan_json_attached=true. Tool order: ONE execute_series: SYNTHESIZE_PLAN_EXECUTE_SERIES_DECODE_COMMAND exactly. Forbidden: execute_command, create_files, second execute_series. After series: note() deterministic_plan_produced plan_ok repo_archetype from stdout.
+
+SYNTHESIZE_PLAN_EXECUTE_SERIES_DECODE_COMMAND:
+${local.monosplit_synthesize_plan_execute_series_decode_command}
+EOT
+
+  monorepo_spawn_context_agents_md = <<-EOT
+${local.monorepo_spawn_context_base}
+
+AGENTS_MD_RUNNER_RULE: notes_index then read_notes for github_repo_url. ONE execute_series: AGENTS_MD_EXECUTE_SERIES_DECODE_COMMAND exactly. Forbidden: execute_command, create_files. After series: note() agents_md_produced=true.
+
+AGENTS_MD_EXECUTE_SERIES_DECODE_COMMAND:
+${local.monosplit_agents_md_execute_series_decode_command}
+EOT
+
+  monorepo_spawn_context_fetch_repo = <<-EOT
+${local.monorepo_spawn_context_base}
+
+FETCH_REPO_CONTEXT_RUNNER_RULE: ONE execute_series: FETCH_REPO_CONTEXT_EXECUTE_SERIES_DECODE_COMMAND exactly. Forbidden: execute_command, create_files. After series: note() repo_context_ok from stdout.
+
+FETCH_REPO_CONTEXT_EXECUTE_SERIES_DECODE_COMMAND:
+${local.monosplit_fetch_repo_context_execute_series_decode_command}
+EOT
+
   monorepo_spawn_context_extract_pr = <<-EOT
 ${local.monorepo_spawn_context_base}
 
@@ -64,9 +112,9 @@ EOT
   spawn_contracts_clone_and_scan = [
     {
       sub_agent_name = "clone-and-boundary-scan-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        local.monosplit_shell_execute_series_tool,
         "note",
         "notes_index",
         "read_notes",
@@ -79,12 +127,30 @@ EOT
     },
   ]
 
+  spawn_contracts_targeted_cce = [
+    {
+      sub_agent_name = "targeted-cce-scan-runner"
+      task_type      = var.subagent_task_type
+      tool_names = [
+        local.monosplit_shell_execute_series_tool,
+        "note",
+        "notes_index",
+        "read_notes",
+      ]
+      max_llm_calls       = local.subagent_budgets.targeted_cce_max_llm_calls
+      max_tool_iterations = local.subagent_budgets.targeted_cce_max_tool_iterations
+      timeout_seconds     = local.subagent_budgets.targeted_cce_timeout_seconds
+      goal                = "notes_index then read_notes for cce_rescan_spec. If missing: note cce_rescan_spec_absent=true and stop. ONE execute_series: paste TARGETED_CCE_EXECUTE_SERIES_DECODE_COMMAND exactly. See TARGETED_CCE_RUNNER_RULE. After series: note() cce_summary from stdout."
+      context             = local.monorepo_spawn_context_targeted_cce
+    },
+  ]
+
   spawn_contracts_guidance_pr = [
     {
       sub_agent_name = "guidance-pr-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        local.monosplit_shell_execute_series_tool,
         "note",
         "notes_index",
         "read_notes",
@@ -100,9 +166,9 @@ EOT
   spawn_contracts_scaffold_services = [
     {
       sub_agent_name = "scaffold-services-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        local.monosplit_shell_execute_series_tool,
         "note",
         "notes_index",
         "read_notes",
@@ -115,12 +181,64 @@ EOT
     },
   ]
 
+  spawn_contracts_parallel_plan_prep = concat(
+    [
+      {
+        sub_agent_name = "synthesize-split-plan-runner"
+        task_type      = var.subagent_task_type
+        tool_names = [
+          local.monosplit_shell_execute_series_tool,
+          "note",
+          "notes_index",
+          "read_notes",
+        ]
+        max_llm_calls       = local.subagent_budgets.synthesize_plan_max_llm_calls
+        max_tool_iterations = local.subagent_budgets.synthesize_plan_max_tool_iterations
+        timeout_seconds     = local.subagent_budgets.synthesize_plan_timeout_seconds
+        goal                = "ONE execute_series: paste SYNTHESIZE_PLAN_EXECUTE_SERIES_DECODE_COMMAND exactly. See SYNTHESIZE_PLAN_RUNNER_RULE."
+        context             = local.monorepo_spawn_context_synthesize_plan
+      },
+    ],
+    var.enable_parallel_plan_prep ? [
+      {
+        sub_agent_name = "agents-md-scaffold-runner"
+        task_type      = var.subagent_task_type
+        tool_names = [
+          local.monosplit_shell_execute_series_tool,
+          "note",
+          "notes_index",
+          "read_notes",
+        ]
+        max_llm_calls       = local.subagent_budgets.agents_md_scaffold_max_llm_calls
+        max_tool_iterations = local.subagent_budgets.agents_md_scaffold_max_tool_iterations
+        timeout_seconds     = local.subagent_budgets.agents_md_scaffold_timeout_seconds
+        goal                = "ONE execute_series: paste AGENTS_MD_EXECUTE_SERIES_DECODE_COMMAND exactly. See AGENTS_MD_RUNNER_RULE."
+        context             = local.monorepo_spawn_context_agents_md
+      },
+      {
+        sub_agent_name = "fetch-repo-context-runner"
+        task_type      = var.subagent_task_type
+        tool_names = [
+          local.monosplit_shell_execute_series_tool,
+          "note",
+          "notes_index",
+          "read_notes",
+        ]
+        max_llm_calls       = local.subagent_budgets.fetch_repo_context_max_llm_calls
+        max_tool_iterations = local.subagent_budgets.fetch_repo_context_max_tool_iterations
+        timeout_seconds     = local.subagent_budgets.fetch_repo_context_timeout_seconds
+        goal                = "ONE execute_series: paste FETCH_REPO_CONTEXT_EXECUTE_SERIES_DECODE_COMMAND exactly. See FETCH_REPO_CONTEXT_RUNNER_RULE."
+        context             = local.monorepo_spawn_context_fetch_repo
+      },
+    ] : [],
+  )
+
   spawn_contracts_extract_pr = [
     {
       sub_agent_name = "extract-pr-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        local.monosplit_shell_execute_series_tool,
         "note",
         "notes_index",
         "read_notes",

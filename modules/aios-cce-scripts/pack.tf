@@ -16,5 +16,5 @@ data "archive_file" "cce_pack" {
 }
 
 locals {
-  cce_pack_version = "20260602.4"
+  cce_pack_version = "20260604.2"
 }

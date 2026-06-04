@@ -83,6 +83,7 @@ Do not invert dependencies between layers.
 | Layer | Modules | Purpose |
 |-------|---------|---------|
 | 0 | `aios-foundation` | Models, LLM secrets, provider-backed setup |
+| 0 | `aios-foundation-bedrock` | Amazon Bedrock provider + Claude Sonnet 4.6 inference profile; IAM or static AWS keys |
 | 0 | `aios-policies` | Shared `sg_policy` resources; exposes `policy_ids` map |
 | 1 | `aios-integration-*` | Cloud/tool integrations; exposes `integration_name` or similar |
 | 2 | `aios-agent-*` | Agents, workflows, attachments; consume `module.foundation.model_names`, `module.policies.policy_ids`, and integration outputs |
@@ -121,6 +122,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | Path | Role |
 |------|------|
 | `modules/aios-foundation` | LLM providers, models, vault secrets for keys |
+| `modules/aios-foundation-bedrock` | Bedrock model provider + Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6` style profile); output `model_names` for agents |
 | `modules/aios-policies` | Org-wide policies; output `policy_ids` |
 | `modules/aios-integration-aws` | AWS integration |
 | `modules/aios-integration-azure` | Azure integration |
@@ -131,7 +133,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-linear` | Linear integration |
 | `modules/aios-integration-clickhouse` | ClickHouse integration |
 | `modules/aios-integration-ubuntu` | Ubuntu / CLI integration |
-| `modules/aios-cce-scripts` | Shared CCE bash pack (`CCE_PACK_B64`) + outputs for agent modules; see `docs/cce-agent-integrations.md` |
+| `modules/aios-cce-scripts` | Shared CCE bash pack (`CCE_PACK_B64`) + outputs for agent modules; see `docs/cce-agent-integrations.md` and **`docs/cce-enterprise-workflows.md`** (seven enterprise superpowers + demo scenarios) |
 | `modules/aios-integration-cursor` | Cursor integration |
 | `modules/aios-integration-datadog` | Datadog observability integration (official MCP) |
 | `modules/aios-integration-pagerduty` | PagerDuty incident-management integration |

@@ -374,7 +374,7 @@ cmd_validate() {
   [ -f "$work_dir/checkov.json" ] && findings="${findings}checkov_present "
   mirror_note "$work_root" "static_security_findings" "${findings:-scan_skipped}"
 
-  local module_slug fmt_result valid_result test_result this_pass prev_summary
+  local module_slug fmt_result valid_result test_result this_pass
   module_slug="$(printf '%s' "$module_path" | sed 's#^/##; s#/#_#g' | sed 's/[^a-zA-Z0-9._-]/_/g')"
   fmt_result="$([ "$fmt_rc" -eq 0 ] && echo PASS || echo FAIL)"
   valid_result="$([ "$valid_rc" -eq 0 ] && echo PASS || echo FAIL)"
@@ -785,16 +785,16 @@ append_quality_failure_details() {
 EOF
 
   if [ -n "$vs" ]; then
-    printf -- '- **Summary:** `%s`\n' "$vs"
+    printf -- "- **Summary:** \`%s\`\n" "$vs"
   fi
   if [ "$fmt_q" = "FAIL" ]; then
-    printf -- '- **fmt:** failed — run `terraform fmt -recursive` in the module directory\n'
+    printf -- "- **fmt:** failed — run \`terraform fmt -recursive\` in the module directory\n"
   fi
   if [ "$val_q" = "FAIL" ]; then
-    printf -- '- **validate:** failed — see validate output below\n'
+    printf -- "- **validate:** failed — see validate output below\n"
   fi
   if [ "$test_q" = "FAIL" ]; then
-    printf -- '- **test:** failed — see test output below\n'
+    printf -- "- **test:** failed — see test output below\n"
   fi
 
   if [ -f "$work_root/.work/tf-validate.out" ] && [ "$val_q" = "FAIL" ]; then
@@ -1058,11 +1058,11 @@ cmd_resolve_paths() {
 # normalize_work_root expands literal $HOME tokens agents sometimes paste instead of {{work_root}}.
 normalize_work_root() {
   local wr="${1:?work_root}"
-  if [[ "$wr" == *'$HOME'* ]]; then
+  if [[ "$wr" == *"\$HOME"* ]]; then
     wr="${wr//\$HOME/${HOME}}"
   fi
-  if [[ "$wr" == *'${HOME}'* ]]; then
-    wr="${wr//'${HOME}'/${HOME}}"
+  if [[ "$wr" == *"\${HOME}"* ]]; then
+    wr="${wr//\${HOME}/${HOME}}"
   fi
   printf '%s' "$wr"
 }

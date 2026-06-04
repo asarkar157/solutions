@@ -69,6 +69,11 @@ scenario_pitch() {
     incident-triage)    echo "We get 200 Grafana alerts a day. (Grafana -> cloud-routed RCA -> Slack)";;
     repo-to-iac)        echo "Take a legacy repo and make IaC out of it. (GitHub URL -> StackGen MCP -> generated IaC)";;
     monorepo-services-split) echo "Monolith codebase split guidance + optional extract scaffold. (GitHub clone -> boundary scan -> guidance PR)";;
+    pre-deploy-iam-gate) echo "Block IAM surprises at PR time. (CCE pre-deploy-iam-review on PR delta -> GitHub comment)";;
+    compliance-evidence-factory) echo "Generate compliance evidence on a schedule. (multi-repo CCE pack scan -> regulatory digest)";;
+    cve-reachability-fix) echo "Fix reachable CVEs only. (CCE f-SBOM + supply-chain workflow)";;
+    gitops-incident-scope) echo "GitOps rollback scoped by code blast radius. (CCE + Argo CD correlation)";;
+    agentic-infra-entitlements) echo "Self-service infra with entitlement-sized IAM. (CCE on repo-to-iac + developer intake)";;
     clean-tenant-reset) echo "Wipe to a known baseline between demos. (foundation + policies only)";;
     *)                  return 1;;
   esac
@@ -171,9 +176,12 @@ doctor() {
       ;;
   esac
   case "${scenario}" in
-    pipeline-insights|repo-to-iac|monorepo-services-split)
+    pipeline-insights|repo-to-iac|monorepo-services-split|pre-deploy-iam-gate|compliance-evidence-factory|cve-reachability-fix|agentic-infra-entitlements)
       info "Checking GitHub"
       check_var GITHUB_TOKEN required "GITHUB_TOKEN" || fail=1
+      ;;
+    gitops-incident-scope)
+      info "Checking GitOps scenario (pre-provision GitLab/Argo/AWS/Slack Guild secrets — see terraform.tfvars.example)"
       ;;
   esac
   case "${scenario}" in

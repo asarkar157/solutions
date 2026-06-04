@@ -37,17 +37,17 @@ output "runbook_sop_names" {
 
 output "grafana_integration_name" {
   description = "Resolved Grafana Guild integration name."
-  value       = local.resolved_grafana_integration_name
+  value       = nonsensitive(local.resolved_grafana_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name (empty when not wired)."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "github_integration_name" {
@@ -85,7 +85,7 @@ output "webhook_ingress_payload_url" {
   description = "Full StackGen trigger URL with `apiKey` when `webhook_trigger_base_url` is set and the webhook token is non-empty; null otherwise."
   sensitive   = true
   value = (
-    trimspace(var.webhook_trigger_base_url) != "" && trimspace(sg_webhook.grafana_alerts.token) != ""
+    trimspace(var.webhook_trigger_base_url) != "" && try(trimspace(sg_webhook.grafana_alerts.token), "") != ""
     ) ? format(
     "%s/api/v1/webhooks/trigger?apiKey=%s%s",
     trimsuffix(trimspace(var.webhook_trigger_base_url), "/"),

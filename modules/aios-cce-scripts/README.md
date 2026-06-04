@@ -8,7 +8,10 @@ Bash helpers for running [Code Context Engine (CCE)](https://github.com/appcd-de
 |--------|---------|
 | `scripts/cce-common.sh` | Install `cce`, lens download from releases, JSON normalization |
 | `scripts/cce-scan.sh` | Full-tree scan (`scan`, `scan-use-case`) |
-| `scripts/cce-pr-delta.sh` | Base vs head entitlement diff (change-control, pre-deploy-iam-review) |
+| `scripts/cce-pack-scan.sh` | `cce plan`, `cce run -recipes`, summarize/merge recipe reports |
+| `scripts/cce-pr-delta.sh` | Base vs head entitlement diff; emits note keys + `cce_pr_comment.md` |
+| `scripts/cce-incident-summarize.sh` | Compact incident-scoping summary from CCE JSON (top modules + sample citations) |
+| `scripts/compliance-aggregate.sh` | Merge per-repo `cce-*.json` into compliance-evidence digest |
 
 ## Environment
 

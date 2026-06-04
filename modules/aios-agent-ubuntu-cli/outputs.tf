@@ -2,7 +2,7 @@ output "agent_name" { value = sg_agent.ubuntu_cli_agent.name }
 
 output "ubuntu_integration_name" {
   description = "Resolved Ubuntu CLI Guild integration name."
-  value       = local.resolved_ubuntu_integration_name
+  value       = nonsensitive(local.resolved_ubuntu_integration_name)
 }
 
 output "runbook_sop_names" {

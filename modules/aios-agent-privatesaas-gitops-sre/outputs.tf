@@ -15,27 +15,27 @@ output "workflow_names" {
 }
 
 output "gitlab_integration_name" {
-  value = local.resolved_gitlab_integration_name
+  value = nonsensitive(local.resolved_gitlab_integration_name)
 }
 
 output "argocd_integration_name" {
-  value = local.resolved_argocd_integration_name
+  value = nonsensitive(local.resolved_argocd_integration_name)
 }
 
 output "sonarqube_integration_name" {
-  value = local.resolved_sonarqube_integration_name
+  value = nonsensitive(local.resolved_sonarqube_integration_name)
 }
 
 output "aws_integration_name" {
-  value = local.resolved_aws_integration_name
+  value = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "slack_integration_name" {
-  value = local.resolved_slack_integration_name
+  value = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "ubuntu_integration_name" {
-  value = local.resolved_ubuntu_integration_name
+  value = nonsensitive(local.resolved_ubuntu_integration_name)
 }
 
 output "evidence_checklist_name" {

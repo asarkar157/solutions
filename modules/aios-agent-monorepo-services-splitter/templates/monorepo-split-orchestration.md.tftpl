@@ -3,9 +3,12 @@ Skill: Orchestration for **monorepo application-code splitting** — analysis PR
 ## Workflow DAG — analysis
 
 ```
-clone-and-boundary-scan → scan-blocked-gate → analyze-coupling-and-contexts → synthesize-split-plan
-  → open-guidance-pr → final-evidence-gate
+clone-and-boundary-scan → scan-blocked-gate → parallel-plan-prep (3 runners) → plan-fan-in-gate
+  → plan-validation-gate → [llm-plan-review if plan failed] → llm-os-enrichment (optional)
+  → [targeted-cce-rescan if analyst requested] → open-guidance-pr → final-evidence-gate
 ```
+
+Deterministic scripts produce `service-catalog.yaml`, `coupling-matrix.json`, and audience-tiered docs under `docs/architecture/`. LLM stages are escalation and advisory enrichment only.
 
 ## Workflow DAG — extract
 

@@ -90,9 +90,27 @@ variable "github_default_org" {
 }
 
 variable "github_default_repos" {
-  description = "Default GitHub repo slugs (org/repo) for deploy/commit correlation."
+  description = "Default GitHub repo slugs (org/repo) for deploy/commit correlation and CCE incident scoping."
   type        = list(string)
   default     = []
+}
+
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for incident-scoping on default service repos."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration for CCE scans."
+  type        = string
+  default     = ""
+}
+
+variable "cce_incident_resource_hints" {
+  description = "Optional map of alert label keys to AWS/GCP resource names for CCE entitlement filtering."
+  type        = map(string)
+  default     = {}
 }
 
 variable "aws_region" {

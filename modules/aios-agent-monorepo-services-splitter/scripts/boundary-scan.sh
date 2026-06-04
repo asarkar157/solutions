@@ -3,7 +3,7 @@
 # Writes $WORK_ROOT/boundary_scan.json and mirrors key paths to notes.json.
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260602.14}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260604.5}"
 
 mirror_note() {
   local work_root="${1:?WORK_ROOT}"
@@ -75,17 +75,51 @@ scan_go_modules() {
       echo '[]'
       return 0
     fi
-    go list -json ./... 2>/dev/null | jq -s '
+    local module_prefix
+    module_prefix="$(grep -E '^module ' go.mod 2>/dev/null | awk '{print $2}' || true)"
+    go list -json ./... 2>/dev/null | jq -s --arg prefix "$module_prefix" '
       map(select(.ImportPath != null)) |
-      map({
-        path: .ImportPath,
-        language: "go",
-        dir: (.Dir // ""),
-        inbound_edges: 0,
-        outbound_edges: ((.Imports // []) | length)
-      })
+      map(
+        .ImportPath as $ip |
+        {
+          path: $ip,
+          language: "go",
+          dir: (.Dir // ""),
+          depends_on: (
+            [.Imports[]? | select(startswith($prefix) and . != $ip)] | unique
+          ),
+          inbound_edges: 0,
+          outbound_edges: 0
+        }
+      )
     ' 2>/dev/null || echo '[]'
   )
+}
+
+gradle_project_deps_for_module() {
+  local root="${1:?REPO_ROOT}"
+  local mod_path="${2:?MODULE}"
+  local mod_dir="$root/$mod_path"
+  local build_file=""
+  if [ -f "$mod_dir/build.gradle.kts" ]; then
+    build_file="$mod_dir/build.gradle.kts"
+  elif [ -f "$mod_dir/build.gradle" ]; then
+    build_file="$mod_dir/build.gradle"
+  fi
+  if [ -z "$build_file" ]; then
+    echo '[]'
+    return 0
+  fi
+  local lines
+  lines="$(grep -oE 'project\(["'\'']:[^"'\'']+["'\'']\)' "$build_file" 2>/dev/null || true)"
+  if [ -z "$lines" ]; then
+    echo '[]'
+    return 0
+  fi
+  printf '%s\n' "$lines" \
+    | sed -E 's/project\(["'\'']?://; s/["'\'']?\)$//' \
+    | sed 's/^://' \
+    | jq -R . | jq -s 'unique'
 }
 
 scan_js_modules() {
@@ -95,15 +129,35 @@ scan_js_modules() {
     return 0
   fi
 
-  local modules='[]'
+  local pkg_paths=()
   if [ -f "$root/pnpm-workspace.yaml" ]; then
-    modules="$(grep -E '^\s*-\s+' "$root/pnpm-workspace.yaml" 2>/dev/null | sed 's/^\s*-\s*//' | while read -r pkg; do
-      [ -d "$root/$pkg" ] && printf '%s\n' "$pkg"
-    done | jq -R . | jq -s 'map({path: ., language: "typescript", inbound_edges: 0, outbound_edges: 0})' || echo '[]')"
+    while IFS= read -r pkg; do
+      [ -d "$root/$pkg" ] && pkg_paths+=("$pkg")
+    done < <(grep -E '^\s*-\s+' "$root/pnpm-workspace.yaml" 2>/dev/null | sed 's/^\s*-\s*//')
   elif [ -f "$root/package.json" ]; then
-    modules='[{"path": ".", "language": "typescript", "inbound_edges": 0, "outbound_edges": 0}]'
+    pkg_paths+=(".")
   fi
-  printf '%s' "$modules"
+
+  if [ "${#pkg_paths[@]}" -eq 0 ]; then
+    echo '[]'
+    return 0
+  fi
+
+  local combined='[]'
+  for pkg in "${pkg_paths[@]}"; do
+    local dep_json='[]'
+    local pj="$root/$pkg/package.json"
+    if [ -f "$pj" ]; then
+      dep_json="$(jq -c '
+        [.dependencies // {}, .devDependencies // {}] | add | to_entries | map(.value) |
+        map(select(test("^workspace:") or test("^file:"))) |
+        map(if test("^workspace:") then sub("^workspace:"; "") else sub("^file:"; "") end | gsub("^\\./"; ""))
+      ' "$pj" 2>/dev/null || echo '[]')"
+    fi
+    combined="$(echo "$combined" | jq --arg path "$pkg" --argjson deps "$dep_json" \
+      '. + [{path: $path, language: "typescript", depends_on: $deps, inbound_edges: 0, outbound_edges: 0}]')"
+  done
+  printf '%s' "$combined"
 }
 
 scan_java_modules() {
@@ -113,21 +167,30 @@ scan_java_modules() {
     return 0
   fi
 
+  local subs=""
   if [ -f "$root/settings.gradle" ] || [ -f "$root/settings.gradle.kts" ]; then
     local settings="$root/settings.gradle"
     [ -f "$root/settings.gradle.kts" ] && settings="$root/settings.gradle.kts"
-    local subs
     subs="$(grep -E 'include\s*\(' "$settings" 2>/dev/null \
       | sed -E 's/.*include\s*\(\s*"([^"]+)".*/\1/; s/.*include\s*\(\s*'\''([^'\'']+)'\''.*/\1/' \
       | grep -vE '^include' \
       | head -60 || true)"
-    if [ -n "$subs" ]; then
-      printf '%s\n' "$subs" | jq -R . | jq -s 'map({path: ., language: "java", inbound_edges: 0, outbound_edges: 0})'
-      return 0
-    fi
   fi
 
-  echo '[{"path": ".", "language": "java", "inbound_edges": 0, "outbound_edges": 0}]'
+  if [ -z "$subs" ]; then
+    echo '[{"path": ".", "language": "java", "depends_on": [], "inbound_edges": 0, "outbound_edges": 0}]'
+    return 0
+  fi
+
+  local combined='[]'
+  while IFS= read -r mod; do
+    [ -z "$mod" ] && continue
+    local deps
+    deps="$(gradle_project_deps_for_module "$root" "$mod")"
+    combined="$(echo "$combined" | jq --arg path "$mod" --argjson deps "$deps" \
+      '. + [{path: $path, language: "java", depends_on: $deps, inbound_edges: 0, outbound_edges: 0}]')"
+  done <<<"$subs"
+  printf '%s' "$combined"
 }
 
 find_api_surfaces() {
@@ -464,10 +527,32 @@ cmd_scan() {
   fi
 
   local langs go_mods js_mods java_mods shared_libs api_surfaces ci_units
+  local scan_tmp
+  scan_tmp="$(mktemp -d)"
   langs="$(detect_languages "$repo_root")"
-  go_mods="$(scan_go_modules "$repo_root")"
-  js_mods="$(scan_js_modules "$repo_root")"
-  java_mods="$(scan_java_modules "$repo_root")"
+  go_mods='[]'
+  js_mods='[]'
+  java_mods='[]'
+  if echo "$langs" | jq -e 'index("go")' >/dev/null 2>&1; then
+    (scan_go_modules "$repo_root" >"${scan_tmp}/go.json") &
+  fi
+  if echo "$langs" | jq -e 'index("typescript")' >/dev/null 2>&1; then
+    (scan_js_modules "$repo_root" >"${scan_tmp}/js.json") &
+  fi
+  if echo "$langs" | jq -e 'index("java")' >/dev/null 2>&1; then
+    (scan_java_modules "$repo_root" >"${scan_tmp}/java.json") &
+  fi
+  wait
+  if [ -f "${scan_tmp}/go.json" ]; then
+    go_mods="$(cat "${scan_tmp}/go.json")"
+  fi
+  if [ -f "${scan_tmp}/js.json" ]; then
+    js_mods="$(cat "${scan_tmp}/js.json")"
+  fi
+  if [ -f "${scan_tmp}/java.json" ]; then
+    java_mods="$(cat "${scan_tmp}/java.json")"
+  fi
+  rm -rf "$scan_tmp"
   shared_libs="$(find_shared_libraries "$repo_root")"
   api_surfaces="$(find_api_surfaces "$repo_root")"
   ci_units="$(find_ci_deploy_units "$repo_root")"
@@ -485,22 +570,31 @@ cmd_scan() {
   packages_without_tests="$(collect_packages_without_tests "$test_inventory")"
   test_confidence_score="$(compute_test_confidence_score "$test_inventory" "$packages_without_tests")"
 
-  local cloud_entitlements='{"scan_status":"skipped","reason":"cce_script_missing"}'
+  local cce_result='{"scan_status":"skipped","reason":"cce_script_missing","cce_plan":{"scan_status":"skipped","candidate_file_count":0},"critical_path_dirs":[],"cce_reports":{},"cloud_entitlements":{"scan_status":"skipped","summary":{"total_entitlements":0,"by_provider":{}}}}'
   local cce_script="${MONOSPLIT_CCE_SCRIPT:-}"
   if [ -z "$cce_script" ]; then
-    if [ -f "$(dirname "${BASH_SOURCE[0]}")/cce-cloud-scan.sh" ]; then
+    if [ -f "$(dirname "${BASH_SOURCE[0]}")/monorepo-cce-scan.sh" ]; then
+      cce_script="$(dirname "${BASH_SOURCE[0]}")/monorepo-cce-scan.sh"
+    elif [ -f "${work_root}/scripts/monorepo-cce-scan.sh" ]; then
+      cce_script="${work_root}/scripts/monorepo-cce-scan.sh"
+    elif [ -f "$(dirname "${BASH_SOURCE[0]}")/cce-cloud-scan.sh" ]; then
       cce_script="$(dirname "${BASH_SOURCE[0]}")/cce-cloud-scan.sh"
     elif [ -f "${work_root}/scripts/cce-cloud-scan.sh" ]; then
       cce_script="${work_root}/scripts/cce-cloud-scan.sh"
     fi
   fi
-  mkdir -p "${work_root}/.work"
+  mkdir -p "${work_root}/.work/cce"
   if [ -n "$cce_script" ] && [ -f "$cce_script" ]; then
-    cloud_entitlements="$(bash "$cce_script" scan "$repo_root" "$langs" 2>"${work_root}/.work/cce-scan.err" || true)"
-    if ! echo "$cloud_entitlements" | jq -e . >/dev/null 2>&1; then
-      cloud_entitlements="$(jq -n '{scan_status:"failed",reason:"invalid_cce_json",entitlements:[],summary:{total_entitlements:0,by_provider:{}}}')"
+    cce_result="$(bash "$cce_script" scan "$repo_root" "${work_root}/.work/cce" \
+      "$go_mods" "$js_mods" "$java_mods" "$shared_libs" "$api_surfaces" "$ci_units" "$packages_without_tests" \
+      2>"${work_root}/.work/cce-scan.err" || true)"
+    if ! echo "$cce_result" | jq -e . >/dev/null 2>&1; then
+      cce_result="$(jq -n '{scan_status:"failed",reason:"invalid_cce_json",cce_plan:{scan_status:"failed",candidate_file_count:0},critical_path_dirs:[],cce_reports:{},cloud_entitlements:{scan_status:"failed",summary:{total_entitlements:0,by_provider:{}}}}')"
     fi
+    printf '%s' "$cce_result" >"${work_root}/.work/cce/monorepo-cce-result.json"
   fi
+  local cloud_entitlements
+  cloud_entitlements="$(echo "$cce_result" | jq -c '.cloud_entitlements // {scan_status:"failed",summary:{total_entitlements:0,by_provider:{}}}')"
 
   local out="${work_root}/boundary_scan.json"
   jq -n \
@@ -517,6 +611,7 @@ cmd_scan() {
     --argjson packages_without_tests "$packages_without_tests" \
     --argjson test_confidence_score "$test_confidence_score" \
     --argjson cloud_entitlements "$cloud_entitlements" \
+    --argjson cce_result "$cce_result" \
     --arg script_pack_version "$SCRIPT_PACK_VERSION" \
     '{
       repo_root: $repo_root,
@@ -530,6 +625,10 @@ cmd_scan() {
       packages_without_tests: $packages_without_tests,
       test_confidence_score: $test_confidence_score,
       cloud_entitlements: $cloud_entitlements,
+      cce_plan: ($cce_result.cce_plan // {scan_status: "unknown", candidate_file_count: 0, sample_files: []}),
+      critical_path_dirs: ($cce_result.critical_path_dirs // []),
+      cce_reports: ($cce_result.cce_reports // {}),
+      cce_recipes: ($cce_result.cce_recipes // []),
       script_pack_version: $script_pack_version
     }' >"$out"
 
@@ -541,17 +640,51 @@ cmd_scan() {
   mirror_note "$work_root" "cloud_entitlements_scan_status" "$(echo "$cloud_entitlements" | jq -r '.scan_status // "unknown"')"
   mirror_note "$work_root" "cloud_entitlements_total" "$(echo "$cloud_entitlements" | jq -r '.summary.total_entitlements // 0')"
 
+  local cce_summary_compact
+  if [ -f "$(dirname "${BASH_SOURCE[0]}")/monorepo-cce-scan.sh" ]; then
+    cce_summary_compact="$(bash "$(dirname "${BASH_SOURCE[0]}")/monorepo-cce-scan.sh" summary "$cce_result" 2>/dev/null || echo '{}')"
+  elif [ -f "${work_root}/scripts/monorepo-cce-scan.sh" ]; then
+    cce_summary_compact="$(bash "${work_root}/scripts/monorepo-cce-scan.sh" summary "$cce_result" 2>/dev/null || echo '{}')"
+  else
+    cce_summary_compact='{}'
+  fi
+  mirror_note "$work_root" "cce_summary" "$cce_summary_compact"
+
   # Compact handoff for analyst stages (session notes / read_notes — not sidecar paths).
   local summary_compact
-  summary_compact="$(jq -c '{
+  local repo_archetype primary_ecosystem hub_module
+  if [ -f "${work_root}/scripts/detect-repo-archetype.sh" ]; then
+    repo_archetype="$(bash "${work_root}/scripts/detect-repo-archetype.sh" detect "$out" 2>/dev/null | sed -n 's/^repo_archetype=//p' | head -1)"
+  else
+    repo_archetype="mixed"
+  fi
+  [ -n "$repo_archetype" ] || repo_archetype="mixed"
+  primary_ecosystem="$(echo "$langs" | jq -r '.[0] // "unknown"')"
+  hub_module=""
+  if [ -f "${work_root}/scripts/build-coupling-matrix.sh" ]; then
+    bash "${work_root}/scripts/build-coupling-matrix.sh" build "$out" "${work_root}/coupling-matrix.json" >/dev/null 2>&1 || true
+    hub_module="$(jq -r '.hub_module // ""' "${work_root}/coupling-matrix.json" 2>/dev/null || true)"
+  fi
+  jq --arg repo_archetype "$repo_archetype" --arg primary_ecosystem "$primary_ecosystem" \
+    '. + {repo_archetype: $repo_archetype, primary_build_ecosystem: $primary_ecosystem}' "$out" >"${out}.tmp" \
+    && mv "${out}.tmp" "$out"
+
+  summary_compact="$(jq -c --argjson cce "$cce_summary_compact" --arg repo_archetype "$repo_archetype" --arg hub "$hub_module" '{
     languages,
+    repo_archetype,
+    primary_build_ecosystem,
+    hub_module: $hub,
     test_inventory,
     test_frameworks,
     packages_without_tests,
     test_confidence_score,
     module_count: (.modules | length),
     java_test_java_count: (.test_inventory.java.test_java_count // 0),
-    java_recommended_command: (.test_inventory.java.recommended_command // "")
+    java_recommended_command: (.test_inventory.java.recommended_command // ""),
+    cce_candidate_files: ($cce.cce_candidate_files // 0),
+    critical_path_dirs: ($cce.critical_path_dirs // []),
+    cloud_by_provider: ($cce.cloud_by_provider // {}),
+    outbound_coupling_dirs: ($cce.outbound_coupling_dirs // [])
   }' "$out")"
   mirror_note "$work_root" "boundary_scan_summary" "$summary_compact"
 

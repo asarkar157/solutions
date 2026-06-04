@@ -13,14 +13,14 @@ Guild agents and **two workflows** for analyzing Java / Go / JavaScript / TypeSc
 | Agent | Role |
 |-------|------|
 | `monorepo-split-architect` | Coordinator — spawns Ubuntu runners only |
-| `split-domain-analyst` | LLM synthesis on `boundary_scan.json` |
+| `split-domain-analyst` | Escalation + optional open-system enrichment (deterministic scripts own the graph) |
 | `cursor-split-executor` | Optional — when `enable_cursor_integration = true` |
 
 ## Workflows
 
 | Workflow | Purpose |
 |----------|---------|
-| `monorepo-services-split-analysis` | Clone → scan → analyze → guidance PR |
+| `monorepo-services-split-analysis` | Clone → scan → parallel plan prep → optional enrichment → guidance PR |
 | `monorepo-services-split-extract` | Load plan → plan-blocked-gate → scaffold → optional Cursor → extract PR |
 
 Both workflows set Guild execution metadata:
@@ -66,7 +66,7 @@ See [`examples/scenarios/monorepo-services-split/`](../../examples/scenarios/mon
 
 ## Script pack
 
-Deterministic analysis lives in `scripts/stage-runner.sh`, `boundary-scan.sh`, `cce-cloud-scan.sh`, `runtime-deps-provision.sh`, `agents-md-scaffold.sh`, `clone-and-pr.sh`, and `scaffold-services.sh`. Version **20260602.14** — bootstrap B64 and script-pack tarball are baked into the Ubuntu **sidecar env** at `tofu apply` (no runtime clone of tooling repos). Clone-and-scan runs **[CCE](https://github.com/appcd-dev/cce)** (`cce` v0.0.4 on the Ubuntu sidecar via `install_tools`) to attach `cloud_entitlements` (AWS/GCP/Azure API usage) into `boundary_scan.json` for unknown-repo reconnaissance. See **[docs/cce-powers.md](docs/cce-powers.md)** for what that adds to split analysis. Spawn context carries a short decode command (~300 chars); runners prepend `export GITHUB_REPO_URL=…` from `read_notes`, then paste decode. Only the **user's target repo** (workflow `github_repo_url`) is cloned for analysis.
+Deterministic analysis lives in `scripts/stage-runner.sh`, `boundary-scan.sh`, `build-coupling-matrix.sh`, `synthesize-split-plan.sh`, `monorepo-cce-scan.sh`, `runtime-deps-provision.sh`, `agents-md-scaffold.sh`, `clone-and-pr.sh`, and `scaffold-services.sh`. Version **20260604.4** — bootstrap B64 and script-pack tarball are baked into the Ubuntu **sidecar env** at `tofu apply`. After scan, **parallel-plan-prep** runs `synthesize-split-plan.sh` (real Gradle/Go edges → `coupling-matrix.json` + audience-tiered `docs/architecture/*`), `agents-md-scaffold.sh`, and `fetch-repo-context.sh`. Optional **`target_pr_repo`** clones/pushes a fork while `github_repo_url` stays the upstream reference. **`enable_os_enrichment`** (default true) adds advisory LLM prose only — never `depends_on` edits. Clone-and-scan runs **[CCE](https://github.com/appcd-dev/cce)** via [`aios-cce-scripts`](../aios-cce-scripts/). See **[docs/cce-powers.md](docs/cce-powers.md)**.
 
 Clone-and-scan **provisions language runtimes** (OpenJDK, Go, Node via apt — runners have root/sudo) and runs baseline tests from `test_inventory` before analyst stages. Never defer Java with "not available in runner env".
 

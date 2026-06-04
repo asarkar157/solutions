@@ -13,8 +13,8 @@ factsheet_age_ns := time.now_ns() - ns if {
 	ns := factsheet_ts_ns
 }
 
-thirty_min_ns := 30 * 60 * 1000000000
-five_min_ns := 5 * 60 * 1000000000
+thirty_min_ns := (30 * 60) * 1000000000
+five_min_ns := (5 * 60) * 1000000000
 
 # Sensitive shell access when factsheet timestamp is stale vs. policy evaluation clock (replay guard).
 stale_sensitive_blocked if {
@@ -30,7 +30,7 @@ allow := false if {
 
 # Large clock skew ahead — likely bad client clock or tampered input.timestamp.
 skew_sensitive_blocked if {
-	factsheet_age_ns < (0 - five_min_ns)
+	factsheet_age_ns < 0 - five_min_ns
 	endswith(input.tool.name, "_execute_command")
 	cmd := lower(input.tool.arguments.command)
 	data_access_shell(cmd)

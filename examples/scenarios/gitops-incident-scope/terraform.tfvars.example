@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in values.
+# Pre-provision Guild secrets for GitLab, Argo CD, SonarQube, AWS, and Slack integrations
+# (see modules/aios-agent-privatesaas-gitops-sre/README.md), then pass their secret IDs here.
+
+stackgen_url        = "https://your-tenant.stackgen.com"
+stackgen_token      = "sgpat_..."
+stackgen_project_id = ""
+
+openai_api_key    = ""
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+gitlab_secret_id    = "guild-secret-gitlab"
+argocd_secret_id    = "guild-secret-argocd"
+sonarqube_secret_id = "guild-secret-sonarqube"
+aws_secret_id       = "guild-secret-aws"
+slack_secret_id     = "guild-secret-slack"
+
+# org/repo scanned during CCE gitops-scope stage
+git_repo = "your-org/your-gitops-repo"

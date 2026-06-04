@@ -173,4 +173,27 @@ if ! jq -e 'has("cloud_entitlements") and (.cloud_entitlements.scan_status | typ
   exit 1
 fi
 
+if ! jq -e 'has("cce_plan") and (.cce_plan.candidate_file_count | type) == "number"' "$WORK/boundary_scan.json" >/dev/null; then
+  echo "FAIL: expected cce_plan.candidate_file_count in boundary_scan.json" >&2
+  jq '.cce_plan' "$WORK/boundary_scan.json" >&2
+  exit 1
+fi
+
+if ! jq -e 'has("critical_path_dirs") and (.critical_path_dirs | type) == "array"' "$WORK/boundary_scan.json" >/dev/null; then
+  echo "FAIL: expected critical_path_dirs array in boundary_scan.json" >&2
+  exit 1
+fi
+
+if ! jq -e 'has("cce_reports")' "$WORK/boundary_scan.json" >/dev/null; then
+  echo "FAIL: expected cce_reports in boundary_scan.json" >&2
+  exit 1
+fi
+
+if ! jq -e '.cce_summary != null' "$WORK/notes.json" 2>/dev/null; then
+  if [ -f "$WORK/notes.json" ] && ! jq -e 'has("cce_summary")' "$WORK/notes.json" >/dev/null; then
+    echo "FAIL: expected cce_summary in notes.json" >&2
+    exit 1
+  fi
+fi
+
 echo "OK: boundary-scan.sh synthetic repo test passed (cloud_entitlements=$(jq -r '.cloud_entitlements.scan_status' "$WORK/boundary_scan.json"))"

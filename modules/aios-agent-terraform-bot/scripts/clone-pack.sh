@@ -10,11 +10,11 @@ SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260531.36}"
 
 normalize_work_root() {
   local wr="${1:?work_root}"
-  if [[ "$wr" == *'$HOME'* ]]; then
+  if [[ "$wr" == *"\$HOME"* ]]; then
     wr="${wr//\$HOME/${HOME}}"
   fi
-  if [[ "$wr" == *'${HOME}'* ]]; then
-    wr="${wr//'${HOME}'/${HOME}}"
+  if [[ "$wr" == *"\${HOME}"* ]]; then
+    wr="${wr//\${HOME}/${HOME}}"
   fi
   printf '%s' "$wr"
 }

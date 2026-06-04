@@ -1,7 +1,8 @@
 output "integration_name" {
-  value = sg_guild_integration.gitlab.name
+  value = nonsensitive(sg_guild_integration.gitlab.name)
 }
 
 output "secret_id" {
-  value = local.secret_id
+  sensitive = true
+  value     = local.secret_id
 }

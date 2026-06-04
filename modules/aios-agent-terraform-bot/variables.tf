@@ -53,6 +53,18 @@ variable "enable_cce" {
   default     = true
 }
 
+variable "enable_iam_gate_workflow" {
+  description = "When true (requires enable_cce), provisions pre-deploy-iam-review PR-only workflow and webhook."
+  type        = bool
+  default     = false
+}
+
+variable "iam_gate_allowed_operations" {
+  description = "Optional map repo_full_name -> list of allowed provider/resource/operation tuples for Rego IAM gate."
+  type        = map(list(string))
+  default     = {}
+}
+
 variable "existing_ubuntu_integration_name" {
   description = <<-EOT
     Optional. When set, this module SKIPS provisioning its own `terraform-bot-ubuntu`

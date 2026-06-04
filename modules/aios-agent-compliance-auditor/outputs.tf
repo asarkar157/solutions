@@ -1,6 +1,11 @@
 output "agent_name" { value = sg_agent.compliance_auditor.name }
 output "policy_ids" { value = { compliance_data_access = sg_policy.compliance_data_access.id } }
 
+output "compliance_evidence_factory_workflow_name" {
+  description = "Name of compliance-evidence-factory workflow when enable_compliance_evidence_factory is true."
+  value       = local.evidence_factory_enabled ? sg_workflow.compliance_evidence_factory[0].name : ""
+}
+
 output "workflow_name" {
   description = "Name of the compliance-assessment workflow."
   value       = sg_workflow.compliance_assessment.name
@@ -23,10 +28,10 @@ output "evidence_checklist_name" {
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }

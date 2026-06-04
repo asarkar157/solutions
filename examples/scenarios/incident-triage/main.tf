@@ -52,6 +52,13 @@ module "slack_integration" {
   slack_bot_token = var.slack_bot_token
 }
 
+module "github_integration" {
+  count  = trimspace(var.github_token) != "" ? 1 : 0
+  source = "../../../modules/aios-integration-github"
+
+  github_token = var.github_token
+}
+
 # Bring up the full SRE agent set so alert-triage has a target pool to route to.
 module "sre_agents" {
   source = "../../../modules/aios-agent-sre"
@@ -79,4 +86,8 @@ module "alert_triage" {
 
   existing_grafana_integration_name = module.grafana_integration.integration_name
   existing_slack_integration_name   = module.slack_integration.integration_name
+
+  enable_cce           = true
+  github_default_repos = var.github_default_repos
+  github_secret_id     = length(module.github_integration) > 0 ? module.github_integration[0].secret_id : ""
 }

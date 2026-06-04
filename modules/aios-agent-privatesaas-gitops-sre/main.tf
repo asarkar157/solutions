@@ -77,7 +77,7 @@ locals {
   )
 
   create_ubuntu_integration = (
-    var.enable_ubuntu_cli || var.create_remote_runner
+    var.enable_ubuntu_cli || var.create_remote_runner || var.enable_cce
   ) && trimspace(var.existing_ubuntu_integration_name) == ""
 
   resolved_gitlab_integration_name = trimspace(var.existing_gitlab_integration_name) != "" ? var.existing_gitlab_integration_name : (
@@ -214,17 +214,33 @@ module "slack_integration" {
   description          = "Slack integration for ${local.agent_intake_name} (GitOps SRE intake and notify)."
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
 module "ubuntu_integration" {
   count  = local.create_ubuntu_integration ? 1 : 0
   source = "../aios-integration-ubuntu"
 
   integration_name = local.ubuntu_integration_name
   secret_ref_ids   = var.ubuntu_secret_ref_ids
-  install_tools    = ["curl", "git", "jq"]
-  env_vars = {
-    GITOPS_ENABLE_DOCKER = "1"
-    GITOPS_ENABLE_NPM    = "1"
-  }
+  install_tools = concat(
+    ["curl", "git", "jq"],
+    var.enable_cce ? ["gh", "cce"] : [],
+  )
+  env_vars = merge(
+    {
+      GITOPS_ENABLE_DOCKER = "1"
+      GITOPS_ENABLE_NPM    = "1"
+    },
+    var.enable_cce ? {
+      CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+      CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+      CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+      CCE_USE_CASE     = "incident-scoping"
+    } : {},
+  )
 }
 
 module "remote_runner" {
@@ -524,6 +540,7 @@ resource "sg_workflow" "gitops_sre_incident_response" {
     { stage_id = "inspect-dynamodb", description = "AWS DynamoDB throttles, hot partitions, table status (read-only).", required = true },
     { stage_id = "inspect-containers", description = "Docker image pull and npm diagnostics via Ubuntu when enabled.", required = true },
     { stage_id = "assess-sonarqube", description = "SonarQube quality gate and new issues on branch (read-only).", required = true },
+    { stage_id = "cce-gitops-scope", description = "CCE incident-scoping at deployed SHA; map directory prefixes to Argo CD apps for scoped rollback.", required = false },
     { stage_id = "synthesize-rca", description = "Cross-signal RCA synthesis.", required = true },
     { stage_id = "remediation-safety-gate", description = "Inline Rego blocks P1/critical auto-remediation.", required = true },
     { stage_id = "recommend-and-notify", description = "Post Slack summary with bounded remediation steps.", required = true },
@@ -586,12 +603,25 @@ resource "sg_workflow" "gitops_sre_incident_response" {
       note             = "Assess SonarQube quality gate on branch."
     },
     {
-      stage_id         = "synthesize-rca"
+      stage_id         = "cce-gitops-scope"
       agent_ref        = sg_agent.gitops_sre_investigator.name
       stage_depends_on = ["assess-sonarqube"]
+      runbook_refs = compact(concat(
+        local.gitops_cce_enabled ? [sg_runbook_sop.cce_gitops_scope[0].name] : [],
+      ))
+      skill_refs = concat(
+        local.gitops_cce_enabled ? [local.sop_cce_gitops_scope] : [],
+        try(var.workflow_skill_refs["gitops-sre-incident-response::cce-gitops-scope"], []),
+      )
+      note = local.gitops_cce_enabled ? "Ubuntu: cce-scan + cce-incident-summarize → note(cce_gitops_scope_summary); map scoped_modules to Argo apps." : "CCE disabled or Ubuntu not wired — note(cce_scope_status=skipped)."
+    },
+    {
+      stage_id         = "synthesize-rca"
+      agent_ref        = sg_agent.gitops_sre_investigator.name
+      stage_depends_on = ["cce-gitops-scope"]
       runbook_refs     = [sg_runbook_sop.synthesize_rca.name]
       skill_refs       = concat(["gitops-synthesize-rca"], try(var.workflow_skill_refs["gitops-sre-incident-response::synthesize-rca"], []))
-      note             = "Synthesize GitOps RCA report."
+      note             = "RCA from prior stage notes (cce_gitops_scope_summary, argocd_apps_to_rollback[]) — no re-clone/CCE."
     },
     {
       stage_id         = "remediation-safety-gate"

@@ -17,12 +17,12 @@ output "evidence_checklist_name" {
 
 output "github_integration_name" {
   description = "Final Guild GitHub integration name (`terraform-bot-github[-<suffix>]` or the consumer override)."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "ubuntu_integration_name" {
   description = "Final Guild Ubuntu CLI integration name (`terraform-bot-ubuntu[-<suffix>]` or the consumer override)."
-  value       = local.resolved_ubuntu_integration_name
+  value       = nonsensitive(local.resolved_ubuntu_integration_name)
 }
 
 output "webhook_id" {
@@ -65,6 +65,22 @@ output "remote_runner_cli_start_command" {
 output "remote_runner_helm_install_command" {
   description = "Copy-paste Helm install for aiden-runner when `create_remote_runner` is true."
   value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : null
+  sensitive   = true
+}
+
+output "iam_gate_workflow_name" {
+  description = "Name of pre-deploy-iam-review workflow when enable_iam_gate_workflow is true."
+  value       = local.iam_gate_enabled ? sg_workflow.pre_deploy_iam_review[0].name : ""
+}
+
+output "iam_gate_webhook_id" {
+  description = "IAM gate webhook ID when enable_iam_gate_workflow is true."
+  value       = local.iam_gate_enabled ? sg_webhook.github_iam_gate[0].id : ""
+}
+
+output "iam_gate_webhook_token" {
+  description = "IAM gate webhook token when enable_iam_gate_workflow is true."
+  value       = local.iam_gate_enabled ? sg_webhook.github_iam_gate[0].token : ""
   sensitive   = true
 }
 

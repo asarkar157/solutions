@@ -33,6 +33,23 @@ git_clone_url() {
   printf '%s' "$url"
 }
 
+resolve_clone_url() {
+  local work_root="${1:?WORK_ROOT}"
+  local repo_url="${2:?REPO_URL}"
+  local notes="${work_root}/notes.json"
+  local target
+  target="$(jq -r '.target_pr_repo // empty' "$notes" 2>/dev/null || true)"
+  if [ -n "$target" ]; then
+    printf '%s' "$target"
+    return 0
+  fi
+  if [ -n "${TARGET_PR_REPO:-}" ]; then
+    printf '%s' "${TARGET_PR_REPO}"
+    return 0
+  fi
+  printf '%s' "$repo_url"
+}
+
 cmd_clone() {
   local work_root="${1:?WORK_ROOT}"
   local repo_url="${2:?REPO_URL}"
@@ -43,8 +60,13 @@ cmd_clone() {
   [ -f "$work_root/notes.json" ] || echo '{}' >"$work_root/notes.json"
 
   local repo_dir="$work_root/repo"
-  local effective_url
-  effective_url="$(git_clone_url "$repo_url")"
+  local effective_url clone_source
+  clone_source="$(resolve_clone_url "$work_root" "$repo_url")"
+  effective_url="$(git_clone_url "$clone_source")"
+  mirror_note "$work_root" "clone_url" "$clone_source"
+  if [ "$clone_source" != "$repo_url" ]; then
+    mirror_note "$work_root" "target_pr_repo" "$clone_source"
+  fi
 
   if [ -d "$repo_dir/.git" ]; then
     cd "$repo_dir"
@@ -155,10 +177,16 @@ cmd_render_pr_body() {
   echo ""
   echo "### Review checklist"
   if [ "$kind" = "guidance" ]; then
-    echo "- [ ] \`docs/architecture/service-catalog.yaml\` lists every proposed service with rationale"
-    echo "- [ ] \`docs/architecture/migration-phases.md\` defines strangler-fig order"
+    local archetype hub
+    archetype="$(jq -r '.repo_archetype // "unknown"' "$notes" 2>/dev/null || echo "unknown")"
+    hub="$(jq -r '.hub_module // (.boundary_scan_summary | fromjson? | .hub_module // "")' "$notes" 2>/dev/null || true)"
+    echo "- **Start here:** \`docs/architecture/README.md\` (audience router)"
+    echo "- **Repo archetype:** \`${archetype}\` | **Hub module:** \`${hub:-see coupling-matrix.json}\`"
+    echo "- [ ] \`docs/architecture/service-catalog.yaml\` — proposed groups with \`summary_plain\` / tier notes"
+    echo "- [ ] \`docs/architecture/coupling-matrix.json\` — machine-generated dependency edges"
+    echo "- [ ] \`docs/architecture/migration-phases.md\` — phased plan for this archetype"
+    echo "- [ ] \`docs/architecture/for-developers.md\`, \`for-tech-leads.md\`, \`for-architects.md\`"
     echo "- [ ] \`AGENTS.md\` includes setup and test commands from scan"
-    echo "- [ ] \`coupling-matrix.json\` present from boundary scan"
   else
     echo "- [ ] Each \`services/<name>/README.md\` describes ownership and test gate"
     echo "- [ ] JUnit / Go / Vitest stubs present under each service"

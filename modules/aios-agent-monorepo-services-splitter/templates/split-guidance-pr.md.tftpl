@@ -9,10 +9,16 @@ Spawn `guidance-pr-runner` — ONE `execute_series` with `guidance-pr` command.
 ```
 AGENTS.md                    # repo root — IDE agent instructions (https://agents.md/)
 docs/architecture/
+  README.md                  # start here — audience router
+  for-developers.md
+  for-tech-leads.md
+  for-architects.md
+  glossary.md
   monorepo-split-analysis.md
   bounded-context-map.mermaid
   coupling-matrix.json
   migration-phases.md
+  testing-strategy.md
   service-catalog.yaml
 ```
 
@@ -28,5 +34,7 @@ Never push to `${default_branch}`.
 
 ## Blockers
 
-- If `service-catalog.yaml` still contains `example-service`, do **not** open a PR — `synthesize-split-plan` must run first.
-- Never commit markdown containing `[HIDDEN:…]` redaction placeholders — re-run analyst notes or use the deterministic `agents-md-scaffold.sh` output.
+- If `service-catalog.yaml` still contains `example-service`, do **not** open a PR — `parallel-plan-prep` / `synthesize-split-plan-runner` must run first.
+- If `plan_ok` / `deterministic_plan_produced` is not true, do **not** open a PR.
+- **Forbidden:** architect `execute_series` recovery, `create_files`, or manual `git push` — spawn `guidance-pr-runner` only.
+- Never commit markdown containing `[HIDDEN:…]` redaction placeholders — use deterministic scaffold output.

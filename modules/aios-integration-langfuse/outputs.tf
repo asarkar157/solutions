@@ -1,6 +1,6 @@
 output "integration_name" {
   description = "Registered name of the Langfuse integration"
-  value       = sg_guild_integration.langfuse.name
+  value       = nonsensitive(sg_guild_integration.langfuse.name)
 }
 
 output "integration_id" {

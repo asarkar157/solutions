@@ -5,11 +5,49 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAIN="${ROOT}/main.tf"
 
+if [ -f "${ROOT}/templates/db-state-split-orchestration.md.tftpl" ]; then
+  echo "FAIL: remove templates/db-state-split-orchestration.md.tftpl — use monorepo-split-orchestration.md.tftpl (db-state SOP belongs in aios-agent-db-state-splitter)" >&2
+  exit 1
+fi
+
+if ! grep -q 'subagent_task_type[[:space:]]*=[[:space:]]*var.subagent_task_type' "${MAIN}"; then
+  echo "FAIL: template_vars must pass subagent_task_type for SOP templates" >&2
+  exit 1
+fi
+
+if ! grep -q 'CCE_LENS_USE_CASES' "${MAIN}"; then
+  echo "FAIL: main.tf must set CCE_LENS_USE_CASES on Ubuntu/runner env" >&2
+  exit 1
+fi
+
+if ! grep -q 'cce_lens_use_cases' "${ROOT}/variables.tf"; then
+  echo "FAIL: variables.tf must define cce_lens_use_cases" >&2
+  exit 1
+fi
+
+if ! grep -q 'platform-adoption' "${ROOT}/variables.tf"; then
+  echo "FAIL: cce_recipes default must include platform-adoption (catalog recipe)" >&2
+  exit 1
+fi
+
+if grep -q 'monorepo-intelligence' "${ROOT}/variables.tf" && grep 'cce_recipes' "${ROOT}/variables.tf" | grep -q 'monorepo-intelligence'; then
+  echo "FAIL: monorepo-intelligence must not be in cce_recipes (lens-only; use cce_lens_use_cases)" >&2
+  exit 1
+fi
+
 analysis_stages=(
   clone-and-boundary-scan
   scan-blocked-gate
+  llm-analysis-skip-gate
   analyze-coupling-and-contexts
-  synthesize-split-plan
+  parallel-plan-prep
+  plan-fan-in-gate
+  plan-validation-gate
+  llm-plan-review
+  os-enrichment-skip-gate
+  llm-os-enrichment
+  targeted-cce-skip-gate
+  targeted-cce-rescan
   open-guidance-pr
   final-evidence-gate
 )
@@ -163,7 +201,27 @@ if ! grep -q 'base64 -d | bash' "${MAIN}"; then
   exit 1
 fi
 
-if ! grep -A30 'env_vars = {' "${MAIN}" | grep -q 'MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2'; then
+if ! grep -q 'targeted-cce-scan-runner' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must register targeted-cce-scan-runner" >&2
+  exit 1
+fi
+
+if ! grep -q 'monorepo-cce-scan.sh' "${ROOT}/scripts/boundary-scan.sh"; then
+  echo "FAIL: boundary-scan must invoke monorepo-cce-scan.sh" >&2
+  exit 1
+fi
+
+if ! grep -q 'module "cce_scripts"' "${MAIN}"; then
+  echo "FAIL: main.tf must wire aios-cce-scripts module" >&2
+  exit 1
+fi
+
+if ! grep -q 'cmd_targeted_cce_scan' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must include targeted-cce-scan command" >&2
+  exit 1
+fi
+
+if ! grep -A40 'env_vars = merge' "${MAIN}" | grep -q 'MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2'; then
   echo "FAIL: ubuntu integration env_vars must set MONOSPLIT_*_EXECUTE_SERIES_B64_V2" >&2
   exit 1
 fi
@@ -272,8 +330,23 @@ if ! grep -q 'cmd_write_guidance_artifacts' "${ROOT}/scripts/stage-runner.sh"; t
   exit 1
 fi
 
-if ! grep -q 'agents_md_analyst_sections' "${MAIN}"; then
-  echo "FAIL: synthesize-split-plan must reference agents_md_analyst_sections note" >&2
+if ! grep -q 'spawn_contracts_parallel_plan_prep' "${MAIN}"; then
+  echo "FAIL: main.tf must define spawn_contracts_parallel_plan_prep" >&2
+  exit 1
+fi
+
+if ! grep -q 'synthesize-split-plan-runner' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must include synthesize-split-plan-runner" >&2
+  exit 1
+fi
+
+if ! grep -q 'is_placeholder_service_catalog' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must block placeholder service catalog" >&2
+  exit 1
+fi
+
+if ! grep -q 'deterministic_plan_produced' "${ROOT}/scripts/synthesize-split-plan.sh"; then
+  echo "FAIL: synthesize-split-plan.sh must emit deterministic_plan_produced" >&2
   exit 1
 fi
 
@@ -332,8 +405,18 @@ if [ ! -f "${ROOT}/policies/monorepo-split-readonly-default.rego" ]; then
 fi
 
 template_count="$(find "${ROOT}/templates" -name '*.md.tftpl' | wc -l | tr -d ' ')"
-if [ "$template_count" -lt 9 ]; then
-  echo "FAIL: expected at least 9 template SOPs, found ${template_count}" >&2
+if [ "$template_count" -lt 11 ]; then
+  echo "FAIL: expected at least 11 template SOPs, found ${template_count}" >&2
+  exit 1
+fi
+
+if ! grep -q 'target_pr_repo' "${ROOT}/variables.tf"; then
+  echo "FAIL: variables.tf must define target_pr_repo" >&2
+  exit 1
+fi
+
+if ! grep -q 'build-coupling-matrix.sh' "${ROOT}/scripts/boundary-scan.sh"; then
+  echo "FAIL: boundary-scan must invoke build-coupling-matrix.sh" >&2
   exit 1
 fi
 

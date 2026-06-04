@@ -26,7 +26,7 @@ done
 deadline=$(( $(date +%s) + TIMEOUT ))
 
 resolve_trace_from_run_id() {
-  local rid="$1"
+  local _run_id="$1"
   psql "$PG_URL" -t -A -c \
     "SELECT trace_id FROM execution_agent_summaries WHERE session_id IN (
        SELECT session_id FROM execution_agent_summaries WHERE trace_id LIKE '%' LIMIT 0

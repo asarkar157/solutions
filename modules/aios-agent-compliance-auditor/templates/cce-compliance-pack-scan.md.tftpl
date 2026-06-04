@@ -1,0 +1,14 @@
+# Multi-repo CCE pack scan (compliance evidence)
+
+Repos: ${audit_repo_list_json} — `WORK_ROOT=$HOME/.<workflow_run_id>/`
+
+Per `org/repo`:
+
+```bash
+gh repo clone … "$WORK_ROOT/repos/<slug>/"
+bash "$CCE_PACK_DIR/cce-pack-scan.sh" run-recipes "$REPO" "audit-evidence,regulatory-scope,landing-zone-governance" "$WORK_ROOT/cce-<slug>.json"
+```
+
+`note(cce_scan_<slug>_status)` + artifact path only. Optional SARIF: `CCE_OUTPUT_FORMAT=sarif`.
+
+`SKIP_CCE=1` → skip.

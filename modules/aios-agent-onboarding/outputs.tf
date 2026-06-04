@@ -7,20 +7,20 @@ output "workflow_name" {
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "linear_integration_name" {
   description = "Resolved Linear Guild integration name."
-  value       = local.resolved_linear_integration_name
+  value       = nonsensitive(local.resolved_linear_integration_name)
 }
 
 output "google_integration_name" {
   description = "Google Workspace Guild integration name (passthrough)."
-  value       = local.resolved_google_integration_name
+  value       = nonsensitive(local.resolved_google_integration_name)
 }

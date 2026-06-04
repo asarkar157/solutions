@@ -10,5 +10,5 @@ output "workflow_name" {
 
 output "github_integration_name" {
   description = "Name of the GitHub Guild integration the agent uses."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }

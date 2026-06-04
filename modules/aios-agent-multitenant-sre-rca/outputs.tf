@@ -18,27 +18,27 @@ output "workflow_names" {
 
 output "datadog_integration_name" {
   description = "Resolved Datadog Guild integration name."
-  value       = local.resolved_datadog_integration_name
+  value       = nonsensitive(local.resolved_datadog_integration_name)
 }
 
 output "gcp_integration_name" {
   description = "Resolved GCP Guild integration name."
-  value       = local.resolved_gcp_integration_name
+  value       = nonsensitive(local.resolved_gcp_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "evidence_checklist_name" {

@@ -94,6 +94,19 @@ detect_java_version() {
         | grep -Eo '[0-9]+' | head -1 || true)"
     fi
   fi
+  if [ -z "$version" ]; then
+    local found max=0 v
+    while IFS= read -r gradle_file; do
+      v="$(grep -Eo 'JavaLanguageVersion\.of\([0-9]+\)|sourceCompatibility\s*=\s*JavaVersion\.VERSION_[0-9_]+|JavaVersion\.VERSION_[0-9_]+|jvmTarget\s*=\s*"[0-9]+"' "$gradle_file" 2>/dev/null \
+        | grep -Eo '[0-9]+' | sort -rn | head -1 || true)"
+      if [ -n "$v" ] && [ "$v" -gt "$max" ] 2>/dev/null; then
+        max="$v"
+      fi
+    done < <(find "$repo" -maxdepth 4 \( -name 'build.gradle' -o -name 'build.gradle.kts' \) 2>/dev/null)
+    if [ "$max" -gt 0 ] 2>/dev/null; then
+      version="$max"
+    fi
+  fi
   if [ -z "$version" ] && [ -f "$repo/pom.xml" ]; then
     version="$(grep -E 'maven\.compiler\.(source|release)|java\.version' "$repo/pom.xml" 2>/dev/null | grep -Eo '[0-9]+' | head -1 || true)"
   fi

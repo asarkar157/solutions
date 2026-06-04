@@ -59,7 +59,7 @@ variable "aws_integration_assume_role_policy_json" {
   validation {
     condition = (
       length(var.aws_stackgen_trust_arns) > 0 ||
-      (var.aws_integration_assume_role_policy_json != null && length(trimspace(var.aws_integration_assume_role_policy_json)) > 0)
+      length(trimspace(coalesce(var.aws_integration_assume_role_policy_json, ""))) > 0
     )
     error_message = "Set aws_stackgen_trust_arns to one or more principal ARNs from StackGen AWS setup, or set aws_integration_assume_role_policy_json to the full trust policy JSON."
   }
@@ -112,6 +112,12 @@ variable "stackgen_mcp_secret_name" {
   description = "Vault secret name for the MCP endpoint (Other/mcp: transport, url, headers)."
   type        = string
   default     = "stackgen-mcp-credentials"
+}
+
+variable "enable_entitlement_guard" {
+  description = "When true and github_token is set, enables CCE on repo-to-iac for entitlement-sized IAM recommendations before infra apply."
+  type        = bool
+  default     = true
 }
 
 variable "stackgen_mcp_integration_name" {

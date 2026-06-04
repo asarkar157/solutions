@@ -5,7 +5,13 @@ permalink: architecture/
 nav_order: 20
 ---
 
-How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots. The **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** is the authoritative list of every shipped module (inputs, outputs, and copy-paste snippets). The **[Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %})** maps customer deployment profiles (SaaS, PrivateSaaS, multi-tenant, self-hosted) to those modules. For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
+How **StackGen-facing modules** in this repository stack together—**foundation and policies** at the base, **integrations** and **agents** above, and **workflow** compositions on top. Many paths are **AIOS-oriented** (prefixed `aios-*`) for faster solution delivery; the same layering idea applies if you mix in your own roots.
+
+## CCE evidence layer
+
+Enterprise agents embed **[`aios-cce-scripts`]({{ site.github.repository_url }}/tree/main/modules/aios-cce-scripts)** on Ubuntu sidecars (`CCE_PACK_B64` at apply time). Workflow stages run deterministic CCE scans **before** LLM investigation, producing file:line entitlement JSON that agents consume as compact summaries. See **[CCE enterprise workflows]({% include doc_url.html path="cce-enterprise-workflows.md" %})** for the seven shipped patterns (IAM gate, incident scope, compliance factory, GitOps scope, CVE reachability, monorepo split, entitlement guard).
+
+The **[Module Catalog]({% include doc_url.html path="module-catalog.md" %})** is the authoritative list of every shipped module (inputs, outputs, and copy-paste snippets). The **[Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %})** maps customer deployment profiles (SaaS, PrivateSaaS, multi-tenant, self-hosted) to those modules. For formatting, validation, and CI for **this repository** (Makefile, GitHub Actions, registry token), see the root [README](https://github.com/appcd-dev/solutions/blob/main/README.md) — **Local verification** and **Continuous integration**. (If you use a fork or different repo name, adjust that link or open `README.md` at the repository root.)
 
 ## Layered dependency graph
 
@@ -69,7 +75,9 @@ graph TD
 
     subgraph "Layer 0 — Foundation"
         F["aios-foundation<br/>(models, secrets)"]
+        FB["aios-foundation-bedrock<br/>(Bedrock Claude Sonnet 4.6)"]
         P["aios-policies<br/>(shared guardrails)"]
+        CCE["aios-cce-scripts<br/>(shared CCE pack)"]
     end
 
     %% Layer 3 → Layer 2
@@ -138,6 +146,7 @@ graph TD
     A_DBS --> P
     A_MON --> F
     A_MON --> P
+    A_MON --> CCE
     A_AZS --> F
     A_AZS --> P
     A_STR --> F

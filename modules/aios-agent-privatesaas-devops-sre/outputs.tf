@@ -17,17 +17,17 @@ output "workflow_names" {
 
 output "grafana_integration_name" {
   description = "Resolved Grafana Guild integration name."
-  value       = local.resolved_grafana_integration_name
+  value       = nonsensitive(local.resolved_grafana_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "paloalto_integration_name" {
   description = "Resolved Palo Alto Guild integration name."
-  value       = local.resolved_paloalto_integration_name
+  value       = nonsensitive(local.resolved_paloalto_integration_name)
 }
 
 output "webhook_id" {

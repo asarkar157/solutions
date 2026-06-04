@@ -25,7 +25,14 @@ permalink: module-catalog/
   > | "What does your CI insight look like?" | `make demo SCENARIO=pipeline-insights` | foundation, policies, integration-github, agent-pipeline-insights, agent-release-tracker, integration-slack |
   > | "Triage 200 Grafana alerts a day." | `make demo SCENARIO=incident-triage` | foundation, policies, integration-grafana, integration-slack, agent-sre, agent-alert-triage |
   > | "Take a legacy repo and make IaC." | `make demo SCENARIO=repo-to-iac` | foundation, policies, integration-github, agent-repo-to-iac |
-  > | "How do we split this monolith into microservices?" | `make demo SCENARIO=monorepo-services-split` | foundation, policies, integration-github, integration-ubuntu, agent-monorepo-services-splitter |
+  > | "How do we split this monolith into microservices?" | `make demo SCENARIO=monorepo-services-split` | foundation, policies, integration-github, integration-ubuntu, agent-monorepo-services-splitter (CCE-enhanced boundary scan); pair with **db-state-splitter** for IaC |
+  > | "Block IAM surprises at PR time." | `make demo SCENARIO=pre-deploy-iam-gate` | foundation, policies, integration-github, agent-terraform-bot (CCE IAM gate) |
+  > | "Scope incidents to services that call the API." | `make demo SCENARIO=incident-triage` | foundation, policies, integration-grafana, integration-github, agent-alert-triage (CCE incident-scoping) |
+  > | "Generate compliance evidence on a schedule." | `make demo SCENARIO=compliance-evidence-factory` | foundation, policies, integration-github, agent-compliance-auditor |
+  > | "GitOps rollback without nuking the cluster." | `make demo SCENARIO=gitops-incident-scope` | foundation, policies, agent-privatesaas-gitops-sre (GitLab/Argo/AWS/Slack secrets) |
+  > | "Fix reachable CVEs only." | `make demo SCENARIO=cve-reachability-fix` | foundation, policies, integration-github, agent-supply-chain-security |
+  > | "Self-service infra with entitlement-sized IAM." | `make demo SCENARIO=agentic-infra-entitlements` | agentic-infrastructure + repo-to-iac CCE |
+  > | "We want Claude on AWS Bedrock." | `make demo SCENARIO=bedrock-sonnet-demo` | foundation-bedrock, policies, integration-aws, agent-aws-sre |
   > | "Wipe to a clean baseline." | `make demo SCENARIO=clean-tenant-reset` | foundation, policies |
   >
   > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}). For **deployment-profile** use cases (Azure SaaS, PrivateSaaS, multi-tenant RCA, self-hosted infra), see the [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}).

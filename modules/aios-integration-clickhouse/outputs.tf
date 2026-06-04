@@ -1,5 +1,5 @@
 output "integration_name" {
-  value = sg_guild_integration.clickhouse.name
+  value = nonsensitive(sg_guild_integration.clickhouse.name)
 }
 
 output "integration_id" {

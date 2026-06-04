@@ -15,20 +15,20 @@ output "workflow_threat_hunt_name" {
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "splunk_integration_name" {
   description = "Splunk Guild integration name (passthrough from var.existing_splunk_integration_name)."
-  value       = local.resolved_splunk_integration_name
+  value       = nonsensitive(local.resolved_splunk_integration_name)
 }

@@ -16,22 +16,22 @@ output "workflow_names" {
 
 output "datadog_integration_name" {
   description = "Resolved Datadog Guild integration name."
-  value       = local.resolved_datadog_integration_name
+  value       = nonsensitive(local.resolved_datadog_integration_name)
 }
 
 output "pagerduty_integration_name" {
   description = "Resolved PagerDuty Guild integration name."
-  value       = local.resolved_pagerduty_integration_name
+  value       = nonsensitive(local.resolved_pagerduty_integration_name)
 }
 
 output "confluence_integration_name" {
   description = "Resolved Confluence Guild integration name."
-  value       = local.resolved_confluence_integration_name
+  value       = nonsensitive(local.resolved_confluence_integration_name)
 }
 
 output "azure_integration_name" {
   description = "Resolved Azure Guild integration name."
-  value       = local.resolved_azure_integration_name
+  value       = nonsensitive(local.resolved_azure_integration_name)
 }
 
 output "webhook_id" {

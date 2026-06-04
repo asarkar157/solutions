@@ -25,19 +25,19 @@ output "runbook_names" {
 }
 
 output "grafana_integration_name" {
-  value = local.resolved_grafana_integration_name
+  value = nonsensitive(local.resolved_grafana_integration_name)
 }
 
 output "gcp_integration_name" {
-  value = local.resolved_gcp_integration_name
+  value = nonsensitive(local.resolved_gcp_integration_name)
 }
 
 output "firehydrant_integration_name" {
-  value = local.resolved_firehydrant_integration_name
+  value = nonsensitive(local.resolved_firehydrant_integration_name)
 }
 
 output "internal_tool_integration_name" {
-  value = local.resolved_internal_tool_integration_name
+  value = nonsensitive(local.resolved_internal_tool_integration_name)
 }
 
 output "grafana_webhook_id" {

@@ -18,12 +18,12 @@ output "workflow_names" {
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "ubuntu_integration_name" {
   description = "Resolved Ubuntu CLI integration name when enable_ubuntu_cli or create_remote_runner is true; empty string otherwise."
-  value       = local.resolved_ubuntu_integration_name
+  value       = nonsensitive(local.resolved_ubuntu_integration_name)
 }
 
 output "evidence_checklist_name" {

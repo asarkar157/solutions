@@ -5,7 +5,7 @@ output "agent_name" {
 
 output "clickhouse_integration_name" {
   description = "Resolved ClickHouse Guild integration name."
-  value       = local.resolved_clickhouse_integration_name
+  value       = nonsensitive(local.resolved_clickhouse_integration_name)
 }
 
 output "runbook_sop_names" {

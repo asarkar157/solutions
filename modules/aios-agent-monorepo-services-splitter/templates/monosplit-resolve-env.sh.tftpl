@@ -8,16 +8,18 @@ monosplit_resolve_work_root() {
 monosplit_seed_work_root_notes() {
   local notes="$WORK_ROOT/notes.json"
   [ -f "$notes" ] || echo '{}' >"$notes"
-  if [ -n "$${GITHUB_REPO_URL:-}" ] || [ -n "$${DEFAULT_BRANCH:-}" ]; then
+  if [ -n "$${GITHUB_REPO_URL:-}" ] || [ -n "$${DEFAULT_BRANCH:-}" ] || [ -n "$${TARGET_PR_REPO:-}" ]; then
     local tmp
     tmp="$(mktemp)"
     jq \
       --arg u "$${GITHUB_REPO_URL:-}" \
       --arg b "$${DEFAULT_BRANCH:-}" \
       --arg wf "$${WORKFLOW_RUN_ID:-}" \
+      --arg t "$${TARGET_PR_REPO:-}" \
       '. + (if $u != "" then {github_repo_url: $u} else {} end)
          + (if $b != "" then {default_branch: $b} else {} end)
-         + (if $wf != "" then {workflow_run_id: $wf} else {} end)' \
+         + (if $wf != "" then {workflow_run_id: $wf} else {} end)
+         + (if $t != "" then {target_pr_repo: $t} else {} end)' \
       "$notes" >"$tmp" && mv "$tmp" "$notes"
   fi
 }

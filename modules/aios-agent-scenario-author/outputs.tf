@@ -32,7 +32,7 @@ output "github_integration_name" {
     internal `module.github_integration[0]`. Used by the planner for `gh api` reads
     of the triggering issue and `gh issue comment` replies.
   EOT
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "cursor_integration_name" {
@@ -44,7 +44,7 @@ output "cursor_integration_name" {
     tools (notably `cursor_agents_run_task`) the planner uses to delegate the
     repo clone, scaffold, and PR creation to a Cursor Cloud Agent.
   EOT
-  value       = local.resolved_cursor_integration_name
+  value       = nonsensitive(local.resolved_cursor_integration_name)
 }
 
 output "webhook_id" {

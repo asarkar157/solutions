@@ -1,0 +1,11 @@
+# CCE GitOps scope
+
+Repo: `${git_repo}` · Argo hint: `${argocd_app_label_selector}` — stage **cce-gitops-scope**
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>/` — clone at `deployed_sha` from normalized_request
+2. `bash "$CCE_PACK_DIR/cce-scan.sh" scan-use-case "$REPO" incident-scoping "$WORK_ROOT/cce-scope.json"`
+3. `bash "$CCE_PACK_DIR/cce-incident-summarize.sh" "$WORK_ROOT/cce-scope.json" "$WORK_ROOT/cce-gitops-scope-summary.json"`
+4. Map `scoped_modules[]` from summary → Argo CD apps (read-only); overlap by source path prefix
+5. `note(cce_gitops_scope_summary)` = compact summary JSON; `note(argocd_apps_to_rollback[])` scoped list only
+
+Downstream RCA: use notes — do not re-clone or re-scan. `SKIP_CCE=1` → skip.

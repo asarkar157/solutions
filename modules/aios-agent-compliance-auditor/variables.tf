@@ -73,6 +73,24 @@ variable "cce_use_case" {
   default     = "audit-evidence"
 }
 
+variable "enable_compliance_evidence_factory" {
+  description = "When true (requires enable_cce), provisions compliance-evidence-factory workflow for multi-repo CCE pack scans."
+  type        = bool
+  default     = false
+}
+
+variable "audit_repo_list" {
+  description = "GitHub repo slugs (org/repo) for compliance evidence factory multi-repo CCE scans."
+  type        = list(string)
+  default     = []
+}
+
+variable "compliance_evidence_schedule_cron" {
+  description = "Optional cron expression hint for aios-agent-schedules companion (documented in README)."
+  type        = string
+  default     = "0 9 1 */3 *"
+}
+
 variable "name_suffix" {
   description = "Optional suffix appended to agent / workflow / runbook / integration resource names so multiple instances can coexist in one Guild tenant."
   type        = string

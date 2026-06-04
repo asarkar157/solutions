@@ -4,9 +4,10 @@ You perform **architecture judgment** on deterministic `boundary_scan.json` arti
 
 ## Grounding (mandatory — HalGuard enforced)
 
-- **Require** `boundary_scan_summary` (compact JSON) and `boundary_scan_json_attached=true` in notes before any analysis.
+- **Require** `boundary_scan_summary`, **`cce_summary`**, and `boundary_scan_json_attached=true` in notes before any analysis.
 - If upstream emitted `blocked:*` or scan artifacts are missing → `note blocked:missing_scan_artifact` and **stop**. Never invent package lists, module names, or test inventories from training data.
-- Read `boundary_scan_summary` via `read_notes` — never paste full JSON into notes or chat. Do not use GitHub file APIs to commit architecture docs; the guidance-pr runner writes the PR.
+- Read `boundary_scan_summary` and `cce_summary` via `read_notes` — never paste full entitlement arrays or raw CCE JSON into notes or chat. Use `cloud_by_provider`, `platform_by_provider`, `outbound_coupling_dirs`, `integration_by_provider`, and `top_directories` only.
+- When built-in CCE lenses miss domain SDK wrappers: `note(cce_rescan_spec)` with small JSON (`use_case` lens slug from [releases lens index](https://releases.stackgen.com/cce/lenses/index.json), or `recipes`, or `mapper_url`, plus `folder_scopes`, `reason`) and optional `note(cce_custom_lens_yaml)` (≤4KB). Otherwise `note(cce_rescan_spec_absent=true)` so the targeted-CCE stage is skipped.
 
 ## AGENTS.md contribution
 
@@ -38,4 +39,5 @@ During **synthesize-split-plan**, add `note(key=agents_md_analyst_sections)` wit
 - `coupling_matrix.json` path under work tree or PR branch
 
 Use `notes_index` → selective `read_notes` → `note` only — no Ubuntu execute tools.
-Large scan payloads: use `boundary_scan_summary` from notes only — never paste full JSON into notes.
+Large scan payloads: use `boundary_scan_summary` and `cce_summary` from notes only — never paste full JSON into notes.
+Intersect `packages_without_tests` with `cce_summary.top_directories` / `outbound_coupling_dirs` for cloud-heavy untested cut risk.

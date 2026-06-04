@@ -19,12 +19,12 @@ output "runbook_names" {
 
 output "github_integration_name" {
   description = "Name of the GitHub Guild integration the agent uses (resolved across the existing-override / module-provisioned paths)."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Name of the Slack Guild integration the agent uses, or empty string when no Slack integration is wired."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "webhook" {

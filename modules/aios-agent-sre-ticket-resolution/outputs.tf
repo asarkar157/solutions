@@ -16,22 +16,22 @@ output "workflow_names" {
 
 output "servicenow_integration_name" {
   description = "Resolved ServiceNow Guild integration name."
-  value       = local.resolved_servicenow_integration_name
+  value       = nonsensitive(local.resolved_servicenow_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "grafana_integration_name" {
   description = "Resolved Grafana Guild integration name."
-  value       = local.resolved_grafana_integration_name
+  value       = nonsensitive(local.resolved_grafana_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "webhook_id" {

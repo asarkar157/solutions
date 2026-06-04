@@ -1,5 +1,5 @@
 output "integration_name" {
-  value = sg_guild_integration.github.name
+  value = nonsensitive(sg_guild_integration.github.name)
 }
 
 output "integration_id" {

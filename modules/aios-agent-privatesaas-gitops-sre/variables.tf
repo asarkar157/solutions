@@ -319,6 +319,24 @@ variable "enable_evidence_checklist" {
 # Misc
 # =============================================================================
 
+variable "enable_cce" {
+  description = "When true, provisions Ubuntu + CCE pack for GitOps incident code scoping (scoped Argo CD rollback)."
+  type        = bool
+  default     = true
+}
+
+variable "git_repo" {
+  description = "Default GitLab/Git repo slug for CCE clone at deployed SHA during cce-gitops-scope."
+  type        = string
+  default     = ""
+}
+
+variable "argocd_app_label_selector" {
+  description = "Optional Argo CD label selector hint for correlating CCE directory prefixes to applications."
+  type        = string
+  default     = ""
+}
+
 variable "name_suffix" {
   type    = string
   default = ""

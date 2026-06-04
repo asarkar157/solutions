@@ -117,6 +117,11 @@ variable "default_branch" {
   default = "main"
 }
 
+variable "subagent_task_type" {
+  type    = string
+  default = "coding"
+}
+
 variable "bulk_add_resources_max_per_call" {
   type    = number
   default = 100
@@ -216,6 +221,7 @@ locals {
     default_iac_repository_url          = var.default_iac_repository_url
     default_branch                      = var.default_branch
     subagent_budgets                    = var.subagent_budgets
+    subagent_task_type                  = var.subagent_task_type
     bulk_add_resources_max_per_call     = var.bulk_add_resources_max_per_call
     bulk_connect_resources_max_per_call = var.bulk_connect_resources_max_per_call
     bulk_resources_chunk_size           = var.bulk_resources_chunk_size

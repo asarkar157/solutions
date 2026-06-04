@@ -32,12 +32,12 @@ output "webhook_token" {
 
 output "github_integration_name" {
   description = "GitHub Guild integration name bound to agents."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "ubuntu_integration_name" {
   description = "Ubuntu Guild integration name used for script runners."
-  value       = local.resolved_ubuntu_integration_name
+  value       = nonsensitive(local.resolved_ubuntu_integration_name)
 }
 
 output "readonly_default_policy_id" {
@@ -48,4 +48,24 @@ output "readonly_default_policy_id" {
 output "enable_cursor_integration" {
   description = "Whether cursor-split-executor was registered."
   value       = var.enable_cursor_integration
+}
+
+output "remote_runner_name" {
+  description = "Remote runner name when create_remote_runner is true; empty otherwise."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].runner_name : ""
+}
+
+output "remote_runner_cli_start_command" {
+  description = "aiden-runner CLI start command when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].cli_start_command : ""
+}
+
+output "remote_runner_helm_install_command" {
+  description = "Helm install command for aiden-runner when create_remote_runner is true."
+  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : ""
+}
+
+output "cce_pack_version" {
+  description = "Embedded CCE script pack version when enable_cce_enhanced is true."
+  value       = var.enable_cce_enhanced ? module.cce_scripts[0].cce_pack_version : ""
 }

@@ -1,0 +1,11 @@
+# Aggregate compliance evidence
+
+After pack scans — **script only** (no manual jq in chat):
+
+```bash
+bash "$CCE_PACK_DIR/compliance-aggregate.sh" "$WORK_ROOT" "$WORK_ROOT/compliance-evidence.json"
+```
+
+`note()` stdout: `compliance_evidence_path`, `total_call_sites`, `regulatory_touchpoint_count`. Optional baseline compare: read `baseline_artifact_path` input, `note(new_since_baseline)` as integer delta only.
+
+Do not paste per-repo `cce-*.json` bodies.

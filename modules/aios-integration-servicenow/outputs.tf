@@ -1,7 +1,8 @@
 output "integration_name" {
-  value = sg_guild_integration.servicenow.name
+  value = nonsensitive(sg_guild_integration.servicenow.name)
 }
 
 output "secret_id" {
-  value = local.secret_id
+  sensitive = true
+  value     = local.secret_id
 }

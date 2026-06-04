@@ -1,0 +1,12 @@
+# IAM gate PR comment
+
+When `cce_new_entitlement_count > 0`:
+
+1. Read **`cce_pr_comment_path`** markdown (from `cce-pr-delta.sh`) — post via GitHub integration; add one-line IAM action hints per row only if missing from table.
+2. If comment file missing, use **`cce_new_entitlements_summary_path`** (≤5 rows) — never load full `cce_pr_delta.json` into the model.
+%{ if allowlist_enabled ~}
+3. **Allowlist gate:** Allowed `provider/resource/operation` tuples for this repo are configured in Terraform (`iam_gate_allowed_operations`). Compare each new entitlement row to the allowlist for `repository` from trigger context. If any row is **not** in the allowlist, prepend `⛔ **IAM gate: disallowed operation**` to the PR comment and list the violating tuples — do not approve or merge.
+   Allowlist JSON (repo → tuples): `${allowed_ops_json}`
+%{ else ~}
+3. Comment only — do not merge/approve.
+%{ endif ~}

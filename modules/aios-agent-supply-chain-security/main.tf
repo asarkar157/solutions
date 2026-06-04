@@ -93,7 +93,10 @@ resource "sg_agent" "supply_chain_analyst" {
 
   hitl = { always_allowed = ["${local.github_tool_prefix}_test_connection"] }
 
-  integrations = [local.resolved_github_integration_name]
+  integrations = compact([
+    local.resolved_github_integration_name,
+    local.resolved_ubuntu_integration_name,
+  ])
 }
 
 resource "sg_agent_budget" "supply_chain" {
@@ -220,6 +223,9 @@ resource "sg_workflow" "supply_chain_scan" {
     { stage_id = "behavioral-sandbox", description = "Sandbox install flagged packages and monitor.", required = true },
     { stage_id = "manifest-anomaly", description = "Compare declared vs actual imports.", required = true },
     { stage_id = "correlate", description = "Cross-reference all findings.", required = true },
+    { stage_id = "cce-cve-reachability", description = "CCE f-SBOM: prioritize CVEs with reachable call sites.", required = false },
+    { stage_id = "cce-cve-skip-fix", description = "Skip CVE fix LLM when no reachable CVEs.", required = false },
+    { stage_id = "cce-cve-fix", description = "Open minimal bump PRs for reachable CVEs only.", required = false },
     { stage_id = "evidence-quality-gate", description = "LLM verifies that all three analysis stages produced sufficient evidence before recommending remediation.", required = true },
     { stage_id = "recommend", description = "Recommend remediation.", required = true },
   ]
@@ -229,13 +235,47 @@ resource "sg_workflow" "supply_chain_scan" {
     { stage_id = "behavioral-sandbox", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_behavioral_sandbox.name], skill_refs = concat([sg_runbook_sop.npm_behavioral_sandbox.name], try(var.workflow_skill_refs["${local.workflow_name}::behavioral-sandbox"], [])) },
     { stage_id = "manifest-anomaly", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.npm_manifest_anomaly.name], skill_refs = concat([sg_runbook_sop.npm_manifest_anomaly.name], try(var.workflow_skill_refs["${local.workflow_name}::manifest-anomaly"], [])) },
     { stage_id = "correlate", agent_ref = sg_agent.supply_chain_analyst.name, runbook_refs = [sg_runbook_sop.supply_chain_correlation.name], stage_depends_on = ["integrity-check", "behavioral-sandbox", "manifest-anomaly"], skill_refs = concat([sg_runbook_sop.supply_chain_correlation.name], try(var.workflow_skill_refs["${local.workflow_name}::correlate"], [])) },
+    {
+      stage_id         = "cce-cve-reachability"
+      agent_ref        = sg_agent.supply_chain_analyst.name
+      stage_depends_on = ["correlate"]
+      runbook_refs = compact(concat(
+        local.cce_reachability_stages_enabled ? [sg_runbook_sop.cce_cve_reachability[0].name] : [],
+      ))
+      skill_refs = concat(
+        local.cce_reachability_stages_enabled ? [local.sop_cce_cve_reachability] : [],
+        try(var.workflow_skill_refs["${local.workflow_name}::cce-cve-reachability"], []),
+      )
+      note = local.cce_reachability_stages_enabled ? "Ubuntu CCE reachability; note reachable_cve_count + IDs only (no full cce-cve.json)." : "CCE reachability disabled or Ubuntu not wired — skip."
+    },
+    {
+      stage_id         = "cce-cve-skip-fix"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["cce-cve-reachability"]
+      action_config = {
+        condition = "regex"
+        match     = "reachable_cve_count=0"
+        skip_to   = "evidence-quality-gate"
+        reason    = "No reachable CVEs — skip fix PR LLM stage"
+      }
+    },
+    {
+      stage_id         = "cce-cve-fix"
+      agent_ref        = sg_agent.supply_chain_analyst.name
+      stage_depends_on = ["cce-cve-skip-fix"]
+      runbook_refs = compact(concat(
+        local.cce_reachability_stages_enabled ? [sg_runbook_sop.cce_cve_fix_pr[0].name] : [],
+      ))
+      skill_refs = try(var.workflow_skill_refs["${local.workflow_name}::cce-cve-fix"], [])
+      note       = "Open fix PRs for reachable CVEs; comment on skipped unreachable alerts."
+    },
     # evidence_gate: LLM verifies that the three analysis stages produced all required
     # evidence items (npm audit report, sandbox log, dependency graph delta) before
     # recommending remediation. Halts the workflow if evidence is insufficient.
     {
       stage_id         = "evidence-quality-gate"
       action_type      = "evidence_gate"
-      stage_depends_on = ["correlate"]
+      stage_depends_on = ["cce-cve-fix"]
       action_config = {
         confirmation_items = jsonencode([
           "npm audit or provenance report is linked or summarized",

@@ -51,6 +51,81 @@
       "usage": "module \"foundation\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-foundation?ref=main\"\n\n  stackgen_url   = var.stackgen_url\n  stackgen_token = var.stackgen_token\n  llm_api_keys   = {\n    openai    = var.openai_api_key\n    anthropic = var.anthropic_api_key\n    gemini    = var.gemini_api_key\n  }\n}"
     },
     {
+      "id": "aios-foundation-bedrock",
+      "name": "Foundation (Bedrock)",
+      "desc": "Amazon Bedrock model provider and Claude Sonnet 4.6 via cross-region inference profile. IAM role or static AWS keys. Wire model_names to agents instead of direct Anthropic API keys.",
+      "layer": 0,
+      "tags": [
+        "foundation",
+        "llm",
+        "bedrock",
+        "aws",
+        "claude"
+      ],
+      "icon": "☁️",
+      "vars": [
+        {
+          "n": "stackgen_url",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "stackgen_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "project_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "name_prefix",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "aws_region",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "inference_profile_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "provider_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "model_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "good_for_task",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "bedrock_auth",
+          "t": "object({use_iam_role,aws_access_key_id,...})",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "model_names",
+        "model_names_by_provider",
+        "model_provider_names",
+        "secret_names",
+        "inference_profile_id",
+        "bedrock_enabled"
+      ],
+      "usage": "module \"foundation_bedrock\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-foundation-bedrock?ref=main\"\n\n  stackgen_url   = var.stackgen_url\n  stackgen_token = var.stackgen_token\n  aws_region     = \"us-east-1\"\n  bedrock_auth   = { use_iam_role = true }\n}"
+    },
+    {
       "id": "aios-policies",
       "name": "Policies",
       "desc": "Central library of 12+ reusable OPA/Rego guardrail policies for agent governance. Each policy can be individually toggled.",
@@ -81,6 +156,84 @@
         "policy_create_flags"
       ],
       "usage": "module \"policies\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-policies?ref=main\"\n\n  create_policies = {\n    azure_tool_governance  = false\n    google_tool_governance = false\n  }\n}"
+    },
+    {
+      "id": "aios-cce-scripts",
+      "name": "CCE Scripts (shared)",
+      "desc": "Bash pack for Code Context Engine (CCE) scans on Ubuntu sidecars: cce plan, cce run -recipes, PR delta, lens download. Embedded by agent modules at tofu apply via CCE_PACK_B64 — not typically called directly from customer roots.",
+      "layer": 0,
+      "tags": [
+        "cce",
+        "shared",
+        "ubuntu",
+        "scripts"
+      ],
+      "icon": "📜",
+      "vars": [],
+      "outputs": [
+        "cce_pack_version",
+        "cce_pack_tarball_b64",
+        "cce_pack_dir"
+      ],
+      "usage": "# Embedded by agent modules (e.g. monorepo-services-splitter, terraform-bot).\n# After script changes, bump cce_pack_version in pack.tf and re-apply parent agent module."
+    },
+    {
+      "id": "aios-remote-runner",
+      "name": "Remote Runner",
+      "desc": "Register or look up sg_remote_runner for aiden-runner (outbound-only to mothership). Exposes cli_start_command and helm_install_command. Agent modules pass runner_name and remote_runner_attach_to_agent.",
+      "layer": 1,
+      "tags": [
+        "remote-runner",
+        "on-prem",
+        "aiden-runner",
+        "infrastructure"
+      ],
+      "icon": "🏃",
+      "vars": [
+        {
+          "n": "name",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "create_runner",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "description",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "labels",
+          "t": "map(string)",
+          "r": false
+        },
+        {
+          "n": "typed_secret_refs",
+          "t": "map(string)",
+          "r": false
+        },
+        {
+          "n": "generic_secret_ref_ids",
+          "t": "list(string)",
+          "r": false
+        },
+        {
+          "n": "bind_runner_secrets",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "runner_name",
+        "runner_id",
+        "cli_start_command",
+        "helm_install_command",
+        "cli_start_command_with_secrets"
+      ],
+      "usage": "module \"onprem_runner\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-remote-runner?ref=main\"\n\n  create_runner = true\n  name          = \"org-tofu-runner\"\n}\n\n# Pass module.onprem_runner.runner_name to agent modules."
     },
     {
       "id": "aios-integration-aws",
@@ -885,7 +1038,7 @@
     {
       "id": "aios-agent-alert-triage",
       "name": "Grafana Alert Triage",
-      "desc": "Grafana alert RCA with webhook ingest, Rego filter, prior-incident memory search, PromQL query probe, ReAcTree hypothesis investigation (spawn_contracts), optional AWS/GitHub/k8s enrichment, cloud escalation, and Slack RCA publish. 3 agents, 1 workflow, optional sg_knowledge_base and sg_webhook.",
+      "desc": "Grafana alert RCA with webhook ingest, Rego filter, prior-incident memory, CCE incident-scoping on service repos (file:line), ReAcTree hypothesis investigation, optional k8s enrichment, and Slack RCA publish.",
       "layer": 2,
       "tags": [
         "grafana",
@@ -897,7 +1050,10 @@
         "github",
         "kubernetes",
         "aiden",
-        "use-case"
+        "use-case",
+        "cce",
+        "cce-enterprise",
+        "incident-scope"
       ],
       "icon": "🚨",
       "vars": [
@@ -1257,7 +1413,7 @@
     {
       "id": "aios-agent-privatesaas-gitops-sre",
       "name": "PrivateSaaS GitOps SRE",
-      "desc": "Slack /aiden intake for npm/deploy/pipeline failures; GitLab, Argo CD, DynamoDB, SonarQube investigation; optional Ubuntu docker/npm and remote runner; bounded remediation and read-only quality audit.",
+      "desc": "Slack /aiden GitOps SRE with CCE gitops-scope: map code blast radius to Argo CD apps for scoped rollback recommendations.",
       "layer": 2,
       "tags": [
         "privatesaas",
@@ -1273,7 +1429,10 @@
         "remote-runner",
         "remediation",
         "aiden",
-        "use-case"
+        "use-case",
+        "cce",
+        "cce-enterprise",
+        "gitops-scope"
       ],
       "icon": "🔁",
       "vars": [
@@ -1740,13 +1899,16 @@
     {
       "id": "aios-agent-supply-chain-security",
       "name": "Supply Chain Security",
-      "desc": "npm supply chain attack detection: SLSA provenance, behavioral sandbox, phantom dependency detection. Guild `sg_evidence_checklist` + auto-approved remediation patterns on the analyst workflow.",
+      "desc": "npm supply chain detection plus CCE CVE reachability: prioritize fix PRs for reachable call sites only.",
       "layer": 2,
       "tags": [
         "security",
         "supply-chain",
         "npm",
-        "compliance"
+        "compliance",
+        "cce",
+        "cce-enterprise",
+        "cve-reachability"
       ],
       "icon": "🔒",
       "vars": [
@@ -1779,13 +1941,16 @@
     {
       "id": "aios-agent-compliance-auditor",
       "name": "Compliance Auditor",
-      "desc": "Automated compliance auditing for SOC2, GDPR, HIPAA, ISO 27001 with evidence collection. 4 runbooks, 1 Guild `sg_evidence_checklist`, 1 workflow.",
+      "desc": "Automated compliance auditing plus optional compliance-evidence-factory workflow: multi-repo CCE pack scan (audit-evidence, regulatory-scope, landing-zone-governance) with aggregated digest.",
       "layer": 2,
       "tags": [
         "compliance",
         "governance",
         "audit",
-        "security"
+        "security",
+        "cce",
+        "cce-enterprise",
+        "compliance-evidence"
       ],
       "icon": "📝",
       "vars": [
@@ -2255,14 +2420,18 @@
     {
       "id": "aios-agent-terraform-bot",
       "name": "Terraform Module Bot",
-      "desc": "GitHub webhook-driven workflow to triage module requests, assess compliance and impact, upgrade or fork modules, and register results.",
+      "desc": "GitHub webhook-driven module workflow plus optional pre-deploy-iam-review PR workflow: CCE entitlement delta with file:line GitHub comments.",
       "layer": 2,
       "tags": [
         "terraform",
         "github",
         "ubuntu",
         "modules",
-        "iac"
+        "iac",
+        "cce",
+        "cce-enterprise",
+        "iam-gate",
+        "pre-deploy-iam"
       ],
       "icon": "🤖",
       "vars": [
@@ -2313,7 +2482,10 @@
         "appstack",
         "multi-cloud",
         "github",
-        "ubuntu"
+        "ubuntu",
+        "cce",
+        "modernization",
+        "cce-enterprise"
       ],
       "icon": "🧩",
       "vars": [
@@ -2369,7 +2541,7 @@
     {
       "id": "aios-agent-monorepo-services-splitter",
       "name": "Monorepo services split",
-      "desc": "Application monolith → microservices in two Guild workflows: analysis (clone, boundary scan, DDD synthesis, guidance PR with service-catalog.yaml + AGENTS.md) then extract (plan gate, scaffold services/<name>/, optional Cursor, extract PR). Go/JS/TS/Java; B64 Ubuntu script pack; unit-test confidence gates; PR-only to same repo. See docs/monorepo-services-splitter.md.",
+      "desc": "Application monolith → microservices in two Guild workflows: analysis (clone, boundary scan, CCE critical-path scans, DDD synthesis, guidance PR with service-catalog.yaml + AGENTS.md) then extract (plan gate, scaffold services/<name>/, optional Cursor, extract PR). Go/JS/TS/Java; script pack + CCE pack baked into Ubuntu sidecar at apply; optional aiden-runner; unit-test confidence gates; PR-only to same repo. See docs/monorepo-services-splitter.md.",
       "layer": 2,
       "tags": [
         "platform",
@@ -2379,8 +2551,12 @@
         "microservices",
         "ddd",
         "cursor",
+        "cce",
+        "remote-runner",
         "software-engineering",
-        "use-case"
+        "use-case",
+        "cce-enterprise",
+        "modernization"
       ],
       "icon": "🔀",
       "vars": [
@@ -2391,11 +2567,21 @@
         },
         {
           "n": "policy_ids",
-          "t": "object({dangerous_ops})",
+          "t": "object({dangerous_ops,container_shell_hitl?})",
           "r": true
         },
         {
           "n": "github_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_github_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_ubuntu_integration_name",
           "t": "string",
           "r": false
         },
@@ -2420,6 +2606,16 @@
           "r": false
         },
         {
+          "n": "enable_cce_enhanced",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "cce_recipes",
+          "t": "string",
+          "r": false
+        },
+        {
           "n": "default_split_strategy",
           "t": "string (ddd|layer|team_topology)",
           "r": false
@@ -2427,6 +2623,21 @@
         {
           "n": "max_recommended_services",
           "t": "number",
+          "r": false
+        },
+        {
+          "n": "create_remote_runner",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "force_remote_runner",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "subagent_budgets",
+          "t": "object({boundary_scan_*,guidance_pr_*,...})",
           "r": false
         }
       ],
@@ -2436,10 +2647,14 @@
         "github_integration_name",
         "ubuntu_integration_name",
         "readonly_default_policy_id",
+        "enable_cursor_integration",
+        "cce_pack_version",
+        "remote_runner_name",
+        "remote_runner_cli_start_command",
         "webhook_id",
         "webhook_token"
       ],
-      "usage": "module \"monorepo_services_splitter\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-monorepo-services-splitter?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_secret_id = module.github_integration.secret_id\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n}"
+      "usage": "module \"monorepo_services_splitter\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-monorepo-services-splitter?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_secret_id = module.github_integration.secret_id\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n  enable_cce_enhanced = true\n}"
     },
     {
       "id": "aios-agent-resource-janitor",

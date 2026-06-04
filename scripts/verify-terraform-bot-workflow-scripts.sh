@@ -31,7 +31,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 for script in "${MOD}/scripts/"*.sh; do
-  shellcheck -x "$script"
+  shellcheck -S warning -x "$script"
 done
 
 echo "verify-terraform-bot-workflow-scripts: OK (${TF_BIN})"

@@ -1,0 +1,21 @@
+# Library module split recommendation (escalation)
+
+Use when `repo_archetype=library_monorepo` or `ambiguous` and `plan_validation_failed=true`.
+
+## Goal
+
+Patch **existing** script-generated artifacts only — do not replace the catalog from training data.
+
+## Allowed edits
+
+- Add `architect_notes` / `tech_lead_notes` paragraphs in `service-catalog.yaml` comments or fields
+- Refine `migration-phases.md` ordering narrative (must align with `coupling-matrix.json` `extraction_order`)
+- `note(llm_patch_applied=true)` with list of paths touched
+
+## Forbidden
+
+- Inventing modules not in `boundary_scan.json`
+- Changing `depends_on` arrays or `never_extract` without citing scan evidence
+- `github_create_files` or Ubuntu `execute_series` recovery
+
+When `repo_archetype=service_monorepo`, prefer strangler / contract-first language in patches only.

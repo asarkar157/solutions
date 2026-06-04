@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Detect repo_archetype from boundary_scan.json signals (library vs service monorepo).
+set -euo pipefail
+
+cmd_detect() {
+  local scan_path="${1:?BOUNDARY_SCAN_JSON}"
+
+  if [ ! -f "$scan_path" ]; then
+    echo "repo_archetype=ambiguous"
+    echo "archetype_detect_ok=false"
+    exit 1
+  fi
+
+  local result
+  result="$(jq -r '
+    def has_deploy: (
+      ([.ci_deploy_units[]?.path // empty] | join(" ")) |
+      test("deploy|release|docker|helm|k8s|publish"; "i")
+    );
+    def has_api: ((.api_surfaces // []) | length) > 0;
+    def has_docker: (
+      [.modules[]?.path // empty] | length as $n |
+      $n > 0 and false
+    );
+    (.api_surfaces // []) as $api |
+    (.ci_deploy_units // []) as $ci |
+    (.modules // []) | length as $mod_count |
+    (if $mod_count == 0 then "ambiguous"
+     elif has_api and (has_deploy or ($ci | length) > 2) then "service_monorepo"
+     elif has_api then "mixed"
+     elif ($ci | length) > 0 and has_deploy then "service_monorepo"
+     elif $mod_count >= 2 and (has_api | not) and (has_deploy | not) then "library_monorepo"
+     else "mixed"
+     end)
+  ' "$scan_path")"
+
+  if [ "$result" = "ambiguous" ]; then
+    echo "repo_archetype=ambiguous"
+    echo "archetype_detect_ok=false"
+    exit 0
+  fi
+
+  echo "repo_archetype=${result}"
+  echo "archetype_detect_ok=true"
+}
+
+case "${1:-}" in
+  detect) shift; cmd_detect "$@" ;;
+  *)
+    echo "usage: detect-repo-archetype.sh detect BOUNDARY_SCAN_JSON" >&2
+    exit 1
+    ;;
+esac

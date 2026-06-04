@@ -1,0 +1,16 @@
+# CCE pre-deploy IAM PR delta
+
+Ubuntu execute_series after PR ingest:
+
+1. `WORK_ROOT=$HOME/.<workflow_run_id>/` — clone PR head to `$WORK_ROOT/repo`
+2. Extract pack → `export CCE_USE_CASE=pre-deploy-iam-review`
+3. Run (script writes note keys + compact artifacts — **do not** paste raw `cce_pr_delta.json` in chat):
+
+```bash
+bash "$CCE_PACK_DIR/cce-pr-delta.sh" delta "$WORK_ROOT/repo" "$${base_ref:-origin/main}" HEAD "$WORK_ROOT"
+```
+
+4. `note()` stdout keys: `cce_pr_delta_path`, `cce_new_entitlement_count`, `cce_scan_status`, `cce_new_entitlements_summary_path`, `cce_pr_comment_path`
+5. Optional: read `cce_new_entitlements_summary.json` (top-N only), not full delta file.
+
+`SKIP_CCE=1` → skip.

@@ -7,10 +7,10 @@ output "workflow_name" {
 
 output "azure_integration_name" {
   description = "Resolved Azure Guild integration name."
-  value       = local.resolved_azure_integration_name
+  value       = nonsensitive(local.resolved_azure_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }

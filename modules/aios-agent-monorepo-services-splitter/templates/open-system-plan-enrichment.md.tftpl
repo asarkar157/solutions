@@ -1,0 +1,33 @@
+# Open-system plan enrichment
+
+Advisory-only enrichment after deterministic `synthesize-split-plan`. **Do not** change `depends_on`, module lists, `kind`, or edge counts.
+
+## Inputs (read_notes)
+
+- `repo_archetype`, `boundary_scan_summary`, `repo_context_path` or `repo_context.json` excerpt
+- `service-catalog.yaml` and `coupling-matrix.json` summaries (hub module, module count)
+
+## Output
+
+Write `plan-enrichment.yaml` under WORK_ROOT via note or file paths the architect merges:
+
+```yaml
+audience_docs:
+  for-developers: |
+    ...
+  for-tech-leads: |
+    ...
+  for-architects: |
+    ...
+service_notes:
+  <module-name>:
+    summary_plain: "One paragraph, no unexplained acronyms."
+```
+
+Then `note(enrichment_ready=true)`. Architect spawns merge-enrichment or guidance runner applies `validate-and-merge-enrichment.sh`.
+
+## Rules
+
+- Plain language in `summary_plain`; define acronyms in glossary if used.
+- Reference public ecosystem context only when supported by `repo_context.json` or well-known OSS patterns.
+- Max ~5 LLM turns; no shell, no `create_files` on Ubuntu runners.

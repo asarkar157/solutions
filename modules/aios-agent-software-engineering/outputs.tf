@@ -9,20 +9,20 @@ output "workflow_name" {
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }
 
 output "linear_mcp_integration_name" {
   description = "Linear MCP Guild integration name (passthrough)."
-  value       = local.resolved_linear_mcp_integration_name
+  value       = nonsensitive(local.resolved_linear_mcp_integration_name)
 }
 
 output "cursor_mcp_integration_name" {
   description = "Cursor MCP Guild integration name (passthrough)."
-  value       = local.resolved_cursor_mcp_integration_name
+  value       = nonsensitive(local.resolved_cursor_mcp_integration_name)
 }

@@ -1,0 +1,4 @@
+stackgen_url   = "https://cloud.stackgen.com"
+stackgen_token = ""
+github_token   = ""
+audit_repo_list = ["myorg/payments-api", "myorg/checkout-service"]

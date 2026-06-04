@@ -46,6 +46,8 @@ module "sre" {
 
 Exact variable names differ per module — open the matching **`modules/<name>/variables.tf`** and **`README.md`** in this repo.
 
+For **Amazon Bedrock** (Claude Sonnet 4.6) instead of direct Anthropic API keys, use [`aios-foundation-bedrock`]({{ site.github.repository_url }}/tree/main/modules/aios-foundation-bedrock) and wire `module.foundation_bedrock.model_names` to agents. See [`examples/scenarios/bedrock-sonnet-demo/`]({{ site.github.repository_url }}/tree/main/examples/scenarios/bedrock-sonnet-demo/).
+
 ## 3. Configure the StackGen provider
 
 Your root module must configure the **`sg`** provider required by these modules (version constraints are in each module’s `terraform` block). Use **`stackgen_url`** and **`stackgen_token`** (or the `host` / `api_token` aliases; avoid deprecated `guild_url` / `guild_token`). For example:

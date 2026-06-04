@@ -31,6 +31,7 @@ fi
 
 ${monosplit_install_script_pack_body}
 
+bash "$WORK_ROOT/scripts/stage-runner.sh" merge-enrichment "$WORK_ROOT" || true
 bash "$WORK_ROOT/scripts/stage-runner.sh" guidance-pr \
   "$WORK_ROOT" "$WORKFLOW_RUN_ID" "$DEFAULT_BRANCH"
 cat "$WORK_ROOT/notes.json" 2>/dev/null || echo '{}'

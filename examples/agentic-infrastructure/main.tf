@@ -140,6 +140,8 @@ module "repo_to_iac" {
 
   existing_github_integration_name = module.github_integration[0].integration_name
 
+  enable_cce = var.enable_entitlement_guard
+
   stackgen_mcp_integration_name = var.create_stackgen_mcp_integrations ? var.stackgen_mcp_integration_name : ""
 }
 

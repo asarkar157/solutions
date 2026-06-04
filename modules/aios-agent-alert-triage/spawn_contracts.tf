@@ -5,7 +5,8 @@ locals {
 workflow_run_id: {{workflow_run_id}}
 WORK_ROOT: {{work_root}}
 Investigation window: ±15 minutes around normalized_alert.fired_at.
-Read normalized_alert, grafana_query_probe, prior_incidents, k8s_context from read_notes before tool use.
+Read normalized_alert, grafana_query_probe, prior_incidents, k8s_context, and cce_summary (scoped_modules[] when present) from read_notes before tool use.
+Limit GitHub correlation to scoped_modules[] when cce_summary is present — do not investigate the whole org.
 Emit hypothesis_result JSON only — do not post to Slack.
 EOT
 

@@ -1,0 +1,16 @@
+package stage_gate
+
+import rego.v1
+
+default allow = true
+
+# Ingest-only gate: require repository on PR webhook payload.
+# IAM allowlist enforcement runs in iam-gate-pr-comment (post-CCE delta), not here —
+# policy_check at ingest cannot see cce_new_entitlement_count or delta JSON yet.
+allow = false if {
+  not input.repository
+}
+
+deny contains "repository required for pre-deploy IAM gate workflow" if {
+  not input.repository
+}

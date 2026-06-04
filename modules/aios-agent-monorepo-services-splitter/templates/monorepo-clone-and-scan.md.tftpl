@@ -40,7 +40,9 @@ The scan populates:
 
 - `boundary_scan_json_attached=true`
 - `boundary_scan_json_path` under WORK_ROOT
-- `cloud_entitlements` inside `boundary_scan.json` (CCE scan: AWS/GCP/Azure API usage by provider — use for IAM/PoLP hints before split recommendations)
+- **`cce_summary`** in notes (compact: `cloud_by_provider`, `top_directories`, `critical_path_dirs` — never paste full entitlement arrays)
+- `cce_plan.candidate_file_count` and `critical_path_dirs` inside `boundary_scan.json` (from `cce plan` + heuristics)
+- `cloud_entitlements` / `cce_reports.*` inside `boundary_scan.json` (Tier-1 recipes: cloud, outbound coupling, platform adoption; lens add-on: monorepo intelligence, integration replatforming)
 - `test_inventory_attached=true`
 - `script_pack_version=${script_pack_version}`
 - Final line: `stage_summary:clone-and-boundary-scan=ok` or `blocked:missing_github_repo_url`

@@ -15,20 +15,20 @@ output "runbook_sop_names" {
 
 output "github_integration_name" {
   description = "Resolved GitHub Guild integration name."
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "grafana_integration_name" {
   description = "Resolved Grafana Guild integration name."
-  value       = local.resolved_grafana_integration_name
+  value       = nonsensitive(local.resolved_grafana_integration_name)
 }
 
 output "aws_integration_name" {
   description = "Resolved AWS Guild integration name."
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }
 
 output "slack_integration_name" {
   description = "Resolved Slack Guild integration name."
-  value       = local.resolved_slack_integration_name
+  value       = nonsensitive(local.resolved_slack_integration_name)
 }

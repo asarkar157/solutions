@@ -113,18 +113,30 @@ variable "integration_names" {
 variable "subagent_budgets" {
   description = "Optional overrides for spawn_contract subagent budgets."
   type = object({
-    boundary_scan_max_llm_calls           = optional(number)
-    boundary_scan_max_tool_iterations     = optional(number)
-    boundary_scan_timeout_seconds         = optional(number)
-    guidance_pr_max_llm_calls             = optional(number)
-    guidance_pr_max_tool_iterations       = optional(number)
-    guidance_pr_timeout_seconds           = optional(number)
-    scaffold_services_max_llm_calls       = optional(number)
-    scaffold_services_max_tool_iterations = optional(number)
-    scaffold_services_timeout_seconds     = optional(number)
-    extract_pr_max_llm_calls              = optional(number)
-    extract_pr_max_tool_iterations        = optional(number)
-    extract_pr_timeout_seconds            = optional(number)
+    boundary_scan_max_llm_calls            = optional(number)
+    boundary_scan_max_tool_iterations      = optional(number)
+    boundary_scan_timeout_seconds          = optional(number)
+    guidance_pr_max_llm_calls              = optional(number)
+    guidance_pr_max_tool_iterations        = optional(number)
+    guidance_pr_timeout_seconds            = optional(number)
+    scaffold_services_max_llm_calls        = optional(number)
+    scaffold_services_max_tool_iterations  = optional(number)
+    scaffold_services_timeout_seconds      = optional(number)
+    extract_pr_max_llm_calls               = optional(number)
+    extract_pr_max_tool_iterations         = optional(number)
+    extract_pr_timeout_seconds             = optional(number)
+    targeted_cce_max_llm_calls             = optional(number)
+    targeted_cce_max_tool_iterations       = optional(number)
+    targeted_cce_timeout_seconds           = optional(number)
+    synthesize_plan_max_llm_calls          = optional(number)
+    synthesize_plan_max_tool_iterations    = optional(number)
+    synthesize_plan_timeout_seconds        = optional(number)
+    agents_md_scaffold_max_llm_calls       = optional(number)
+    agents_md_scaffold_max_tool_iterations = optional(number)
+    agents_md_scaffold_timeout_seconds     = optional(number)
+    fetch_repo_context_max_llm_calls       = optional(number)
+    fetch_repo_context_max_tool_iterations = optional(number)
+    fetch_repo_context_timeout_seconds     = optional(number)
   })
   default = {}
 }
@@ -159,4 +171,136 @@ variable "script_pack_git_repo" {
   description = "Deprecated — script pack is embedded in the Ubuntu sidecar at tofu apply. Ignored; workflows do not clone tooling repos at runtime."
   type        = string
   default     = ""
+}
+
+variable "enable_cce_enhanced" {
+  description = "When true, wires aios-cce-scripts pack and runs cce plan + cce run -recipes on critical-path dirs during boundary scan."
+  type        = bool
+  default     = true
+}
+
+variable "cce_recipes" {
+  description = "Comma-separated CCE recipe ids for monorepo scan (parse-once via cce run -recipes). Must be catalog recipe ids from releases.stackgen.com/cce/recipes."
+  type        = string
+  default     = "cloud-entitlements,microservice-decomposition,platform-adoption"
+}
+
+variable "cce_lens_use_cases" {
+  description = "Comma-separated lens slugs from releases.stackgen.com/cce/lenses (cce-scan.sh scan-use-case). Empty disables Tier-1 lens add-on passes."
+  type        = string
+  default     = "monorepo-intelligence,integration-replatforming"
+}
+
+variable "cce_critical_path_max_dirs" {
+  description = "Max directory scopes for path-limited CCE scans on large monorepos."
+  type        = number
+  default     = 8
+
+  validation {
+    condition     = var.cce_critical_path_max_dirs >= 1 && var.cce_critical_path_max_dirs <= 30
+    error_message = "cce_critical_path_max_dirs must be between 1 and 30."
+  }
+}
+
+variable "cce_full_tree_max_files" {
+  description = "When cce plan candidate_file_count is at or below this threshold, run full-tree CCE instead of critical-path only."
+  type        = number
+  default     = 800
+}
+
+variable "non_trivial_model_names" {
+  description = "Optional override for architect/analyst model_names excluding mini/flash/efficiency models. Empty uses filtered model_names."
+  type        = list(string)
+  default     = []
+}
+
+variable "subagent_task_type" {
+  description = "task_type for terminal_calling spawn contracts (default terminal_calling for paste-only runners)."
+  type        = string
+  default     = "terminal_calling"
+}
+
+variable "create_remote_runner" {
+  description = "When true, registers sg_remote_runner via aios-remote-runner for large monorepo CCE scans."
+  type        = bool
+  default     = false
+}
+
+variable "remote_runner_name" {
+  description = "Remote runner name. Defaults to monorepo-services-splitter-runner when create_remote_runner is true."
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_description" {
+  description = "Description for sg_remote_runner when create_remote_runner is true."
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_labels" {
+  description = "Optional labels for sg_remote_runner when create_remote_runner is true."
+  type        = map(string)
+  default     = {}
+}
+
+variable "remote_runner_attach_to_agent" {
+  description = "When true, attaches remote runner to monorepo-split-architect agent."
+  type        = bool
+  default     = true
+}
+
+variable "force_remote_runner" {
+  description = "When true with remote runner attached, spawn contracts use remote runner execute_series instead of Ubuntu for scan stages."
+  type        = bool
+  default     = false
+}
+
+variable "runner_git_token" {
+  description = "Optional git token for remote runner secret sync (clone + gh pr on runner)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "runner_git_env_secret_id" {
+  description = "Existing vault secret id for runner git env when runner_git_token is empty."
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_secret_sync_enabled" {
+  description = "When true, binds sg_remote_runner_secrets when git secret refs resolve."
+  type        = bool
+  default     = true
+}
+
+variable "remote_runner_generic_secret_ref_ids" {
+  description = "Generic vault secret ref ids synced to remote runner (script pack env JSON)."
+  type        = list(string)
+  default     = []
+}
+
+variable "target_pr_repo" {
+  description = "Optional fork URL for clone/push (e.g. https://github.com/you/upstream-fork). When set, notes and clone-and-pr use this instead of github_repo_url for git operations."
+  type        = string
+  default     = ""
+}
+
+variable "enable_llm_synthesis" {
+  description = "When true, runs legacy LLM analyze-coupling-and-contexts stage before plan prep. Default false (deterministic synthesize)."
+  type        = bool
+  default     = false
+}
+
+variable "enable_os_enrichment" {
+  description = "When true, runs llm-os-enrichment after plan_ok for advisory audience-tier prose."
+  type        = bool
+  default     = true
+}
+
+variable "enable_parallel_plan_prep" {
+  description = "When true, architect spawns synthesize-plan, agents-md-scaffold, and fetch-repo-context runners in parallel after scan."
+  type        = bool
+  default     = true
 }

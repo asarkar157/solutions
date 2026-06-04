@@ -4,7 +4,7 @@ output "cce_pack_version" {
 }
 
 output "cce_pack_tarball_b64" {
-  description = "base64-encoded tar.gz of cce-common.sh, cce-scan.sh, cce-pr-delta.sh for CCE_PACK_B64 env."
+  description = "base64-encoded tar.gz of CCE bash pack (scan, pack-scan, pr-delta, incident-summarize, compliance-aggregate) for CCE_PACK_B64 env."
   value       = filebase64(data.archive_file.cce_pack.output_path)
 }
 

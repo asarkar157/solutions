@@ -33,14 +33,16 @@ locals {
   workflow_extract_name  = "monorepo-services-split-extract${local.suffix}"
   webhook_name           = "github-monorepo-split-receiver${local.suffix}"
 
-  sop_orchestration_name    = "monorepo-split-orchestration-sop${local.suffix}"
-  sop_clone_scan_name       = "monorepo-clone-and-scan-sop${local.suffix}"
-  sop_bounded_context_name  = "bounded-context-analysis-sop${local.suffix}"
-  sop_split_recommend_name  = "microservices-split-recommendation-sop${local.suffix}"
-  sop_guidance_pr_name      = "split-guidance-pr-sop${local.suffix}"
-  sop_extract_scaffold_name = "split-extract-scaffold-sop${local.suffix}"
-  sop_load_plan_name        = "split-load-approved-plan-sop${local.suffix}"
-  sop_cursor_extract_name   = "cursor-service-extraction-sop${local.suffix}"
+  sop_orchestration_name          = "monorepo-split-orchestration-sop${local.suffix}"
+  sop_clone_scan_name             = "monorepo-clone-and-scan-sop${local.suffix}"
+  sop_bounded_context_name        = "bounded-context-analysis-sop${local.suffix}"
+  sop_split_recommend_name        = "microservices-split-recommendation-sop${local.suffix}"
+  sop_guidance_pr_name            = "split-guidance-pr-sop${local.suffix}"
+  sop_extract_scaffold_name       = "split-extract-scaffold-sop${local.suffix}"
+  sop_load_plan_name              = "split-load-approved-plan-sop${local.suffix}"
+  sop_cursor_extract_name         = "cursor-service-extraction-sop${local.suffix}"
+  sop_open_system_enrichment_name = "open-system-plan-enrichment-sop${local.suffix}"
+  sop_library_module_split_name   = "library-module-split-recommendation-sop${local.suffix}"
 
   policy_readonly_name   = "monorepo-split-readonly-default${local.suffix}"
   evidence_analysis_name = "monorepo-split-analysis-evidence${local.suffix}"
@@ -48,6 +50,38 @@ locals {
 
   github_integration_name = "${local.module_prefix}-github${local.suffix}"
   ubuntu_integration_name = "${local.module_prefix}-ubuntu${local.suffix}"
+
+  default_remote_runner_name  = "${local.module_prefix}-runner${local.suffix}"
+  resolved_remote_runner_name = trimspace(var.remote_runner_name) != "" ? trimspace(var.remote_runner_name) : local.default_remote_runner_name
+  shell_tool_prefix           = local.resolved_remote_runner_name
+  runner_work_home            = "/home/runner"
+
+  use_remote_runner_shell = var.create_remote_runner && var.remote_runner_attach_to_agent && var.force_remote_runner
+
+  filtered_non_trivial_model_names = [
+    for name in compact(var.model_names) : name if !can(regex("(?i)(mini|flash|nano|haiku|efficiency)", name))
+  ]
+  non_trivial_model_names = length(compact(var.non_trivial_model_names)) > 0 ? compact(var.non_trivial_model_names) : (
+    length(local.filtered_non_trivial_model_names) > 0 ? local.filtered_non_trivial_model_names : compact(var.model_names)
+  )
+
+  cce_recipes_csv        = trimspace(var.cce_recipes)
+  cce_lens_use_cases_csv = trimspace(var.cce_lens_use_cases)
+
+  create_runner_git_env_secret         = var.create_remote_runner && trimspace(var.runner_git_token) != ""
+  runner_git_env_secret_id             = local.create_runner_git_env_secret ? sg_secret.runner_git_env[0].id : trimspace(var.runner_git_env_secret_id)
+  create_runner_script_pack_env_secret = var.create_remote_runner
+  runner_script_pack_env_secret_id     = local.create_runner_script_pack_env_secret ? sg_secret.runner_script_pack_env[0].id : ""
+  runner_generic_secret_ref_ids = var.remote_runner_secret_sync_enabled ? compact(concat(
+    var.remote_runner_generic_secret_ref_ids,
+    trimspace(local.runner_script_pack_env_secret_id) != "" ? [local.runner_script_pack_env_secret_id] : [],
+  )) : []
+  runner_secrets_sync_configured = var.remote_runner_secret_sync_enabled && (
+    trimspace(var.runner_git_token) != ""
+    || trimspace(var.runner_git_env_secret_id) != ""
+    || trimspace(local.runner_script_pack_env_secret_id) != ""
+    || length(var.remote_runner_generic_secret_ref_ids) > 0
+  )
 
   provision_github = trimspace(var.existing_github_integration_name) == "" && trimspace(try(var.integration_names.github, "")) == ""
   provision_ubuntu = trimspace(var.existing_ubuntu_integration_name) == "" && trimspace(try(var.integration_names.ubuntu_cli, "")) == ""
@@ -72,7 +106,7 @@ locals {
   agents_md_scaffold_script         = trimspace(file("${path.module}/scripts/agents-md-scaffold.sh"))
   runtime_deps_provision_script     = trimspace(file("${path.module}/scripts/runtime-deps-provision.sh"))
   ubuntu_integration_home           = "/home/integration"
-  script_pack_version               = "20260602.14"
+  script_pack_version               = "20260604.5"
   monosplit_script_pack_tarball_b64 = filebase64(data.archive_file.monosplit_script_pack.output_path)
   # Hash on-disk script bytes (must match archive_file tarball entries; trimspace is only for embed templates).
   script_pack_runner_sha256             = sha256(file("${path.module}/scripts/stage-runner.sh"))
@@ -83,18 +117,30 @@ locals {
   script_pack_runtime_deps_sha256       = sha256(file("${path.module}/scripts/runtime-deps-provision.sh"))
 
   subagent_budget_defaults = {
-    boundary_scan_max_llm_calls           = 12
-    boundary_scan_max_tool_iterations     = 40
-    boundary_scan_timeout_seconds         = 1800
-    guidance_pr_max_llm_calls             = 35
-    guidance_pr_max_tool_iterations       = 40
-    guidance_pr_timeout_seconds           = 1200
-    scaffold_services_max_llm_calls       = 35
-    scaffold_services_max_tool_iterations = 40
-    scaffold_services_timeout_seconds     = 1200
-    extract_pr_max_llm_calls              = 35
-    extract_pr_max_tool_iterations        = 40
-    extract_pr_timeout_seconds            = 1200
+    boundary_scan_max_llm_calls            = 12
+    boundary_scan_max_tool_iterations      = 40
+    boundary_scan_timeout_seconds          = 1800
+    guidance_pr_max_llm_calls              = 35
+    guidance_pr_max_tool_iterations        = 40
+    guidance_pr_timeout_seconds            = 1200
+    scaffold_services_max_llm_calls        = 35
+    scaffold_services_max_tool_iterations  = 40
+    scaffold_services_timeout_seconds      = 1200
+    extract_pr_max_llm_calls               = 35
+    extract_pr_max_tool_iterations         = 40
+    extract_pr_timeout_seconds             = 1200
+    targeted_cce_max_llm_calls             = 10
+    targeted_cce_max_tool_iterations       = 20
+    targeted_cce_timeout_seconds           = 900
+    synthesize_plan_max_llm_calls          = 8
+    synthesize_plan_max_tool_iterations    = 12
+    synthesize_plan_timeout_seconds        = 900
+    agents_md_scaffold_max_llm_calls       = 8
+    agents_md_scaffold_max_tool_iterations = 12
+    agents_md_scaffold_timeout_seconds     = 600
+    fetch_repo_context_max_llm_calls       = 6
+    fetch_repo_context_max_tool_iterations = 10
+    fetch_repo_context_timeout_seconds     = 600
   }
   subagent_budgets = {
     for key, default in local.subagent_budget_defaults :
@@ -114,6 +160,7 @@ locals {
   # module.ubuntu_integration output while decode commands are rendered here (cycle if referenced).
   embed_template_vars_base = {
     default_branch                        = trimspace(var.default_branch)
+    target_pr_repo                        = trimspace(var.target_pr_repo)
     script_pack_version                   = local.script_pack_version
     script_pack_runner_sha256             = local.script_pack_runner_sha256
     script_pack_boundary_scan_sha256      = local.script_pack_boundary_scan_sha256
@@ -156,7 +203,13 @@ locals {
     script_pack_runtime_deps_sha256       = local.script_pack_runtime_deps_sha256
     ubuntu_integration_home               = local.ubuntu_integration_home
     subagent_budgets                      = local.subagent_budgets
+    subagent_task_type                    = var.subagent_task_type
     enable_cursor_integration             = var.enable_cursor_integration
+    remote_runner_block                   = local.remote_runner_block
+    cce_recipes                           = local.cce_recipes_csv
+    cce_lens_use_cases                    = local.cce_lens_use_cases_csv
+    cce_critical_path_max_dirs            = var.cce_critical_path_max_dirs
+    cce_full_tree_max_files               = var.cce_full_tree_max_files
   }
 
   template_vars = merge(local.template_vars_base, {
@@ -189,11 +242,31 @@ locals {
     "${path.module}/templates/monosplit-extract-pr-execute-series-embedded.sh.tftpl",
     local.embed_template_vars,
   )
+  monosplit_targeted_cce_execute_series_body = templatefile(
+    "${path.module}/templates/monosplit-targeted-cce-execute-series-embedded.sh.tftpl",
+    local.embed_template_vars,
+  )
+  monosplit_synthesize_plan_execute_series_body = templatefile(
+    "${path.module}/templates/monosplit-synthesize-plan-execute-series-embedded.sh.tftpl",
+    merge(local.embed_template_vars, { max_recommended_services = var.max_recommended_services }),
+  )
+  monosplit_agents_md_execute_series_body = templatefile(
+    "${path.module}/templates/monosplit-agents-md-execute-series-embedded.sh.tftpl",
+    local.embed_template_vars,
+  )
+  monosplit_fetch_repo_context_execute_series_body = templatefile(
+    "${path.module}/templates/monosplit-fetch-repo-context-execute-series-embedded.sh.tftpl",
+    local.embed_template_vars,
+  )
 
-  monosplit_scan_execute_series_b64        = base64encode(trimspace(local.monosplit_scan_execute_series_body))
-  monosplit_guidance_pr_execute_series_b64 = base64encode(trimspace(local.monosplit_guidance_pr_execute_series_body))
-  monosplit_scaffold_execute_series_b64    = base64encode(trimspace(local.monosplit_scaffold_execute_series_body))
-  monosplit_extract_pr_execute_series_b64  = base64encode(trimspace(local.monosplit_extract_pr_execute_series_body))
+  monosplit_scan_execute_series_b64               = base64encode(trimspace(local.monosplit_scan_execute_series_body))
+  monosplit_guidance_pr_execute_series_b64        = base64encode(trimspace(local.monosplit_guidance_pr_execute_series_body))
+  monosplit_scaffold_execute_series_b64           = base64encode(trimspace(local.monosplit_scaffold_execute_series_body))
+  monosplit_extract_pr_execute_series_b64         = base64encode(trimspace(local.monosplit_extract_pr_execute_series_body))
+  monosplit_targeted_cce_execute_series_b64       = base64encode(trimspace(local.monosplit_targeted_cce_execute_series_body))
+  monosplit_synthesize_plan_execute_series_b64    = base64encode(trimspace(local.monosplit_synthesize_plan_execute_series_body))
+  monosplit_agents_md_execute_series_b64          = base64encode(trimspace(local.monosplit_agents_md_execute_series_body))
+  monosplit_fetch_repo_context_execute_series_b64 = base64encode(trimspace(local.monosplit_fetch_repo_context_execute_series_body))
 
   # Bootstrap B64 lives in Ubuntu integration env (tofu apply). Spawn context carries a short
   # decode command (~300 chars) so LLM runners paste reliably — inline ~9KB B64 pastes corrupt.
@@ -201,14 +274,28 @@ locals {
 
   # Prefer *_B64_V2 keys to avoid partial env updates leaving decode scripts (expected hashes)
   # out of sync with the tarball. Fall back to V1 keys for backward compatibility.
-  monosplit_scan_execute_series_decode_command        = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
-  monosplit_guidance_pr_execute_series_decode_command = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
-  monosplit_scaffold_execute_series_decode_command    = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
-  monosplit_extract_pr_execute_series_decode_command  = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_scan_execute_series_decode_command               = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SCAN_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_guidance_pr_execute_series_decode_command        = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_scaffold_execute_series_decode_command           = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_extract_pr_execute_series_decode_command         = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_targeted_cce_execute_series_decode_command       = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_synthesize_plan_execute_series_decode_command    = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_agents_md_execute_series_decode_command          = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_fetch_repo_context_execute_series_decode_command = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+
+  remote_runner_block = trimspace(<<-RUNNER
+    **Optional remote runner:** when `create_remote_runner=true` and `force_remote_runner=true`, scan stages may use **`${local.shell_tool_prefix}_execute_series`** instead of Ubuntu. Script pack bytes sync via vault secret at tofu apply.
+    RUNNER
+  )
 
   # Line-anchored sentinels only — substring match on prose like "No `blocked:clone_failed`" false-positives the gate.
-  scan_blocked_gate_match_regex = "(?m)(?:^blocked:|^stage_summary:clone-and-boundary-scan=blocked|^clone_blocker=|^work_root_error=|^script_pack_error=|^monosplit_pack_error=|^missing_b64_env|runner_sha256_mismatch|INFRA_HANDOFF|^boundary_scan_json_attached=false|^boundary_scan_ok=false|^boundary_scan_ok: false)"
-  plan_blocked_gate_match_regex = "(?m)(?:^blocked:missing_plan_artifact|^blocked:plan_load_failed|^plan_loaded=false|^plan_loaded: false)"
+  scan_blocked_gate_match_regex         = "(?m)(?:^blocked:|^stage_summary:clone-and-boundary-scan=blocked|^clone_blocker=|^work_root_error=|^script_pack_error=|^monosplit_pack_error=|^missing_b64_env|runner_sha256_mismatch|INFRA_HANDOFF|^boundary_scan_json_attached=false|^boundary_scan_ok=false|^boundary_scan_ok: false)"
+  plan_blocked_gate_match_regex         = "(?m)(?:^blocked:missing_plan_artifact|^blocked:plan_load_failed|^plan_loaded=false|^plan_loaded: false)"
+  targeted_cce_skip_gate_match_regex    = "(?m)(?:^targeted_cce_skipped=true|^targeted_cce_status=skipped|cce_rescan_spec_absent=true)"
+  parallel_prep_failed_gate_match_regex = "(?m)(?:^blocked:parallel_prep_failed|^parallel_prep_failed=true|synthesize_plan_ok=false|agents_md_scaffold_ok=false|repo_context_ok=false)"
+  plan_validation_ok_gate_match_regex   = "(?m)(?:^plan_ok=true|^deterministic_plan_produced=true)"
+  plan_validation_fail_gate_match_regex = "(?m)(?:^plan_validation_failed=true|^plan_ok=false|repo_archetype=ambiguous)"
+  os_enrichment_skip_gate_match_regex   = "(?m)(?:^enrichment_skip=true|enable_os_enrichment=false)"
 }
 
 resource "terraform_data" "github_integration_required" {
@@ -248,27 +335,111 @@ module "github_integration" {
   description        = "GitHub integration owned by ${local.agent_architect_name} (issue/PR triage, gh api)."
 }
 
+module "cce_scripts" {
+  count  = var.enable_cce_enhanced ? 1 : 0
+  source = "../aios-cce-scripts"
+}
+
+module "remote_runner" {
+  count  = var.create_remote_runner ? 1 : 0
+  source = "../aios-remote-runner"
+
+  create_runner                 = true
+  name                          = local.resolved_remote_runner_name
+  description                   = trimspace(var.remote_runner_description) != "" ? trimspace(var.remote_runner_description) : "Remote runner for ${local.agent_architect_name} (large monorepo CCE scans)."
+  labels                        = var.remote_runner_labels
+  bind_runner_secrets           = local.runner_secrets_sync_configured
+  typed_secret_refs             = trimspace(local.runner_git_env_secret_id) != "" ? { github = local.runner_git_env_secret_id } : {}
+  generic_secret_ref_ids        = local.runner_generic_secret_ref_ids
+  secrets_sync_interval_seconds = 60
+}
+
+resource "sg_secret" "runner_git_env" {
+  count = local.create_runner_git_env_secret ? 1 : 0
+
+  name        = "${local.module_prefix}-runner-git-env${local.suffix}"
+  description = "Git credentials for ${local.resolved_remote_runner_name} (clone + gh pr)."
+  category    = "Provider"
+  subcategory = "github"
+  metadata = {
+    token        = var.runner_git_token
+    GIT_TOKEN    = var.runner_git_token
+    GIT_HOST     = "github.com"
+    GIT_USERNAME = "x-access-token"
+    GH_TOKEN     = var.runner_git_token
+    GITHUB_TOKEN = var.runner_git_token
+  }
+}
+
+locals {
+  runner_script_pack_env_json = jsonencode({
+    MONOSPLIT_SCRIPT_PACK_VERSION                = local.script_pack_version
+    MONOSPLIT_SCRIPT_PACK_TARBALL_B64            = local.monosplit_script_pack_tarball_b64
+    MONOSPLIT_SCAN_EXECUTE_SERIES_B64            = local.monosplit_scan_execute_series_b64
+    MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2         = local.monosplit_scan_execute_series_b64
+    MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64    = local.monosplit_targeted_cce_execute_series_b64
+    MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64_V2 = local.monosplit_targeted_cce_execute_series_b64
+    MONOSPLIT_STAGE_RUNNER_SHA256                = local.script_pack_runner_sha256
+    MONOSPLIT_BOUNDARY_SCAN_SHA256               = local.script_pack_boundary_scan_sha256
+    CCE_RECIPES                                  = local.cce_recipes_csv
+    CCE_LENS_USE_CASES                           = local.cce_lens_use_cases_csv
+    CCE_CRITICAL_PATH_MAX_DIRS                   = tostring(var.cce_critical_path_max_dirs)
+    CCE_FULL_TREE_MAX_FILES                      = tostring(var.cce_full_tree_max_files)
+  })
+}
+
+resource "sg_secret" "runner_script_pack_env" {
+  count = local.create_runner_script_pack_env_secret ? 1 : 0
+
+  name        = "${local.module_prefix}-runner-script-pack-env${local.suffix}"
+  description = "Monorepo splitter script pack + CCE env for ${local.resolved_remote_runner_name}."
+  category    = "Provider"
+  subcategory = "generic"
+  metadata = {
+    value = local.runner_script_pack_env_json
+  }
+}
+
 module "ubuntu_integration" {
   count  = local.provision_ubuntu ? 1 : 0
   source = "../aios-integration-ubuntu"
 
   integration_name = local.ubuntu_integration_name
   secret_ref_ids   = compact([var.github_secret_id])
-  install_tools    = ["gh", "git", "curl", "jq", "gdown", "cce"]
-  env_vars = {
-    MONOSPLIT_SCRIPT_PACK_VERSION               = local.script_pack_version
-    MONOSPLIT_SCRIPT_PACK_TARBALL_B64           = local.monosplit_script_pack_tarball_b64
-    MONOSPLIT_SCAN_EXECUTE_SERIES_B64           = local.monosplit_scan_execute_series_b64
-    MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2        = local.monosplit_scan_execute_series_b64
-    MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64    = local.monosplit_guidance_pr_execute_series_b64
-    MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2 = local.monosplit_guidance_pr_execute_series_b64
-    MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64       = local.monosplit_scaffold_execute_series_b64
-    MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2    = local.monosplit_scaffold_execute_series_b64
-    MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64     = local.monosplit_extract_pr_execute_series_b64
-    MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2  = local.monosplit_extract_pr_execute_series_b64
-    MONOSPLIT_STAGE_RUNNER_SHA256               = local.script_pack_runner_sha256
-    MONOSPLIT_BOUNDARY_SCAN_SHA256              = local.script_pack_boundary_scan_sha256
-  }
+  install_tools    = concat(["gh", "git", "curl", "jq", "gdown"], var.enable_cce_enhanced ? ["cce"] : [])
+  env_vars = merge(
+    {
+      MONOSPLIT_SCRIPT_PACK_VERSION                      = local.script_pack_version
+      MONOSPLIT_SCRIPT_PACK_TARBALL_B64                  = local.monosplit_script_pack_tarball_b64
+      MONOSPLIT_SCAN_EXECUTE_SERIES_B64                  = local.monosplit_scan_execute_series_b64
+      MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2               = local.monosplit_scan_execute_series_b64
+      MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64           = local.monosplit_guidance_pr_execute_series_b64
+      MONOSPLIT_GUIDANCE_PR_EXECUTE_SERIES_B64_V2        = local.monosplit_guidance_pr_execute_series_b64
+      MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64              = local.monosplit_scaffold_execute_series_b64
+      MONOSPLIT_SCAFFOLD_EXECUTE_SERIES_B64_V2           = local.monosplit_scaffold_execute_series_b64
+      MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64            = local.monosplit_extract_pr_execute_series_b64
+      MONOSPLIT_EXTRACT_PR_EXECUTE_SERIES_B64_V2         = local.monosplit_extract_pr_execute_series_b64
+      MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64          = local.monosplit_targeted_cce_execute_series_b64
+      MONOSPLIT_TARGETED_CCE_EXECUTE_SERIES_B64_V2       = local.monosplit_targeted_cce_execute_series_b64
+      MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64       = local.monosplit_synthesize_plan_execute_series_b64
+      MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2    = local.monosplit_synthesize_plan_execute_series_b64
+      MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64             = local.monosplit_agents_md_execute_series_b64
+      MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2          = local.monosplit_agents_md_execute_series_b64
+      MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64    = local.monosplit_fetch_repo_context_execute_series_b64
+      MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2 = local.monosplit_fetch_repo_context_execute_series_b64
+      MONOSPLIT_STAGE_RUNNER_SHA256                      = local.script_pack_runner_sha256
+      MONOSPLIT_BOUNDARY_SCAN_SHA256                     = local.script_pack_boundary_scan_sha256
+      CCE_RECIPES                                        = local.cce_recipes_csv
+      CCE_LENS_USE_CASES                                 = local.cce_lens_use_cases_csv
+      CCE_CRITICAL_PATH_MAX_DIRS                         = tostring(var.cce_critical_path_max_dirs)
+      CCE_FULL_TREE_MAX_FILES                            = tostring(var.cce_full_tree_max_files)
+    },
+    var.enable_cce_enhanced ? {
+      CCE_PACK_VERSION = module.cce_scripts[0].cce_pack_version
+      CCE_PACK_DIR     = module.cce_scripts[0].cce_pack_dir
+      CCE_PACK_B64     = module.cce_scripts[0].cce_pack_tarball_b64
+    } : {},
+  )
 }
 
 resource "sg_policy" "monorepo_split_readonly_default" {
@@ -281,7 +452,9 @@ resource "sg_policy" "monorepo_split_readonly_default" {
 resource "sg_agent" "monorepo_split_architect" {
   name        = local.agent_architect_name
   persona     = local.rendered_architect_persona
-  model_names = compact(var.model_names)
+  model_names = local.non_trivial_model_names
+
+  remote_runners = var.remote_runner_attach_to_agent && length(module.remote_runner) > 0 ? toset([module.remote_runner[0].runner_name]) : null
 
   hitl = {
     always_allowed = ["web_search", "note", "notes_index", "read_notes"]
@@ -296,7 +469,7 @@ resource "sg_agent" "monorepo_split_architect" {
 resource "sg_agent" "split_domain_analyst" {
   name        = local.agent_analyst_name
   persona     = local.rendered_analyst_persona
-  model_names = compact(var.model_names)
+  model_names = local.non_trivial_model_names
 
   hitl = {
     always_allowed = ["web_search", "note", "notes_index", "read_notes"]
@@ -431,6 +604,18 @@ resource "sg_runbook_sop" "split_load_approved_plan" {
   description = trimspace(local.rendered_templates["split-load-approved-plan.md"])
 }
 
+resource "sg_runbook_sop" "open_system_plan_enrichment" {
+  name        = local.sop_open_system_enrichment_name
+  approve     = true
+  description = trimspace(local.rendered_templates["open-system-plan-enrichment.md"])
+}
+
+resource "sg_runbook_sop" "library_module_split_recommendation" {
+  name        = local.sop_library_module_split_name
+  approve     = true
+  description = trimspace(local.rendered_templates["library-module-split-recommendation.md"])
+}
+
 resource "sg_runbook_sop" "cursor_service_extraction" {
   count = var.enable_cursor_integration ? 1 : 0
 
@@ -491,6 +676,7 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
     "target_languages",
     "split_strategy",
     "max_recommended_services",
+    "target_pr_repo",
   ]
   evidence_checklist_ref = sg_evidence_checklist.monorepo_split_analysis_evidence.name
 
@@ -515,8 +701,16 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
   stages = [
     { stage_id = "clone-and-boundary-scan", description = "Clone repo and run deterministic boundary scan", required = true },
     { stage_id = "scan-blocked-gate", description = "Skip to final gate when clone/scan fails", required = false },
-    { stage_id = "analyze-coupling-and-contexts", description = "LLM bounded context analysis", required = true },
-    { stage_id = "synthesize-split-plan", description = "Service catalog and migration phases", required = true },
+    { stage_id = "llm-analysis-skip-gate", description = "Skip legacy LLM analysis when enable_llm_synthesis=false", required = false },
+    { stage_id = "analyze-coupling-and-contexts", description = "Optional LLM bounded context analysis (enable_llm_synthesis)", required = false },
+    { stage_id = "parallel-plan-prep", description = "Parallel deterministic plan prep (synthesize, AGENTS.md, repo context)", required = true },
+    { stage_id = "plan-fan-in-gate", description = "Skip when parallel prep failed", required = false },
+    { stage_id = "plan-validation-gate", description = "Skip LLM plan review when plan_ok", required = false },
+    { stage_id = "llm-plan-review", description = "Analyst escalation on plan validation failure", required = false },
+    { stage_id = "os-enrichment-skip-gate", description = "Skip open-system enrichment when disabled", required = false },
+    { stage_id = "llm-os-enrichment", description = "Advisory audience-tier enrichment", required = false },
+    { stage_id = "targeted-cce-skip-gate", description = "Skip targeted CCE when analyst did not request rescan", required = false },
+    { stage_id = "targeted-cce-rescan", description = "Optional CCE rescan with custom lens on critical paths", required = false },
     { stage_id = "open-guidance-pr", description = "Commit docs and open guidance PR", required = true },
     { stage_id = "final-evidence-gate", description = "Submit analysis evidence checklist", required = true },
   ]
@@ -538,7 +732,7 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         **Shared Ubuntu integration:** sidecars are **shared** across concurrent runs — agents cannot recycle pods, reprovision sidecars, or run `tofu apply`. All mutable state lives under `WORK_ROOT=/home/integration/.<workflow_run_id>/` (copy `workflow_run_id` from the stagerunner header). Never use `/home/integration/.monosplit-work` or other shared scratch paths.
         **Coordinator only:** resolve `github_repo_url` from inputs; if empty → `note blocked:missing_github_repo_url` and return without spawn.
         Spawn **exactly one** `clone-and-boundary-scan-runner`. Architect MUST NOT call ${local.resolved_ubuntu_integration_name}_execute_* directly.
-        After runner: `note()` boundary_scan_json_path, boundary_scan_json_attached, **boundary_scan_summary** (compact JSON from runner stdout), test_inventory_attached, test_confidence_score, runtime_deps_provisioned, baseline_test_status, baseline_test_run_evidence, script_pack_version=${local.script_pack_version}. Bootstrap installs JDK/Go/Node via apt (runners have root/sudo) — never defer baseline tests with "Java not available in runner env".
+        After runner: `note()` boundary_scan_json_path, boundary_scan_json_attached, **boundary_scan_summary**, **cce_summary** (compact JSON from runner stdout), test_inventory_attached, test_confidence_score, runtime_deps_provisioned, baseline_test_status, baseline_test_run_evidence, script_pack_version=${local.script_pack_version}. Bootstrap installs JDK/Go/Node via apt (runners have root/sudo) — never defer baseline tests with "Java not available in runner env".
         If runner stdout contains `71WORK_ROOT`/`79WORK_ROOT` or `clone_blocker=wrong_shell_dollar_escape`: note the sentinel, re-spawn **once** with `SCAN_EXECUTE_SERIES_DECODE_COMMAND` pasted verbatim (single `$` only — never `$$`).
         If runner stdout contains `script_pack_error=runner_sha256_mismatch` (or any `script_pack_error=*_sha256_mismatch`): `note blocked:runner_failed` and `stage_summary:clone-and-boundary-scan=blocked`. Give the user an **INFRA_HANDOFF** table: workflow_run_id, script_pack_version=${local.script_pack_version}, expected SHA-256 `${local.script_pack_runner_sha256}`, actual from runner stderr. Tell them to contact the **platform/infra team** that provisions the Ubuntu sidecar — **do not** tell them to recycle sidecars or re-apply tofu manually. After the sidecar is re-provisioned with matching env, they should **start a new workflow run** (new `workflow_run_id`).
         If runner fails for other reasons after one re-spawn → `note blocked:runner_failed` and **stop** — never substitute domain knowledge or invent scan results.
@@ -557,9 +751,20 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
       }
     },
     {
+      stage_id         = "llm-analysis-skip-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["scan-blocked-gate"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = var.enable_llm_synthesis ? "(?m)^never_skip_llm_analysis$" : "(?m)^stage_summary:clone-and-boundary-scan=ok"
+        skip_to   = "parallel-plan-prep"
+        reason    = "LLM synthesis disabled — skip to deterministic plan prep"
+      }
+    },
+    {
       stage_id         = "analyze-coupling-and-contexts"
       agent_ref        = sg_agent.split_domain_analyst.name
-      stage_depends_on = ["scan-blocked-gate"]
+      stage_depends_on = ["llm-analysis-skip-gate"]
       runbook_refs = [
         sg_runbook_sop.bounded_context_analysis.name,
         sg_runbook_sop.monorepo_split_orchestration.name,
@@ -568,26 +773,120 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         ["bounded-context-analysis-sop", "monorepo-split-orchestration-sop"],
         try(var.workflow_skill_refs["monorepo-services-split-analysis::analyze-coupling-and-contexts"], []),
       )
-      note = "Use `boundary_scan_summary` from notes (or `read_notes`) for test_inventory and module facts — do not rely on sidecar file paths. **Require** `boundary_scan_json_attached=true` and `boundary_scan_summary` — if missing or upstream `blocked:*`, note `blocked:missing_scan_artifact` and stop; never invent repo structure from training data. Produce bounded context map with test coverage mapping; note bounded_context_map_produced=true. No shell."
+      note = "Legacy optional stage when enable_llm_synthesis=true. Use `boundary_scan_summary` and `cce_summary` from notes only — never invent repo structure. May `note(cce_rescan_spec)` for targeted CCE. No shell."
     },
     {
-      stage_id         = "synthesize-split-plan"
-      agent_ref        = sg_agent.split_domain_analyst.name
-      stage_depends_on = ["analyze-coupling-and-contexts"]
+      stage_id         = "parallel-plan-prep"
+      agent_ref        = sg_agent.monorepo_split_architect.name
+      stage_depends_on = var.enable_llm_synthesis ? ["analyze-coupling-and-contexts"] : ["llm-analysis-skip-gate"]
       runbook_refs = [
+        sg_runbook_sop.monorepo_split_orchestration.name,
+        sg_runbook_sop.monorepo_clone_and_scan.name,
+      ]
+      skill_refs = concat(
+        ["monorepo-split-orchestration-sop", "monorepo-clone-and-scan-sop"],
+        try(var.workflow_skill_refs["monorepo-services-split-analysis::parallel-plan-prep"], []),
+      )
+      spawn_contracts = local.spawn_contracts_parallel_plan_prep
+      note            = <<-EOT
+        **Coordinator only.** If workflow input `target_pr_repo` is set, `note(target_pr_repo=<url>)` before spawn.
+        When enable_parallel_plan_prep=true: spawn **three** terminal runners in **one** parallel `create_agent` turn: `synthesize-split-plan-runner`, `agents-md-scaffold-runner`, `fetch-repo-context-runner`. Each runner: ONE execute_series — paste the matching *_EXECUTE_SERIES_DECODE_COMMAND verbatim. Forbidden on runners: execute_command, create_files, second execute_series.
+        After all succeed: `note(plan_fan_in_ready=true)` and mirror stdout sentinels (`deterministic_plan_produced`, `agents_md_scaffold_ok`, `repo_context_ok`). If any runner fails: `note(blocked:parallel_prep_failed)` and stop — **no** architect execute_series recovery.
+        When enable_parallel_plan_prep=false: spawn only `synthesize-split-plan-runner`.
+      EOT
+    },
+    {
+      stage_id         = "plan-fan-in-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["parallel-plan-prep"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = local.parallel_prep_failed_gate_match_regex
+        skip_to   = "final-evidence-gate"
+        reason    = "Parallel plan prep failed — skip PR"
+      }
+    },
+    {
+      stage_id         = "plan-validation-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["plan-fan-in-gate"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = local.plan_validation_ok_gate_match_regex
+        skip_to   = "os-enrichment-skip-gate"
+        reason    = "Deterministic plan OK — skip llm-plan-review"
+      }
+    },
+    {
+      stage_id         = "llm-plan-review"
+      agent_ref        = sg_agent.split_domain_analyst.name
+      stage_depends_on = ["plan-validation-gate"]
+      runbook_refs = compact([
+        sg_runbook_sop.library_module_split_recommendation.name,
         sg_runbook_sop.microservices_split_recommendation.name,
+        sg_runbook_sop.monorepo_split_orchestration.name,
+      ])
+      skill_refs = concat(
+        ["library-module-split-recommendation-sop", "monorepo-split-orchestration-sop"],
+        try(var.workflow_skill_refs["monorepo-services-split-analysis::llm-plan-review"], []),
+      )
+      note = "Escalation only when `plan_validation_failed=true` or `repo_archetype=ambiguous`. Write artifacts to notes (`service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `agents_md_analyst_sections`) for the guidance runner to materialize. `note(llm_patch_applied=true)` and `note(plan_ok=true)` when catalog is ready. No shell."
+    },
+    {
+      stage_id         = "os-enrichment-skip-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["llm-plan-review"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = var.enable_os_enrichment ? "(?m)^never_skip_os_enrichment$" : local.plan_validation_ok_gate_match_regex
+        skip_to   = "targeted-cce-skip-gate"
+        reason    = "Open-system enrichment disabled"
+      }
+    },
+    {
+      stage_id         = "llm-os-enrichment"
+      agent_ref        = sg_agent.split_domain_analyst.name
+      stage_depends_on = ["os-enrichment-skip-gate"]
+      runbook_refs = [
+        sg_runbook_sop.open_system_plan_enrichment.name,
         sg_runbook_sop.monorepo_split_orchestration.name,
       ]
       skill_refs = concat(
-        ["microservices-split-recommendation-sop", "monorepo-split-orchestration-sop"],
-        try(var.workflow_skill_refs["monorepo-services-split-analysis::synthesize-split-plan"], []),
+        ["open-system-plan-enrichment-sop", "monorepo-split-orchestration-sop"],
+        try(var.workflow_skill_refs["monorepo-services-split-analysis::llm-os-enrichment"], []),
       )
-      note = "Emit service-catalog.yaml + migration-phases + per-service test strategy. Draft **AGENTS.md** sections: `note(key=agents_md_analyst_sections)` with project purpose, DDD bounded contexts, and conventions observed in code (for IDE agents — https://agents.md/). note service_catalog_with_rationale=true migration_phases_documented=true per_service_test_strategy_documented=true."
+      note = "Advisory enrichment only: `plan-enrichment.yaml` with audience_docs and service_notes. Cannot change depends_on or module membership. `note(enrichment_ready=true)` when done. Optional `note(cce_rescan_spec)` for targeted CCE. No shell."
+    },
+    {
+      stage_id         = "targeted-cce-skip-gate"
+      action_type      = "conditional_skip"
+      stage_depends_on = ["llm-os-enrichment"]
+      action_config = {
+        condition = "output_matches_regex"
+        match     = local.targeted_cce_skip_gate_match_regex
+        skip_to   = "open-guidance-pr"
+        reason    = "No cce_rescan_spec — skip targeted CCE runner"
+      }
+    },
+    {
+      stage_id         = "targeted-cce-rescan"
+      agent_ref        = sg_agent.monorepo_split_architect.name
+      stage_depends_on = ["targeted-cce-skip-gate"]
+      runbook_refs = [
+        sg_runbook_sop.monorepo_split_orchestration.name,
+        sg_runbook_sop.monorepo_clone_and_scan.name,
+      ]
+      skill_refs = concat(
+        ["monorepo-clone-and-scan-sop", "monorepo-split-orchestration-sop"],
+        try(var.workflow_skill_refs["monorepo-services-split-analysis::targeted-cce-rescan"], []),
+      )
+      spawn_contracts = local.spawn_contracts_targeted_cce
+      note            = "Spawn **exactly one** targeted-cce-scan-runner when `cce_rescan_spec` in notes. After runner: refresh `cce_summary` from stdout."
     },
     {
       stage_id         = "open-guidance-pr"
       agent_ref        = sg_agent.monorepo_split_architect.name
-      stage_depends_on = ["synthesize-split-plan"]
+      stage_depends_on = ["targeted-cce-rescan"]
       runbook_refs = [
         sg_runbook_sop.split_guidance_pr.name,
         sg_runbook_sop.monorepo_split_orchestration.name,
@@ -597,7 +896,7 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         try(var.workflow_skill_refs["monorepo-services-split-analysis::open-guidance-pr"], []),
       )
       spawn_contracts = local.spawn_contracts_guidance_pr
-      note            = "Spawn guidance-pr-runner only. After runner note guidance_pr_url and agents_md_produced=true. PR includes repo-root AGENTS.md (https://agents.md/) plus docs/architecture/. PR-only — never push ${trimspace(var.default_branch)}."
+      note            = "Spawn guidance-pr-runner only — ONE execute_series. **Forbidden:** architect execute_series, create_files, manual git push, or recovery runners. After runner: note guidance_pr_url and agents_md_produced=true. PR includes docs/architecture/ audience docs + AGENTS.md. PR-only — never push ${trimspace(var.default_branch)}."
     },
     {
       stage_id         = "final-evidence-gate"

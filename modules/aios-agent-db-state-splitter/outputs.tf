@@ -120,7 +120,7 @@ output "github_integration_name" {
     `var.existing_github_integration_name` when supplied; otherwise the
     module-provisioned `<module_prefix>-github[-<suffix>]` integration name.
   EOT
-  value       = local.resolved_github_integration_name
+  value       = nonsensitive(local.resolved_github_integration_name)
 }
 
 output "aws_integration_name" {
@@ -129,5 +129,5 @@ output "aws_integration_name" {
     `var.existing_aws_integration_name` when supplied; otherwise the
     module-provisioned `<module_prefix>-aws[-<suffix>]` integration name.
   EOT
-  value       = local.resolved_aws_integration_name
+  value       = nonsensitive(local.resolved_aws_integration_name)
 }

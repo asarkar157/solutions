@@ -1,0 +1,24 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export MONOREPO_SPLIT_EMBEDDED=1
+export SCRIPT_PACK_VERSION="${script_pack_version}"
+export MAX_RECOMMENDED_SERVICES="${max_recommended_services}"
+
+${monosplit_resolve_env_body}
+
+WORK_ROOT="$(monosplit_resolve_work_root)" || exit 1
+export WORK_ROOT
+mkdir -p "$WORK_ROOT/.work" "$WORK_ROOT/scripts"
+[ -f "$WORK_ROOT/notes.json" ] || echo '{}' >"$WORK_ROOT/notes.json"
+
+if [ -z "$${WORKFLOW_RUN_ID:-}" ]; then
+  echo "work_root_error=missing_workflow_run_id" >&2
+  exit 1
+fi
+export WORKFLOW_RUN_ID
+monosplit_seed_work_root_notes
+
+${monosplit_install_script_pack_body}
+
+bash "$WORK_ROOT/scripts/stage-runner.sh" synthesize-plan "$WORK_ROOT"
+cat "$WORK_ROOT/notes.json" 2>/dev/null || echo '{}'

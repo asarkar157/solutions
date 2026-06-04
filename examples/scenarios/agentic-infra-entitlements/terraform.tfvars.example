@@ -1,0 +1,5 @@
+stackgen_url            = "https://cloud.stackgen.com"
+stackgen_token          = ""
+stackgen_project_id     = ""
+aws_stackgen_trust_arns = []
+github_token            = ""

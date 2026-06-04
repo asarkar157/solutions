@@ -29,6 +29,30 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
+variable "enable_cce" {
+  description = "When true and GitHub is wired, provisions Ubuntu + CCE for CVE reachability analysis."
+  type        = bool
+  default     = true
+}
+
+variable "enable_cce_reachability" {
+  description = "When true (requires enable_cce), runs cve-reachability lens and fix-PR stages."
+  type        = bool
+  default     = true
+}
+
+variable "existing_ubuntu_integration_name" {
+  description = "Optional Guild integration name to share an existing Ubuntu CLI integration for CCE scans."
+  type        = string
+  default     = ""
+}
+
+variable "cve_allowlist" {
+  description = "Optional CVE IDs to skip even when CCE reports reachability."
+  type        = list(string)
+  default     = []
+}
+
 variable "name_suffix" {
   description = "Optional suffix appended to agent / workflow / runbook / policy / integration resource names so multiple instances can coexist in one Guild tenant."
   type        = string

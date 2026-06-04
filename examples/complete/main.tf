@@ -431,7 +431,6 @@ module "db_state_splitter" {
   github_secret_id = module.github_integration.secret_id
   aws_secret_id    = module.aws_integration.secret_id
 
-  existing_ubuntu_integration_name = module.ubuntu_integration.integration_name
 
   # Required: StackGen Consumer MCP attached above. AppStack materialization is mandatory.
   stackgen_mcp_integration_name = sg_guild_integration.stackgen_mcp.name

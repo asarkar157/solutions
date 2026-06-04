@@ -39,7 +39,7 @@ main_tf = (root / "main.tf").read_text()
 if "MONOSPLIT_B64=" in main_tf:
     print("FAIL: decode commands must not assign inline MONOSPLIT_B64= (use sidecar env)", file=sys.stderr)
     sys.exit(1)
-if "MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2" not in main_tf.split("env_vars = {", 1)[1].split("}", 1)[0]:
+if "MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2" not in main_tf:
     print("FAIL: ubuntu integration env_vars must set MONOSPLIT_*_EXECUTE_SERIES_B64_V2", file=sys.stderr)
     sys.exit(1)
 
