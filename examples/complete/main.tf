@@ -13,7 +13,7 @@ terraform {
       # as optional input on other containerized integrations) and adopt-on-conflict for sg_policy_bundle,
       # sg_guild_model_provider, sg_guild_model, and already-approved sg_workflow.
       # >= 0.1.23: sg_remote_runner install commands for on-prem aiden-runner (aios-remote-runner).
-      version = ">= 0.1.23, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }
@@ -378,7 +378,7 @@ module "terraform_bot" {
   # existing_github_integration_name = module.github_integration.integration_name
   # existing_ubuntu_integration_name = module.ubuntu_integration.integration_name
 
-  # On-prem runner (provider >= 0.1.23): register + install commands in module outputs, then attach.
+  # On-prem runner (provider >= 0.1.25): register + install commands in module outputs, then attach.
   # create_remote_runner            = true
   # remote_runner_name              = "my-org-tofu-runner"
   # remote_runner_attach_to_agent   = true

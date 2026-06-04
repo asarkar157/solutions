@@ -7,7 +7,7 @@ terraform {
     }
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.21, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }

@@ -7,7 +7,7 @@ terraform {
       # sg_workflow, sg_guild_model_provider / sg_guild_model; integration env
       # map; floor that includes evidence-checklist + remediation patterns.
       # spawn_contracts on stage_bindings + workflow metadata (provider >= 0.1.21).
-      version = ">= 0.1.21, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }

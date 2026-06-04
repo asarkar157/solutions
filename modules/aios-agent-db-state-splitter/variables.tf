@@ -141,7 +141,7 @@ variable "remote_runner_name" {
   description = <<-EOT
     Guild remote runner name. Defaults to `<module_prefix>-runner[-<suffix>]` when empty.
     Shell subagents use `<name>_execute_command|series|parallel|create_files`.
-    Set `create_remote_runner = true` to register `sg_remote_runner` (provider **>= 0.1.23**)
+    Set `create_remote_runner = true` to register `sg_remote_runner` (provider **>= 0.1.25**)
     and surface CLI/Helm install commands in module outputs.
   EOT
   type        = string

@@ -2,7 +2,7 @@
 
 Composable Guild **remote runner** registration for [aiden-runner](https://github.com/appcd-dev/stackgen-guild/tree/main/cmd/aiden-runner). Runners long-poll mothership over **outbound HTTPS only** — no inbound firewall rules on the customer network.
 
-Requires StackGen provider **>= 0.1.23** (`sg_remote_runner` install commands: `cli_start_command`, `helm_install_command`, `mothership_url`).
+Requires StackGen provider **>= 0.1.25** (`sg_remote_runner` install commands: `cli_start_command`, `helm_install_command`, `mothership_url`).
 
 ## Modes
 

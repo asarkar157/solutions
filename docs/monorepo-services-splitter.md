@@ -157,7 +157,7 @@ module "monorepo_services_splitter" {
 }
 ```
 
-**Requirements:** StackGen provider `>= 0.1.23`, `aios-foundation`, `aios-policies` (`dangerous_ops`), GitHub + Ubuntu integrations.
+**Requirements:** StackGen provider `>= 0.1.25`, `aios-foundation`, `aios-policies` (`dangerous_ops`), GitHub + Ubuntu integrations.
 
 **Key outputs:** `workflow_names`, `agent_names`, `github_integration_name`, `ubuntu_integration_name`, optional `webhook_id` / `webhook_token`.
 

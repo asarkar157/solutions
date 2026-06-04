@@ -28,7 +28,7 @@ remote_runner_attach_to_agent = true
 enable_ubuntu_cli             = true # also provisions Ubuntu MCP for docker/npm
 ```
 
-Provider **>= 0.1.23** (remote runner). Run `aiden-runner` using `remote_runner_cli_start_command` / `remote_runner_helm_install_command` outputs before attaching agents.
+Provider **>= 0.1.25** (remote runner). Run `aiden-runner` using `remote_runner_cli_start_command` / `remote_runner_helm_install_command` outputs before attaching agents.
 
 ## Usage
 

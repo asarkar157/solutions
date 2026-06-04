@@ -246,7 +246,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 **When consuming these modules in your own stack:**
 
 - **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** **`>= 0.1.20, < 0.2.0`** from `releases.stackgen.com` (matches module pins; includes `sg_agent.auto_approve_tools` object blocks, `data.sg_app`/`data.sg_apps` (`integrations` list), `sg_webhook` in-place updates, evidence checklists, remediation `approve`, remote runner attach, `sg_guild_integration.env`, and adopt-on-conflict for bundles/models/workflows/webhooks) ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
+- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** **`>= 0.1.25, < 0.2.0`** from `releases.stackgen.com` (matches module pins; includes `sg_agent.auto_approve_tools` object blocks, `data.sg_app`/`data.sg_apps` (`integrations` list), `sg_webhook` in-place updates, evidence checklists, remediation `approve`, remote runner attach, `sg_guild_integration.env`, and adopt-on-conflict for bundles/models/workflows/webhooks) ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
 - LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License

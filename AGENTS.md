@@ -19,11 +19,11 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      # Use >= 0.1.20 for current AIOS modules. Floors: 0.1.13 (evidence/remediation/remote runners),
+      # Use >= 0.1.25 for current AIOS modules. Floors: 0.1.13 (evidence/remediation/remote runners),
       # 0.1.17 (integration env, adopt-on-conflict for bundles/models/workflows). 0.1.19 added
       # sg_agent.auto_approve_tools and data.sg_app / data.sg_apps; 0.1.20 syncs Guild OpenAPI
       # (integrations list, sg_webhook UpdateWebhook, agent state upgrade).
-      version = ">= 0.1.23, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }
@@ -50,7 +50,7 @@ This repo consumes the **`sg`** provider from `releases.stackgen.com`; it does *
 | [`AGENTS.md`](https://github.com/appcd-dev/terraform-provider-stackgen/blob/main/AGENTS.md) | Schema tag conventions (`sg:"..."`) and implementation patterns |
 | `tofu providers schema -json` / `terraform providers schema -json` | Full machine-readable schema (key = your `required_providers.sg.source`) |
 
-**Remote runners (on-prem):** `modules/aios-remote-runner` creates `sg_remote_runner` (provider **>= 0.1.23**) and outputs `cli_start_command` / `helm_install_command` for aiden-runner (outbound-only to mothership). Agent modules `aios-agent-terraform-bot`, `aios-agent-db-state-splitter`, and `aios-agent-iac-drift-detective` accept `create_remote_runner` + `remote_runner_attach_to_agent`.
+**Remote runners (on-prem):** `modules/aios-remote-runner` creates `sg_remote_runner` (provider **>= 0.1.25**) and outputs `cli_start_command` / `helm_install_command` for aiden-runner (outbound-only to mothership). Agent modules `aios-agent-terraform-bot`, `aios-agent-db-state-splitter`, and `aios-agent-iac-drift-detective` accept `create_remote_runner` + `remote_runner_attach_to_agent`.
 
 **Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`, **`sg_app`**, **`sg_apps`** (deployment catalog, **v0.1.21+** minimum; catalog apps expose **`integrations`**, not the removed `integration_map`). From **v0.1.12**, `sg_agent` accepts **`remote_runners`**; **v0.1.13** evidence/remediation patterns; **v0.1.17** `env` on `sg_guild_integration` and adopt-on-conflict for bundles/models/workflows; **v0.1.19** **`auto_approve_tools`** object blocks on `sg_agent` (MCP wildcards — used by `aios-agent-repo-to-iac`, `aios-agent-db-state-splitter`, `aios-agent-sdlc` cloud-infra). **`sg_webhook`** supports in-place updates of `action`, `endpoint_path`, and `allowed_cidrs` (provider **v0.1.21+**). Optional **`enable_stackgen_deployment_catalog`** on `aios-agent-release-tracker` loads `data.sg_apps` at plan time. Modules with `remote_runner_attach_to_agent` use `data.sg_remote_runner`. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
 
@@ -176,7 +176,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-agent-scenario-author` | Closes the SE feedback loop — triages `scenario-request` GitHub issues, matches existing scenarios, and delegates new `examples/scenarios/<slug>/` scaffolding (5 files + `scripts/demo.sh` entry + `docs/se-playbook.md` row + tofu validate + auto-PR via Cursor's GitHub App) to a Cursor Cloud Agent via `cursor_agents_run_task`, then comments back on the issue. Uses GitHub + Cursor integrations (no Ubuntu CLI shell scripting); strict repo + label gate |
 | `modules/aios-agent-terraform-bot` | GitHub issue/PR → clone → validate → PR → **quality assess/iterate loop** (`conditional_skip` forward on PASS/GIVE_UP; `loop_stage` GO_BACK to merge when NEEDS_REVISION; `module_quality_max_iterations`) → register. **Discovery-modules profile** (`discovery_modules_repository_full_names`, default `stackgenhq/discovery-modules`): `aws|gcp|azurerm/<module>/` layout, `.stackgen/stackgen.yaml`, Template I scaffold, `stackgen upload custom-modules` |
 | `modules/aios-agent-schedules` | Composable `sg_agent_schedule` resources for any agent or workflow |
-| `modules/aios-remote-runner` | Register or look up Guild remote runners; outputs aiden-runner CLI/Helm install commands (provider **>= 0.1.23**) |
+| `modules/aios-remote-runner` | Register or look up Guild remote runners; outputs aiden-runner CLI/Helm install commands (provider **>= 0.1.25**) |
 
 ## IDE tips (no agent file required)
 

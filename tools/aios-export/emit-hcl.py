@@ -181,7 +181,7 @@ def emit_header(snapshot: dict) -> str:
         "  required_providers {\n"
         "    sg = {\n"
         "      source  = \"releases.stackgen.com/stackgen/stackgen\"\n"
-        "      version = \">= 0.1.20, < 0.2.0\"\n"
+        "      version = \">= 0.1.25, < 0.2.0\"\n"
         "    }\n"
         "  }\n"
         "}\n\n"

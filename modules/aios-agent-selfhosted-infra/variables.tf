@@ -115,7 +115,7 @@ variable "ubuntu_secret_ref_ids" {
 }
 
 variable "create_remote_runner" {
-  description = "When true, registers an sg_remote_runner via aios-remote-runner (requires remote_runner_name; provider >= 0.1.23)."
+  description = "When true, registers an sg_remote_runner via aios-remote-runner (requires remote_runner_name; provider >= 0.1.25)."
   type        = bool
   default     = false
 }

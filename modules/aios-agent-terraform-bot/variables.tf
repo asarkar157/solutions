@@ -82,7 +82,7 @@ variable "workflow_skill_refs" {
 variable "remote_runner_name" {
   description = <<-EOT
     Optional Guild remote runner name. When `create_remote_runner` is true, registers `sg_remote_runner` (provider
-    **>= 0.1.23**) and exposes CLI/Helm install commands in module outputs. When false, looks up an existing runner.
+    **>= 0.1.25**) and exposes CLI/Helm install commands in module outputs. When false, looks up an existing runner.
     Set `remote_runner_attach_to_agent = true` to bind the agent to this runner for heavy `tofu`/`terraform` work
     on-prem (outbound-only to mothership).
   EOT

@@ -4,7 +4,7 @@ Guild agents and **two workflows** for analyzing Java / Go / JavaScript / TypeSc
 
 ## Requirements
 
-- StackGen provider `>= 0.1.21`
+- StackGen provider `>= 0.1.25`
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops`
 - GitHub + Ubuntu Guild integrations (provisioned via `github_secret_id` or pass `integration_names` / `existing_*`)
 

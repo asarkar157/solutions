@@ -4,7 +4,7 @@ terraform {
     sg = {
       source = "releases.stackgen.com/stackgen/stackgen"
       # sg_remote_runner (>= 0.1.23) when create_remote_runner; sg_webhook updates (>= 0.1.21).
-      version = ">= 0.1.23, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }

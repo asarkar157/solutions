@@ -4,7 +4,7 @@ Registers one agent and **two workflows**: (1) **repository-to-iac** — analyze
 
 ## Prerequisites
 
-- **StackGen provider** `>= 0.1.20` (uses `sg_agent.auto_approve_tools` for Consumer MCP wildcards when `stackgen_mcp_integration_name` is set)
+- **StackGen provider** `>= 0.1.25` (uses `sg_agent.auto_approve_tools` for Consumer MCP wildcards when `stackgen_mcp_integration_name` is set)
 - `aios-foundation` for `model_names`
 - `aios-policies` for `policy_ids.dangerous_ops`
 - `aios-integration-github` — pass `integration_name` into `github_integration_name`

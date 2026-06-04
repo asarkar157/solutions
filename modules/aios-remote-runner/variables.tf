@@ -10,7 +10,7 @@ variable "name" {
 
 variable "create_runner" {
   description = <<-EOT
-    When true, registers a new `sg_remote_runner` (StackGen provider >= 0.1.23). The runner connects outbound to
+    When true, registers a new `sg_remote_runner` (StackGen provider >= 0.1.25). The runner connects outbound to
     mothership (`provider stackgen_url`) — suitable for on-prem / VPC / firewall-restricted environments.
     When false, only looks up an existing runner by `name` at plan time.
   EOT

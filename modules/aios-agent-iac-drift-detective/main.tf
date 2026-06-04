@@ -3,7 +3,7 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.23, < 0.2.0"
+      version = ">= 0.1.25, < 0.2.0"
     }
   }
 }
@@ -69,7 +69,7 @@ variable "workflow_skill_refs" {
 variable "remote_runner_name" {
   description = <<-EOT
     Optional Guild remote runner name. Set `create_remote_runner = true` to register `sg_remote_runner` and
-    expose CLI/Helm install outputs for on-prem `terraform plan` (provider >= 0.1.23).
+    expose CLI/Helm install outputs for on-prem `terraform plan` (provider >= 0.1.25).
   EOT
   type        = string
   default     = ""

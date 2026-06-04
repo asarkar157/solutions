@@ -64,7 +64,7 @@ Always cites the source GitHub URL.
 | `include_prereleases_default` | no | `false` | Default for the workflow's `include_prereleases` input |
 | `image_namespace_template` | no | `ghcr.io/{{org}}/{{service}}` | Template used to derive an image ref from `service_name` |
 | `service_catalog` | no | `{}` | Map of `service_name` → `owner/repo` to allow service-name lookups |
-| `enable_stackgen_deployment_catalog` | no | `false` | Plan-time `data.sg_apps` (`installation = configured`) for deployment-catalog hints; each app exposes `integrations` (provider >= 0.1.20) |
+| `enable_stackgen_deployment_catalog` | no | `false` | Plan-time `data.sg_apps` (`installation = configured`) for deployment-catalog hints; each app exposes `integrations` (provider >= 0.1.25) |
 | `workflow_skill_refs` | no | `{}` | Optional `skill_refs` overrides per `<workflow>::<stage>` |
 
 ## Outputs
