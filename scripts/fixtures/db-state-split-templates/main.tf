@@ -22,9 +22,19 @@ variable "suffix" {
   default = ""
 }
 
-variable "ubuntu_tool_prefix" {
+variable "shell_tool_prefix" {
   type    = string
-  default = "db-state-splitter-ubuntu"
+  default = "db-state-splitter-runner"
+}
+
+variable "remote_runner_name" {
+  type    = string
+  default = "db-state-splitter-runner"
+}
+
+variable "runner_work_home" {
+  type    = string
+  default = "/home/runner"
 }
 
 variable "github_tool_prefix" {
@@ -54,7 +64,7 @@ variable "allocate_manifest_script" {
 
 variable "script_pack_version" {
   type    = string
-  default = "20260530.2"
+  default = "20260604.5"
 }
 
 variable "script_pack_git_ref" {
@@ -80,11 +90,6 @@ variable "script_pack_allocate_b64" {
 variable "script_pack_runner_b64" {
   type    = string
   default = "IyBjaS1zb2tlIHJ1bm5lcl9zdHVi"
-}
-
-variable "ubuntu_integration_home" {
-  type    = string
-  default = "/home/ubuntu"
 }
 
 variable "stackgen_project_name_default" {
@@ -176,11 +181,21 @@ variable "subagent_budgets" {
 }
 
 locals {
+  dbsplit_script_pack_env_helpers = templatefile(
+    "${path.module}/templates/dbsplit-script-pack-env.sh.tftpl",
+    {
+      script_pack_version         = var.script_pack_version
+      script_pack_allocate_sha256 = var.script_pack_allocate_sha256
+      script_pack_runner_sha256   = var.script_pack_runner_sha256
+    },
+  )
+
   # Mirror modules/aios-agent-db-state-splitter/main.tf locals.template_vars.
   template_vars = {
     module_prefix                       = var.module_prefix
     suffix                              = var.suffix
-    ubuntu_tool_prefix                  = var.ubuntu_tool_prefix
+    shell_tool_prefix                   = var.shell_tool_prefix
+    remote_runner_name                  = var.remote_runner_name
     github_tool_prefix                  = var.github_tool_prefix
     aws_tool_prefix                     = var.aws_tool_prefix
     stackgen_mcp_tool_prefix            = var.stackgen_mcp_tool_prefix
@@ -194,7 +209,7 @@ locals {
     script_pack_runner_sha256           = var.script_pack_runner_sha256
     script_pack_allocate_b64            = var.script_pack_allocate_b64
     script_pack_runner_b64              = var.script_pack_runner_b64
-    ubuntu_integration_home             = var.ubuntu_integration_home
+    runner_work_home                    = var.runner_work_home
     stackgen_project_name_default       = var.stackgen_project_name_default
     default_grouping_strategy           = var.default_grouping_strategy
     default_max_resources_per_appstack  = var.default_max_resources_per_appstack
@@ -205,6 +220,7 @@ locals {
     bulk_connect_resources_max_per_call = var.bulk_connect_resources_max_per_call
     bulk_resources_chunk_size           = var.bulk_resources_chunk_size
     bulk_connections_chunk_size         = var.bulk_connections_chunk_size
+    dbsplit_script_pack_env_helpers     = local.dbsplit_script_pack_env_helpers
   }
 
   rendered_templates = {
@@ -217,7 +233,6 @@ locals {
     filename => trimspace(templatefile("${path.module}/personas/${filename}", local.template_vars))
   }
 
-  # Same templatefile() calls as the module (catches unescaped bash ${...} in embeds).
   rendered_embeds = {
     ingest   = templatefile("${path.module}/templates/ingest-execute-series-embedded.sh.tftpl", local.template_vars)
     iac_pr   = templatefile("${path.module}/templates/iac-pr-execute-series-embedded.sh.tftpl", local.template_vars)

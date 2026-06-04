@@ -28,4 +28,18 @@ data "sg_remote_runner" "existing" {
 locals {
   runner_id = var.create_runner ? sg_remote_runner.this[0].id : data.sg_remote_runner.existing[0].id
   status    = var.create_runner ? sg_remote_runner.this[0].status : data.sg_remote_runner.existing[0].status
+
+  # Count must not depend on secret UUIDs (often unknown until apply); parent sets
+  # bind_runner_secrets when refs will be configured.
+  bind_secrets = var.bind_runner_secrets
+}
+
+resource "sg_remote_runner_secrets" "this" {
+  count = var.create_runner && local.bind_secrets ? 1 : 0
+
+  # Use stable runner name (plan-time known); API accepts name or server id.
+  runner_id                     = local.runner_name
+  typed_secret_refs             = var.typed_secret_refs
+  generic_secret_ref_ids        = var.generic_secret_ref_ids
+  secrets_sync_interval_seconds = var.secrets_sync_interval_seconds
 }

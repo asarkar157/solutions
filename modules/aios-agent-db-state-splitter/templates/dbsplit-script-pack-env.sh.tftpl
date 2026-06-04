@@ -1,0 +1,65 @@
+dbsplit_load_script_pack_env() {
+  if [ -n "$${DBSPLIT_SCRIPT_PACK_ALLOCATE_B64:-}" ] && [ -n "$${DBSPLIT_SCRIPT_PACK_RUNNER_B64:-}" ]; then
+    return 0
+  fi
+  local json="$${DBSPLIT_SCRIPT_PACK_ENV_JSON:-$${value:-}}"
+  if [ -z "$json" ]; then
+    return 1
+  fi
+  export DBSPLIT_SCRIPT_PACK_VERSION="$(printf '%s' "$json" | jq -r '.DBSPLIT_SCRIPT_PACK_VERSION // empty')"
+  export DBSPLIT_SCRIPT_PACK_ALLOCATE_B64="$(printf '%s' "$json" | jq -r '.DBSPLIT_SCRIPT_PACK_ALLOCATE_B64 // empty')"
+  export DBSPLIT_SCRIPT_PACK_RUNNER_B64="$(printf '%s' "$json" | jq -r '.DBSPLIT_SCRIPT_PACK_RUNNER_B64 // empty')"
+  export DBSPLIT_SCRIPT_PACK_ALLOCATE_SHA256="$(printf '%s' "$json" | jq -r '.DBSPLIT_SCRIPT_PACK_ALLOCATE_SHA256 // empty')"
+  export DBSPLIT_SCRIPT_PACK_RUNNER_SHA256="$(printf '%s' "$json" | jq -r '.DBSPLIT_SCRIPT_PACK_RUNNER_SHA256 // empty')"
+  export DBSPLIT_INGEST_BOOTSTRAP_B64="$(printf '%s' "$json" | jq -r '.DBSPLIT_INGEST_BOOTSTRAP_B64 // empty')"
+  export DBSPLIT_INGEST_BOOTSTRAP_SHA256="$(printf '%s' "$json" | jq -r '.DBSPLIT_INGEST_BOOTSTRAP_SHA256 // empty')"
+  if [ -z "$${DBSPLIT_SCRIPT_PACK_ALLOCATE_B64:-}" ] || [ -z "$${DBSPLIT_SCRIPT_PACK_RUNNER_B64:-}" ]; then
+    return 1
+  fi
+  return 0
+}
+
+dbsplit_materialize_script_pack() {
+  local work_root="$${1:?WORK_ROOT}"
+  if ! dbsplit_load_script_pack_env; then
+    echo "script_pack_error=missing_runner_env required=DBSPLIT_SCRIPT_PACK_* or generic_secret_value_json hint=tofu_apply_and_restart_aiden_runner_with_secrets_sync" >&2
+    return 1
+  fi
+  if [ -n "$${DBSPLIT_SCRIPT_PACK_VERSION:-}" ] && [ "$${DBSPLIT_SCRIPT_PACK_VERSION}" != "${script_pack_version}" ]; then
+    echo "script_pack_error=version_mismatch expected=${script_pack_version} actual=$${DBSPLIT_SCRIPT_PACK_VERSION} hint=tofu_apply_and_restart_aiden_runner" >&2
+    return 1
+  fi
+  mkdir -p "$work_root/scripts"
+  printf '%s' "$${DBSPLIT_SCRIPT_PACK_ALLOCATE_B64}" | base64 -d > "$work_root/scripts/allocate_manifest.py"
+  printf '%s' "$${DBSPLIT_SCRIPT_PACK_RUNNER_B64}" | base64 -d > "$work_root/scripts/stage-runner.sh"
+  chmod +x "$work_root/scripts/stage-runner.sh"
+  local expected actual runner_expected runner_actual
+  expected="$${DBSPLIT_SCRIPT_PACK_ALLOCATE_SHA256:-${script_pack_allocate_sha256}}"
+  actual="$(sha256sum "$work_root/scripts/allocate_manifest.py" | awk '{print $1}')"
+  if [ "$actual" != "$expected" ]; then
+    echo "script_pack_error=allocate_sha256_mismatch expected=$expected actual=$actual" >&2
+    return 1
+  fi
+  runner_expected="$${DBSPLIT_SCRIPT_PACK_RUNNER_SHA256:-${script_pack_runner_sha256}}"
+  runner_actual="$(sha256sum "$work_root/scripts/stage-runner.sh" | awk '{print $1}')"
+  if [ "$runner_actual" != "$runner_expected" ]; then
+    echo "script_pack_error=runner_sha256_mismatch expected=$runner_expected actual=$runner_actual" >&2
+    return 1
+  fi
+  return 0
+}
+
+dbsplit_ensure_script_pack() {
+  local work_root="$${1:?WORK_ROOT}"
+  if [ -f "$work_root/scripts/allocate_manifest.py" ] && [ -f "$work_root/scripts/stage-runner.sh" ]; then
+    local expected actual runner_expected runner_actual
+    expected="${script_pack_allocate_sha256}"
+    actual="$(sha256sum "$work_root/scripts/allocate_manifest.py" | awk '{print $1}')"
+    runner_expected="${script_pack_runner_sha256}"
+    runner_actual="$(sha256sum "$work_root/scripts/stage-runner.sh" | awk '{print $1}')"
+    if [ "$actual" = "$expected" ] && [ "$runner_actual" = "$runner_expected" ]; then
+      return 0
+    fi
+  fi
+  dbsplit_materialize_script_pack "$work_root"
+}

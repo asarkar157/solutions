@@ -21,7 +21,7 @@ boundary_scan_script_sha256: ${local.script_pack_boundary_scan_sha256}
 ${local.ubuntu_shared_integration_rule}
 MONOSPLIT_PACK: Bootstrap B64 + script pack tarball are in sidecar env (set at tofu apply). Spawn context has a short *_EXECUTE_SERIES_DECODE_COMMAND only — paste verbatim; never inline B64 in tool JSON. Runners MUST NOT create_files embed scripts. No runtime clone of any tooling repo — only the user's github_repo_url is cloned for analysis.
 ${local.ubuntu_execute_series_shell_dollar_rule}
-HALGUARD: halguard_skip_subagent_task_types=terminal_calling (Guild WorkflowMetadata) skips PreCheck on task_type=terminal_calling (short decode goals). Runners: copy decode command verbatim, never load_skill script pack on embed stages. PostCheck still runs on runner stdout.
+HALGUARD: workflow metadata halguard_skip_subagent_task_types=terminal_calling skips PreCheck on task_type=terminal_calling (short decode goals). terminal_calling_halguard_mode=paste_only_minimal_planner — copy decode command verbatim, never load_skill script pack on embed stages. PostCheck still runs on runner stdout.
 EMBED_SIZE: decode command is ~300 chars; bootstrap + script pack tarball are sidecar env (tofu apply). After read_notes, prepend exports on the same line: export GITHUB_REPO_URL='<url>' DEFAULT_BRANCH='<branch>' then paste decode command.
 EOT
 

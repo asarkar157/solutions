@@ -55,8 +55,8 @@ if ! grep -q 'blocked:missing_monolith_state_uri' "${MAIN}"; then
   exit 1
 fi
 
-if ! grep -q 'blocked:ubuntu_infra_tofu_missing' "${MAIN}"; then
-  echo "FAIL: workflow must reference blocked:ubuntu_infra_tofu_missing sentinel" >&2
+if ! grep -q 'blocked:remote_runner_tofu_missing' "${MAIN}"; then
+  echo "FAIL: workflow must reference blocked:remote_runner_tofu_missing sentinel" >&2
   exit 1
 fi
 
@@ -97,6 +97,11 @@ fi
 
 if ! grep -q 'shell-converge-matrix-runner' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: spawn_contracts must register shell-converge-matrix-runner" >&2
+  exit 1
+fi
+
+if ! grep -A20 'appstack-materialize-runner-batch' "${ROOT}/spawn_contracts.tf" | grep -q '_execute_command'; then
+  echo "FAIL: appstack batch spawn must include shell execute_command to read batch_payloads.json on runner" >&2
   exit 1
 fi
 
@@ -170,13 +175,48 @@ if ! grep -q 'working_dir=/' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'dbsplit_fetch_script_pack' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest embed must git-fetch script pack via GIT_TOKEN" >&2
+if grep -q 'dbsplit_fetch_script_pack' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must not git-fetch script pack (terraform-baked b64)" >&2
   exit 1
 fi
 
-if ! grep -q "/bin/bash <<'DBSPLIT_INGEST_EXECUTE'" "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must use /bin/bash heredoc" >&2
+if grep -q "DBSPLIT_INGEST_EXECUTE" "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must be plain bash (no outer heredoc wrapper)" >&2
+  exit 1
+fi
+
+if ! grep -q 'dbsplit_load_script_pack_env' "${ROOT}/templates/dbsplit-script-pack-env.sh.tftpl"; then
+  echo "FAIL: dbsplit-script-pack-env partial must define dbsplit_load_script_pack_env" >&2
+  exit 1
+fi
+
+if ! grep -q 'dbsplit_script_pack_env_helpers' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must include dbsplit_script_pack_env_helpers partial" >&2
+  exit 1
+fi
+
+if grep -q 'script_pack_runner_b64' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must not inline terraform script_pack_*_b64 (runner env sync at tofu apply)" >&2
+  exit 1
+fi
+
+if ! grep -q 'runner_script_pack_env' "${MAIN}"; then
+  echo "FAIL: main.tf must provision runner_script_pack_env secret for DBSPLIT_SCRIPT_PACK_* sync" >&2
+  exit 1
+fi
+
+if ! grep -q 'DBSPLIT_INGEST_BOOTSTRAP_B64' "${MAIN}"; then
+  echo "FAIL: runner_script_pack_env JSON must include DBSPLIT_INGEST_BOOTSTRAP_B64" >&2
+  exit 1
+fi
+
+if ! grep -q 'ingest_bootstrap_execute_command' "${MAIN}"; then
+  echo "FAIL: main.tf must define ingest_bootstrap_execute_command" >&2
+  exit 1
+fi
+
+if grep 'ingest_bootstrap_execute_command' "${MAIN}" | grep -q '<<<'; then
+  echo "FAIL: ingest bootstrap command must not use bash <<< (aiden-runner runs sh -c)" >&2
   exit 1
 fi
 
@@ -186,12 +226,23 @@ if ! grep -q 'dbsplit_resolve_monolith_uri' "${ROOT}/templates/ingest-execute-se
 fi
 
 if ! grep -q 'dbsplit_resolve_work_root' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest execute series must resolve WORK_ROOT without {{workflow_run_id}} placeholder" >&2
+  echo "FAIL: ingest execute series must resolve WORK_ROOT via WORKFLOW_RUN_ID or spawn_monolith_uri" >&2
   exit 1
 fi
 
-if grep -q '{{workflow_run_id}}' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
-  echo "FAIL: ingest embed must not contain unresolved {{workflow_run_id}} (ONE_LINER is terraform-base64)" >&2
+if ! grep -q 'export WORKFLOW_RUN_ID="{{workflow_run_id}}"' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must export WORKFLOW_RUN_ID from spawn placeholder before resolving WORK_ROOT" >&2
+  exit 1
+fi
+
+if grep -q '{{workflow_run_id}}' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl" \
+  && ! grep -q 'export WORKFLOW_RUN_ID="{{workflow_run_id}}"' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: ingest embed must only use {{workflow_run_id}} for WORKFLOW_RUN_ID export (guild spawn substitution)" >&2
+  exit 1
+fi
+
+if grep -qE '/\."\$\$\{WORKFLOW_RUN_ID\}' "${ROOT}/templates/ingest-execute-series-embedded.sh.tftpl"; then
+  echo "FAIL: WORKFLOW_RUN_ID path must be inside one quoted string (/.\\\${WORKFLOW_RUN_ID})" >&2
   exit 1
 fi
 
@@ -200,33 +251,78 @@ if ! grep -q 'spawn_monolith_uri' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'INGEST_EXECUTE_SERIES_B64' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: spawn_contracts must deliver ingest via INGEST_EXECUTE_SERIES_B64" >&2
+if ! grep -q 'INGEST_BOOTSTRAP_EXECUTE_COMMAND' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must deliver ingest via INGEST_BOOTSTRAP_EXECUTE_COMMAND" >&2
   exit 1
 fi
 
-if ! grep -q 'INGEST_EXECUTE_SERIES_DECODE_COMMAND' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: spawn_contracts must deliver ingest decode command" >&2
+if ! grep -q 'INGEST_BOOTSTRAP_SHA256' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must expose INGEST_BOOTSTRAP_SHA256" >&2
   exit 1
 fi
 
-if ! grep -q 'ingest_execute_series_decode_command' "${MAIN}"; then
-  echo "FAIL: main.tf must define ingest_execute_series_decode_command" >&2
+if sed -n '/sub_agent_name = "ingest-and-split-runner"/,/^    },/p' "${ROOT}/spawn_contracts.tf" \
+  | sed -n '/tool_names = \[/,/\]/p' | grep -q 'execute_series'; then
+  echo "FAIL: ingest spawn_contract tool_names must not include execute_series (bootstrap is one execute_command)" >&2
   exit 1
 fi
 
-if ! grep -q 'create_files' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: ingest spawn_contract must allow create_files for embed b64" >&2
+if sed -n '/sub_agent_name = "ingest-and-split-runner"/,/^    },/p' "${ROOT}/spawn_contracts.tf" \
+  | sed -n '/tool_names = \[/,/\]/p' | grep -q 'create_files'; then
+  echo "FAIL: ingest spawn_contract tool_names must not include create_files" >&2
   exit 1
 fi
 
-if grep -qF '---BEGIN INGEST_EXECUTE_SERIES---' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: spawn_contracts must not embed raw INGEST heredoc (use B64 + create_files)" >&2
+if ! grep -q 'task_type      = var.subagent_task_type' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must use var.subagent_task_type (default coding) for runner sub-agents" >&2
+  exit 1
+fi
+
+if ! grep -q 'non_trivial_model_names' "${MAIN}"; then
+  echo "FAIL: main.tf must filter efficiency/mini models via non_trivial_model_names" >&2
+  exit 1
+fi
+
+if grep -q 'INGEST_EXECUTE_SERIES_B64:' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must not expose raw INGEST_EXECUTE_SERIES_B64 to the LLM" >&2
+  exit 1
+fi
+
+if grep -q -e '---BEGIN INGEST_EXECUTE_SERIES---' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must not embed raw INGEST heredoc" >&2
   exit 1
 fi
 
 if ! grep -q 'INGEST_RUNNER_RULE' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: spawn_contracts must include INGEST_RUNNER_RULE embed guidance" >&2
+  echo "FAIL: spawn_contracts must include INGEST_RUNNER_RULE bootstrap guidance" >&2
+  exit 1
+fi
+
+if ! grep -q 'DBSPLIT_INGEST_BOOTSTRAP_B64' "${ROOT}/templates/dbsplit-script-pack-env.sh.tftpl"; then
+  echo "FAIL: dbsplit-script-pack-env must load DBSPLIT_INGEST_BOOTSTRAP_B64 from secret JSON" >&2
+  exit 1
+fi
+
+orch="${ROOT}/templates/db-state-split-orchestration.md.tftpl"
+if grep -q 'INGEST_EXECUTE_SERIES_B64' "$orch"; then
+  echo "FAIL: orchestration SOP must not reference INGEST_EXECUTE_SERIES_B64" >&2
+  exit 1
+fi
+if grep -q 'create_files.*ingest-embed' "$orch"; then
+  echo "FAIL: orchestration SOP must not instruct create_files for ingest-embed.b64" >&2
+  exit 1
+fi
+if ! grep -q 'INGEST_BOOTSTRAP_EXECUTE_COMMAND' "$orch"; then
+  echo "FAIL: orchestration SOP must document INGEST_BOOTSTRAP_EXECUTE_COMMAND ingest bootstrap" >&2
+  exit 1
+fi
+if ! grep -qi 'shell tools only' "$orch"; then
+  echo "FAIL: orchestration SOP must forbid MCP integration execute_* on ingest runner" >&2
+  exit 1
+fi
+
+if ! grep -q '019e905a51fc' "${MAIN}"; then
+  echo "FAIL: ingest stage note must reference trace 019e905a51fc wrong-tool-prefix failure" >&2
   exit 1
 fi
 
@@ -240,10 +336,50 @@ if [ ! -f "${ROOT}/templates/converge-execute-series-embedded.sh.tftpl" ]; then
   exit 1
 fi
 
+for stage_tpl in \
+  "${ROOT}/templates/iac-pr-execute-series-embedded.sh.tftpl" \
+  "${ROOT}/templates/converge-execute-series-embedded.sh.tftpl"; do
+  base="$(basename "$stage_tpl")"
+  if grep -q 'script_pack_allocate_b64' "$stage_tpl"; then
+    echo "FAIL: ${base} must not inline terraform script_pack_*_b64 (runner env sync at tofu apply)" >&2
+    exit 1
+  fi
+  if grep -q "DBSPLIT_.*_EXECUTE" "$stage_tpl"; then
+    : # execute_series runs under sh -c; outer /bin/bash heredoc is required for pipefail
+  elif ! head -1 "$stage_tpl" | grep -q '/bin/bash'; then
+    echo "FAIL: ${base} must invoke /bin/bash (execute_series uses sh -c)" >&2
+    exit 1
+  fi
+  if ! grep -q 'dbsplit_script_pack_env_helpers' "$stage_tpl"; then
+    echo "FAIL: ${base} must include dbsplit_script_pack_env_helpers partial" >&2
+    exit 1
+  fi
+done
+
+if ! grep -q 'iac_pr_execute_series_paste_budget' "${MAIN}"; then
+  echo "FAIL: main.tf must assert iac-pr execute series paste budget" >&2
+  exit 1
+fi
+
+if ! grep -q 'converge_execute_series_paste_budget' "${MAIN}"; then
+  echo "FAIL: main.tf must assert converge execute series paste budget" >&2
+  exit 1
+fi
+
 pack_main="$(grep -E 'script_pack_version[[:space:]]*=' "${MAIN}" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 pack_runner="$(grep -E '^SCRIPT_PACK_VERSION=' "${ROOT}/scripts/stage-runner.sh" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 if [ -z "$pack_main" ] || [ -z "$pack_runner" ] || [ "$pack_main" != "$pack_runner" ]; then
   echo "FAIL: script_pack_version mismatch main.tf=${pack_main} stage-runner.sh=${pack_runner}" >&2
+  exit 1
+fi
+
+if ! grep -q 'shell_tool_prefix' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must reference shell_tool_prefix remote runner tools" >&2
+  exit 1
+fi
+
+if grep -q 'ubuntu_integration' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: spawn_contracts must not reference ubuntu_integration" >&2
   exit 1
 fi
 

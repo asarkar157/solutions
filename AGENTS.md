@@ -144,6 +144,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-argocd` | Argo CD GitOps integration |
 | `modules/aios-integration-sonarqube` | SonarQube quality gate integration |
 | `modules/aios-agent-sre` | SRE agents and incident workflows |
+| `modules/aios-agent-alert-triage` | Grafana alert RCA — webhook ingest + Rego filter, prior-incident memory, PromQL query probe, ReAcTree hypothesis investigation, optional AWS/GitHub/k8s enrichment, Slack RCA publish |
 | `modules/aios-agent-aws-sre` | AWS-focused SRE |
 | `modules/aios-agent-gcp-sre` | GCP-focused SRE |
 | `modules/aios-agent-grafana-sre` | Grafana-focused SRE |

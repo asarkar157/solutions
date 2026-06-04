@@ -95,7 +95,7 @@ resource "sg_workflow" "infrastructure_audit" {
 
 
   metadata = {
-    planner_max_tool_iterations = 40
+    planner_max_tool_iterations = "40"
   }
 
 

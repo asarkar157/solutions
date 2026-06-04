@@ -564,7 +564,8 @@ resource "sg_workflow" "terraform_module_update" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations       = 40
+    planner_max_tool_iterations       = "40"
+    terminal_calling_halguard_mode    = "paste_only_minimal_planner"
     halguard_skip_subagent_task_types = "terminal_calling"
   }
 

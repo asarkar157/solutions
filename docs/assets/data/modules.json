@@ -883,6 +883,77 @@
       "usage": "module \"sre_agents\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-sre?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = module.policies.policy_ids\n  policy_create_flags = {\n    sre_remediation          = module.policies.policy_create_flags.sre_remediation\n    prod_write_gate          = module.policies.policy_create_flags.prod_write_gate\n    tier0_service_protection = module.policies.policy_create_flags.tier0_service_protection\n    blast_radius_limit       = module.policies.policy_create_flags.blast_radius_limit\n    freeze_window            = module.policies.policy_create_flags.freeze_window\n    data_risk_pii            = module.policies.policy_create_flags.data_risk_pii\n    post_action_verification = module.policies.policy_create_flags.post_action_verification\n  }\n\n  integration_names = {\n    grafana = module.grafana_integration.integration_name\n    slack   = module.slack_integration.integration_name\n  }\n}"
     },
     {
+      "id": "aios-agent-alert-triage",
+      "name": "Grafana Alert Triage",
+      "desc": "Grafana alert RCA with webhook ingest, Rego filter, prior-incident memory search, PromQL query probe, ReAcTree hypothesis investigation (spawn_contracts), optional AWS/GitHub/k8s enrichment, cloud escalation, and Slack RCA publish. 3 agents, 1 workflow, optional sg_knowledge_base and sg_webhook.",
+      "layer": 2,
+      "tags": [
+        "grafana",
+        "sre",
+        "slack",
+        "rca",
+        "webhook",
+        "aws",
+        "github",
+        "kubernetes",
+        "aiden",
+        "use-case"
+      ],
+      "icon": "🚨",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,data_risk_pii?})",
+          "r": true
+        },
+        {
+          "n": "existing_grafana_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_slack_integration_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "aws_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "github_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "remote_runner_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_knowledge_base",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_name",
+        "runbook_sop_names",
+        "grafana_integration_name",
+        "slack_integration_name",
+        "webhook_token",
+        "webhook_ingress_payload_url"
+      ],
+      "usage": "module \"alert_triage\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-alert-triage?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  existing_grafana_integration_name = module.grafana_integration.integration_name\n  existing_slack_integration_name   = module.slack_integration.integration_name\n}"
+    },
+    {
       "id": "aios-agent-aws-sre",
       "name": "AWS SRE",
       "desc": "AWS cloud operations SRE with K8s diagnostics, security audit, cost analysis, and tagging compliance. 1 agent, 4 runbooks, 2 workflows.",

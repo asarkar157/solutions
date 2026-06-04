@@ -1,0 +1,62 @@
+package stage_gate
+
+import rego.v1
+
+default allow = false
+
+_text := lower(input.stage_input)
+
+allow if {
+  severity_ok
+  environment_ok
+  namespace_ok
+  not is_blocked_alert
+}
+
+# --- Severity allowlist (skipped when empty) ---
+severity_ok if { not ${severities_gate_enabled} }
+severity_ok if {
+  some s in [${severities_rego_literals}]
+  regex.match(sprintf(`\b%s\b`, [s]), _text)
+}
+
+# --- Environment allowlist (skipped when empty) ---
+environment_ok if { not ${environments_gate_enabled} }
+environment_ok if {
+  some e in [${environments_rego_literals}]
+  contains(_text, e)
+}
+
+# --- Namespace allowlist (skipped when empty) ---
+namespace_ok if { not ${namespaces_gate_enabled} }
+namespace_ok if {
+  some n in [${namespaces_rego_literals}]
+  contains(_text, n)
+}
+
+# --- Blocked alert names (skipped when list empty) ---
+is_blocked_alert if {
+  ${blocked_gate_enabled}
+  some b in [${blocked_alert_names_rego_literals}]
+  contains(_text, b)
+}
+
+deny contains msg if {
+  not severity_ok
+  msg := "Grafana alert severity not in allowed ingest list"
+}
+
+deny contains msg if {
+  not environment_ok
+  msg := "Grafana alert environment not in allowed ingest list"
+}
+
+deny contains msg if {
+  not namespace_ok
+  msg := "Grafana alert namespace not in allowed ingest list"
+}
+
+deny contains msg if {
+  is_blocked_alert
+  msg := "Grafana alert name matches blocked ingest rule"
+}

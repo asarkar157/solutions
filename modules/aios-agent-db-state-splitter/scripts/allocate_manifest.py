@@ -58,6 +58,137 @@ def cap_label(cap: int) -> str:
     return str(cap)
 
 
+def sanitize_identifier(addr: str) -> str:
+    """Derive a StackGen-safe identifier from a Terraform address (playbook step 2)."""
+    s = re.sub(r'[\.\[\]"\/\-\s]+', "_", addr.lower())
+    s = re.sub(r"_+", "_", s).strip("_")
+    s = re.sub(r"^[0-9_]+", "", s)
+    if not s:
+        return "resource"
+    return s
+
+
+def terraform_type_from_address(addr: str) -> str:
+    """Extract Terraform resource type from a canonical address."""
+    parts = addr.split(".")
+    if len(parts) >= 2:
+        return parts[-2]
+    if parts:
+        return parts[0]
+    return "unknown"
+
+
+def load_identifier_map(work_root: str) -> Dict[str, str]:
+    """Load address→identifier overrides from registry_mapping_report or identifier_map."""
+    idmap_path = os.path.join(work_root, "identifier_map.json")
+    if os.path.isfile(idmap_path):
+        with open(idmap_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+
+    report_path = os.path.join(work_root, "registry_mapping_report.json")
+    if not os.path.isfile(report_path):
+        return {}
+    with open(report_path, encoding="utf-8") as fh:
+        report = json.load(fh)
+    if isinstance(report, dict):
+        if isinstance(report.get("address_to_identifier"), dict):
+            return {str(k): str(v) for k, v in report["address_to_identifier"].items()}
+        if isinstance(report.get("identifier_map"), dict):
+            return {str(k): str(v) for k, v in report["identifier_map"].items()}
+    return {}
+
+
+def build_resources_for_addresses(
+    addresses: Iterable[str], id_map: Dict[str, str]
+) -> List[dict]:
+    """Build bulk_add_resources_to_appstack entries from Terraform addresses."""
+    resources: List[dict] = []
+    seen_identifiers: Set[str] = set()
+    for addr in sorted(addresses):
+        identifier = id_map.get(addr) or sanitize_identifier(addr)
+        if identifier in seen_identifiers:
+            suffix = str(abs(hash(addr)))[-6:]
+            identifier = f"{identifier}_{suffix}"
+        seen_identifiers.add(identifier)
+        resources.append(
+            {
+                "terraform_address": addr,
+                "resource_type": terraform_type_from_address(addr),
+                "identifier": identifier,
+            }
+        )
+    return resources
+
+
+def build_batch_payloads(
+    manifest: dict, sample_ids: List[str], id_map: Dict[str, str]
+) -> List[dict]:
+    """Assemble MCP-ready batch entries with pre-built resources[] per group."""
+    payloads: List[dict] = []
+    for gid in sample_ids:
+        entry = manifest.get(gid) or {}
+        addresses = entry.get("resource_addresses") or []
+        payloads.append(
+            {
+                "group_id": gid,
+                "cloud_hint": entry.get("cloud_hint") or cloud_hint(
+                    terraform_type_from_address(addresses[0]) if addresses else ""
+                ),
+                "resource_addresses": sorted(addresses),
+                "resources": build_resources_for_addresses(addresses, id_map),
+                "appstack_name": sanitize_identifier(gid),
+            }
+        )
+    return payloads
+
+
+def sample_group_ids_from_manifest(manifest: dict, sample_size: int) -> List[str]:
+    """Pick the first N group ids in stable sort order (mirrors stage-runner.sh)."""
+    keys = sorted(manifest.keys())
+    if len(keys) > 40:
+        return keys[:sample_size]
+    return keys
+
+
+def cmd_prepare_parallel_artifacts(work_root: str) -> int:
+    """Write sample_group_ids.json, batch_payloads.json, identifier_map.json."""
+    manifest_path = os.path.join(work_root, "logical_group_manifest.json")
+    if not os.path.isfile(manifest_path):
+        print("prepare_error=missing_logical_group_manifest", file=sys.stderr)
+        return 1
+
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+
+    group_count = len(manifest)
+    sample_size = 20 if group_count > 40 else group_count
+    sample_ids = sample_group_ids_from_manifest(manifest, sample_size)
+
+    id_map = load_identifier_map(work_root)
+    idmap_path = os.path.join(work_root, "identifier_map.json")
+    with open(idmap_path, "w", encoding="utf-8") as fh:
+        json.dump(id_map, fh, indent=2, sort_keys=True)
+
+    sample_path = os.path.join(work_root, "sample_group_ids.json")
+    with open(sample_path, "w", encoding="utf-8") as fh:
+        json.dump(sample_ids, fh, indent=2)
+
+    payloads = build_batch_payloads(manifest, sample_ids, id_map)
+    payloads_path = os.path.join(work_root, "batch_payloads.json")
+    with open(payloads_path, "w", encoding="utf-8") as fh:
+        json.dump(payloads, fh, indent=2)
+
+    print(f"sample_group_ids_path={sample_path}")
+    print(f"batch_payloads_path={payloads_path}")
+    print(f"identifier_map_path={idmap_path}")
+    print(f"large_state_sample_group_ids={json.dumps(sample_ids)}")
+    print(f"large_state_sample_mode={'true' if group_count > 40 else 'false'}")
+    print(f"large_state_sample_size={sample_size}")
+    return 0
+
+
 def cloud_hint(rtype: str) -> str:
     if rtype.startswith("aws_"):
         return "aws"
@@ -568,6 +699,63 @@ def import_id_from_instance(inst: dict) -> Optional[str]:
     return None
 
 
+def infer_aws_region_from_state(state: dict) -> str:
+    """Pick the most common AWS region from shard state attributes (fallback us-east-1)."""
+    counts: Dict[str, int] = defaultdict(int)
+    for res in state.get("resources") or []:
+        if res.get("mode") != "managed":
+            continue
+        provider = str(res.get("provider") or "")
+        if "aws" not in provider:
+            continue
+        for inst in res.get("instances") or []:
+            if inst.get("deposed"):
+                continue
+            attrs = inst.get("attributes") or {}
+            region = attrs.get("region")
+            if region:
+                counts[str(region)] += 1
+                continue
+            az = attrs.get("availability_zone") or attrs.get("availability_zone_id")
+            if az:
+                match = re.match(r"^([a-z]{2}-(?:gov-)?[a-z]+-\d+)", str(az))
+                if match:
+                    counts[match.group(1)] += 1
+    if not counts:
+        return "us-east-1"
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+
+def infer_google_project_from_state(state: dict) -> str:
+    for res in state.get("resources") or []:
+        if res.get("mode") != "managed":
+            continue
+        if "google" not in str(res.get("provider") or ""):
+            continue
+        for inst in res.get("instances") or []:
+            if inst.get("deposed"):
+                continue
+            project = (inst.get("attributes") or {}).get("project")
+            if project:
+                return str(project)
+    return "change-me"
+
+
+def infer_google_region_from_state(state: dict) -> str:
+    for res in state.get("resources") or []:
+        if res.get("mode") != "managed":
+            continue
+        if "google" not in str(res.get("provider") or ""):
+            continue
+        for inst in res.get("instances") or []:
+            if inst.get("deposed"):
+                continue
+            region = (inst.get("attributes") or {}).get("region")
+            if region:
+                return str(region)
+    return "us-central1"
+
+
 def scaffold_group_dir(group_dir: str, group_id: str, state_path: str) -> dict:
     """Write versions.tf, providers.tf, imports.tf for one logical group shard."""
     with open(state_path, encoding="utf-8") as fh:
@@ -604,14 +792,17 @@ def scaffold_group_dir(group_dir: str, group_id: str, state_path: str) -> dict:
     versions += "  }\n}\n"
 
     prov_tf = ""
+    aws_region = infer_aws_region_from_state(state)
+    google_project = infer_google_project_from_state(state)
+    google_region = infer_google_region_from_state(state)
     for local in sorted(providers.keys()):
         if local == "aws":
-            prov_tf += 'provider "aws" {\n  region = "us-east-1"\n}\n\n'
+            prov_tf += f'provider "aws" {{\n  region = "{aws_region}"\n}}\n\n'
         if local == "azurerm":
             prov_tf += 'provider "azurerm" {\n  features {}\n}\n\n'
         if local == "google":
             prov_tf += (
-                'provider "google" {\n  project = "change-me"\n  region  = "us-central1"\n}\n\n'
+                f'provider "google" {{\n  project = "{google_project}"\n  region  = "{google_region}"\n}}\n\n'
             )
 
     imports_path = os.path.join(group_dir, "imports.tf")
@@ -716,7 +907,7 @@ def cmd_allocate(work_root: str, state_path: str, strategy: str, cap: int) -> in
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            "usage: allocate_manifest.py <allocate|reconcile|extract-states|split|inventory|scaffold-registry> ...",
+            "usage: allocate_manifest.py <allocate|reconcile|extract-states|split|inventory|scaffold-registry|prepare-parallel-artifacts> ...",
             file=sys.stderr,
         )
         return 2
@@ -758,6 +949,10 @@ def main() -> int:
     if cmd == "scaffold-registry":
         work_root = sys.argv[2]
         return cmd_scaffold_registry(work_root)
+
+    if cmd == "prepare-parallel-artifacts":
+        work_root = sys.argv[2]
+        return cmd_prepare_parallel_artifacts(work_root)
 
     if cmd == "split":
         work_root, state_path = sys.argv[2], sys.argv[3]

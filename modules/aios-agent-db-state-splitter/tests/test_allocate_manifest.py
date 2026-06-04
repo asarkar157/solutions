@@ -129,6 +129,18 @@ class UnlimitedCapTests(unittest.TestCase):
         self.assertEqual(am.cap_label(0), "unlimited")
         self.assertEqual(am.cap_label(120), "120")
 
+    def test_infer_aws_region_from_state(self) -> None:
+        state = _minimal_state([
+            _managed("aws_s3_bucket", "a", tags={}),
+        ])
+        state["resources"][0]["provider"] = "provider[\"registry.terraform.io/hashicorp/aws\"]"
+        state["resources"][0]["instances"][0]["attributes"]["region"] = "eu-west-1"
+        self.assertEqual(am.infer_aws_region_from_state(state), "eu-west-1")
+
+        state["resources"][0]["instances"][0]["attributes"].pop("region", None)
+        state["resources"][0]["instances"][0]["attributes"]["availability_zone"] = "eu-west-1a"
+        self.assertEqual(am.infer_aws_region_from_state(state), "eu-west-1")
+
 
 class BigStateSmokeTest(unittest.TestCase):
     BIG_STATE = Path("/Users/sabithks/Downloads/big_terraform.tfstate")
@@ -145,6 +157,51 @@ class BigStateSmokeTest(unittest.TestCase):
         # Monolith has ~1k multi-seed connected components that cannot merge safely.
         self.assertGreater(group_count, 200)
         self.assertLess(group_count, 1500, f"expected <1500 groups, got {group_count}")
+
+
+class BatchPayloadTests(unittest.TestCase):
+    def test_sanitize_identifier_strips_module_path(self) -> None:
+        ident = am.sanitize_identifier('module.network.aws_vpc.main')
+        self.assertTrue(ident.startswith("module_network") or ident.startswith("aws_vpc"))
+
+    def test_terraform_type_from_address(self) -> None:
+        self.assertEqual(am.terraform_type_from_address("aws_vpc.main"), "aws_vpc")
+        self.assertEqual(
+            am.terraform_type_from_address("module.network.aws_vpc.main"), "aws_vpc"
+        )
+
+    def test_build_batch_payloads_includes_resources(self) -> None:
+        manifest = {
+            "aws-group-001": {
+                "cloud_hint": "aws",
+                "resource_addresses": ["aws_vpc.main", "aws_subnet.a"],
+            }
+        }
+        id_map = {"aws_vpc.main": "main_vpc"}
+        payloads = am.build_batch_payloads(manifest, ["aws-group-001"], id_map)
+        self.assertEqual(len(payloads), 1)
+        entry = payloads[0]
+        self.assertEqual(entry["group_id"], "aws-group-001")
+        self.assertEqual(len(entry["resources"]), 2)
+        by_addr = {r["terraform_address"]: r for r in entry["resources"]}
+        self.assertEqual(by_addr["aws_vpc.main"]["identifier"], "main_vpc")
+        self.assertEqual(by_addr["aws_vpc.main"]["resource_type"], "aws_vpc")
+        self.assertEqual(by_addr["aws_subnet.a"]["resource_type"], "aws_subnet")
+
+    def test_prepare_parallel_artifacts_writes_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = {
+                "g1": {"cloud_hint": "aws", "resource_addresses": ["aws_s3_bucket.data"]},
+            }
+            with open(os.path.join(tmp, "logical_group_manifest.json"), "w", encoding="utf-8") as fh:
+                json.dump(manifest, fh)
+            rc = am.cmd_prepare_parallel_artifacts(tmp)
+            self.assertEqual(rc, 0)
+            with open(os.path.join(tmp, "batch_payloads.json"), encoding="utf-8") as fh:
+                payloads = json.load(fh)
+            self.assertEqual(len(payloads), 1)
+            self.assertIn("resources", payloads[0])
+            self.assertEqual(payloads[0]["resources"][0]["resource_type"], "aws_s3_bucket")
 
 
 if __name__ == "__main__":

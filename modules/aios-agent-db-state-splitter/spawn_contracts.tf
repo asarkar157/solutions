@@ -4,9 +4,11 @@
 locals {
   dbsplit_spawn_context_base = <<-EOT
 workflow_run_id: {{workflow_run_id}}
-WORK_ROOT: /home/integration/.{{workflow_run_id}}
-ABS_WORK_ROOT: /home/integration/.{{workflow_run_id}}
-ubuntu_integration_home: ${local.ubuntu_integration_home}
+WORK_ROOT: ${local.runner_work_home}/.{{workflow_run_id}}
+ABS_WORK_ROOT: ${local.runner_work_home}/.{{workflow_run_id}}
+runner_work_home: ${local.runner_work_home}
+remote_runner_name: ${local.resolved_remote_runner_name}
+shell_tool_prefix: ${local.shell_tool_prefix}
 DBSPLIT_ALLOCATE_SHA256: ${local.script_pack_allocate_sha256}
 script_pack_version: ${local.script_pack_version}
 script_pack_git_ref: ${local.script_pack_git_ref}
@@ -14,13 +16,12 @@ EOT
 
   dbsplit_spawn_context_ingest = <<-EOT
 ${local.dbsplit_spawn_context_base}
-INGEST_RUNNER_RULE: read_notes monolith_state_uri. Tool order after read_notes: (1) ONE execute_command: mkdir -p /home/integration/.{{workflow_run_id}}/.work /home/integration/.{{workflow_run_id}}/scripts && printf '%s' '<uri>' > /home/integration/.{{workflow_run_id}}/.work/spawn_monolith_uri. (2) ONE create_files: .../ingest-embed.b64 = INGEST_EXECUTE_SERIES_B64 verbatim (embed git-clones scripts via GIT_TOKEN). (3) ONE execute_series (working_dir=/, timeout_seconds=${local.subagent_budgets.script_runner_timeout_seconds}): INGEST_EXECUTE_SERIES_DECODE_COMMAND exactly. NEVER paste spawn B64 chunks (redacted), heredoc, or printf-wrapped ingest B64. Handoff MUST include script_pack_version ${local.script_pack_version}.
+INGEST_RUNNER_RULE: read_notes monolith_state_uri. Shell tools ONLY: ${local.shell_tool_prefix}_execute_command — NEVER ${local.resolved_github_integration_name}_* or ${local.resolved_aws_integration_name}_* (MCP integrations, not the remote runner; trace 019e905a51fc). Tool order after read_notes: (1) ONE execute_command: mkdir -p ${local.runner_work_home}/.{{workflow_run_id}}/.work ${local.runner_work_home}/.{{workflow_run_id}}/scripts && printf '%s' '<uri>' > ${local.runner_work_home}/.{{workflow_run_id}}/.work/spawn_monolith_uri (replace <uri> from read_notes). (2) ONE execute_command (working_dir=/, timeout_seconds=${local.subagent_budgets.script_runner_timeout_seconds}): paste INGEST_BOOTSTRAP_EXECUTE_COMMAND verbatim — decodes DBSPLIT_INGEST_BOOTSTRAP_B64 from runner script-pack secret JSON (${local.module_prefix}-runner-script-pack-env secret `value` JSON); do NOT use create_files; do NOT paste heredoc or LLM-authored base64. Script pack + ingest bootstrap bytes sync at tofu apply (DBSPLIT_SCRIPT_PACK_* and DBSPLIT_INGEST_BOOTSTRAP_* in secret value JSON). Handoff MUST include script_pack_version ${local.script_pack_version}.
 
-INGEST_EXECUTE_SERIES_B64:
-${local.ingest_execute_series_b64}
+INGEST_BOOTSTRAP_SHA256: ${local.ingest_bootstrap_sha256}
 
-INGEST_EXECUTE_SERIES_DECODE_COMMAND:
-${local.ingest_execute_series_decode_command}
+INGEST_BOOTSTRAP_EXECUTE_COMMAND:
+${local.ingest_bootstrap_execute_command}
 EOT
 
   dbsplit_spawn_context_registry = <<-EOT
@@ -44,18 +45,16 @@ EOT
   spawn_contracts_ingest_and_split = [
     {
       sub_agent_name = "ingest-and-split-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_command",
-        "${local.resolved_ubuntu_integration_name}_execute_series",
-        "${local.resolved_ubuntu_integration_name}_create_files",
+        "${local.shell_tool_prefix}_execute_command",
         "note",
         "read_notes",
       ]
       max_llm_calls       = local.subagent_budgets.script_runner_max_llm_calls
       max_tool_iterations = local.subagent_budgets.script_runner_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.script_runner_timeout_seconds
-      goal                = "read_notes monolith_state_uri. (1) execute_command: mkdir + spawn_monolith_uri. (2) create_files ingest-embed.b64 from INGEST_EXECUTE_SERIES_B64. (3) execute_series INGEST_EXECUTE_SERIES_DECODE_COMMAND (timeout_seconds=${local.subagent_budgets.script_runner_timeout_seconds}). Embed fetches scripts via git (GIT_TOKEN). See INGEST_RUNNER_RULE. After series: cat ingest-handoff.txt and note() handoff keys. Retry: THIS goal verbatim."
+      goal                = "read_notes monolith_state_uri. Shell: ONLY ${local.shell_tool_prefix}_execute_command — never github/aws MCP tools. (1) execute_command: mkdir + spawn_monolith_uri. (2) ONE execute_command: paste INGEST_BOOTSTRAP_EXECUTE_COMMAND from context verbatim (timeout_seconds=${local.subagent_budgets.script_runner_timeout_seconds}, working_dir=/). Forbidden: create_files, heredoc, LLM-authored base64, custom goals. See INGEST_RUNNER_RULE. After bootstrap: cat .work/ingest-handoff.txt and note() handoff keys. Retry: THIS goal verbatim."
       context             = local.dbsplit_spawn_context_ingest
     },
   ]
@@ -63,10 +62,10 @@ EOT
   spawn_contracts_registry_codegen = [
     {
       sub_agent_name = "registry-and-import-codegen-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_command",
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        "${local.shell_tool_prefix}_execute_command",
+        "${local.shell_tool_prefix}_execute_series",
         "note",
         "read_notes",
       ]
@@ -81,10 +80,10 @@ EOT
   spawn_contracts_shell_converge = [
     {
       sub_agent_name = "shell-converge-matrix-runner"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
-        "${local.resolved_ubuntu_integration_name}_execute_command",
-        "${local.resolved_ubuntu_integration_name}_execute_series",
+        "${local.shell_tool_prefix}_execute_command",
+        "${local.shell_tool_prefix}_execute_series",
         "note",
         "read_notes",
       ]
@@ -99,8 +98,10 @@ EOT
   spawn_contracts_appstack_batch = [
     {
       sub_agent_name = "appstack-materialize-runner-batch"
-      task_type      = "terminal_calling"
+      task_type      = var.subagent_task_type
       tool_names = [
+        "${local.shell_tool_prefix}_execute_command",
+        "${trimspace(var.stackgen_mcp_integration_name)}_me",
         "${trimspace(var.stackgen_mcp_integration_name)}_create_appstack",
         "${trimspace(var.stackgen_mcp_integration_name)}_get_appstacks",
         "${trimspace(var.stackgen_mcp_integration_name)}_get_appstack_resources",
@@ -115,7 +116,7 @@ EOT
       max_llm_calls       = local.subagent_budgets.appstack_batch_max_llm_calls
       max_tool_iterations = local.subagent_budgets.appstack_batch_max_tool_iterations
       timeout_seconds     = local.subagent_budgets.appstack_batch_timeout_seconds
-      goal                = "Read batch_payloads.json for assigned group_ids. Materialize AppStacks per stackgen-appstack-mcp-playbook-sop. Use bulk_add + membership gate. Read batch_payloads at $WORK_ROOT/batch_payloads.json — do NOT extract payloads manually."
+      goal                = "read_notes batch_payloads_path, large_state_sample_group_ids, stackgen_project_name (if empty call ${trimspace(var.stackgen_mcp_integration_name)}_me once). For each assigned group_id: ONE ${local.shell_tool_prefix}_execute_command on the runner to jq -c the matching entry from batch_payloads.json (path from read_notes; working_dir=/). Use that resources[], appstack_name, cloud_hint verbatim for create_appstack + bulk_add on mothership MCP — do not rebuild payloads from manifest. Materialize per stackgen-appstack-mcp-playbook-sop: atomic create+bulk_add per group, membership gate, then bulk_connect. Forbidden: guessing payloads without reading batch_payloads.json on the runner."
       context             = local.dbsplit_spawn_context
     },
   ]

@@ -157,7 +157,7 @@ resource "sg_workflow" "predictive_triage" {
 
 
   metadata = {
-    planner_max_tool_iterations = 40
+    planner_max_tool_iterations = "40"
   }
   triggers        = [{ field = "incident_title_contains", values = ["degradation", "OOM", "latency creep", "memory leak"], type = "passive" }]
   required_inputs = ["service_name"]

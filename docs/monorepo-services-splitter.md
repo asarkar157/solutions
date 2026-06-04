@@ -114,7 +114,7 @@ Deterministic work lives in `scripts/` (version **20260602.8**), delivered via *
 | Script | Stage |
 |--------|-------|
 | `stage-runner.sh` + `boundary-scan.sh` | Analysis — clone + scan |
-| `runtime-deps-provision.sh` | Installs OpenJDK, Go, Node; runs baseline tests |
+| `runtime-deps-provision.sh` | Installs OpenJDK, Go, Node, and **adaptive build tools** (Maven, Gradle, pnpm, yarn); runs baseline tests |
 | `agents-md-scaffold.sh` | Repo-root `AGENTS.md` from scan |
 | `scaffold-services.sh` | Extract — validated `services/<name>/` skeletons |
 | `clone-and-pr.sh` | Guidance and extract PR bodies from committed diff |

@@ -358,7 +358,7 @@ resource "sg_workflow" "cloudformation_stack_incident" {
   evidence_checklist_ref = var.enable_evidence_checklist ? sg_evidence_checklist.selfhosted_infra_rca[0].name : null
 
   metadata = {
-    planner_max_tool_iterations = 40
+    planner_max_tool_iterations = "40"
   }
 
   triggers = [
@@ -493,7 +493,7 @@ resource "sg_workflow" "cloudformation_drift_audit" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = 30
+    planner_max_tool_iterations = "30"
   }
 
   triggers = [
@@ -558,7 +558,7 @@ resource "sg_workflow" "cloudformation_pre_deploy_review" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = 25
+    planner_max_tool_iterations = "25"
   }
 
   triggers = [

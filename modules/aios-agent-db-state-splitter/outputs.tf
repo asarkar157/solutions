@@ -6,29 +6,69 @@ output "agent_names" {
 }
 
 output "remote_runner_name" {
-  description = "Configured remote runner name when set; empty string otherwise."
-  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].runner_name : ""
+  description = "Resolved remote runner name (module default or var.remote_runner_name)."
+  value       = module.remote_runner.runner_name
+}
+
+output "shell_tool_prefix" {
+  description = "Remote runner tool prefix for execute_command|series|parallel|create_files (same as remote_runner_name)."
+  value       = local.shell_tool_prefix
 }
 
 output "remote_runner_created" {
   description = "True when this apply registered sg_remote_runner (create_remote_runner = true)."
-  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].created : false
+  value       = module.remote_runner.created
 }
 
 output "remote_runner_mothership_url" {
   description = "Mothership URL from provider stackgen_url when runner was created in this apply."
-  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].mothership_url : ""
+  value       = module.remote_runner.mothership_url
 }
 
 output "remote_runner_cli_start_command" {
   description = "aiden-runner start command when create_remote_runner is true."
-  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].cli_start_command : null
+  value       = module.remote_runner.cli_start_command
   sensitive   = true
 }
 
 output "remote_runner_helm_install_command" {
   description = "Helm install command when create_remote_runner is true."
-  value       = length(module.remote_runner) > 0 ? module.remote_runner[0].helm_install_command : null
+  value       = module.remote_runner.helm_install_command
+  sensitive   = true
+}
+
+output "remote_runner_cli_start_command_with_secrets" {
+  description = "aiden-runner start command with secrets sync flags when vault bindings are configured."
+  value       = module.remote_runner.cli_start_command_with_secrets
+  sensitive   = true
+}
+
+output "remote_runner_secrets_bound" {
+  description = "True when sg_remote_runner_secrets was applied (git/aws vault refs on the runner)."
+  value       = module.remote_runner.runner_secrets_bound
+}
+
+output "remote_runner_typed_secret_refs" {
+  description = "Typed vault secret bindings on the remote runner (github/aws slots, etc.)."
+  value       = module.remote_runner.typed_secret_refs
+  sensitive   = true
+}
+
+output "runner_git_env_secret_id" {
+  description = "Vault secret ID for runner GIT_TOKEN sync (created or runner_git_env_secret_id input)."
+  value       = local.runner_git_env_secret_id
+  sensitive   = true
+}
+
+output "runner_aws_env_secret_id" {
+  description = "Vault secret ID for runner AWS_* sync (created or runner_aws_env_secret_id input)."
+  value       = local.runner_aws_env_secret_id
+  sensitive   = true
+}
+
+output "runner_script_pack_env_secret_id" {
+  description = "Vault secret ID for runner DBSPLIT_SCRIPT_PACK_* sync (created or runner_script_pack_env_secret_id input)."
+  value       = local.runner_script_pack_env_secret_id
   sensitive   = true
 }
 
@@ -81,15 +121,6 @@ output "github_integration_name" {
     module-provisioned `<module_prefix>-github[-<suffix>]` integration name.
   EOT
   value       = local.resolved_github_integration_name
-}
-
-output "ubuntu_integration_name" {
-  description = <<-EOT
-    Name of the Ubuntu Guild integration the agent uses. Equals
-    `var.existing_ubuntu_integration_name` when supplied; otherwise the
-    module-provisioned `<module_prefix>-ubuntu[-<suffix>]` integration name.
-  EOT
-  value       = local.resolved_ubuntu_integration_name
 }
 
 output "aws_integration_name" {

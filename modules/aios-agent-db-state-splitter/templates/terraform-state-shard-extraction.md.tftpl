@@ -85,13 +85,13 @@ After **`split-manifest`** (or `extract-group-states`), each `group_id` has an i
 
 High fan-in resources (IAM roles/policies, KMS keys, shared log groups, S3 buckets referenced by many services) are pulled into **`{cloud}-shared-NNN`** groups when in-degree ≥ threshold. Workload groups record **`shared_refs`** / **`cross_shard_refs`** in manifest notes for StackGen **`connect_resources`**. Hydrate **shared groups first**, then workload shards — reduces plan drift from missing dependency targets.
 
-All parsing / `jq` / heavy JSON via **Ubuntu CLI**. StackGen MCP is used **after** this manifest exists (see `stackgen-appstack-mcp-playbook-sop`).
+All parsing / `jq` / heavy JSON via **remote runner**. StackGen MCP is used **after** this manifest exists (see `stackgen-appstack-mcp-playbook-sop`).
 
 ### Large states (speed + reliability)
 
-- **Do not** paste full state JSON into chat or into a subagent's spawn goal — use **`${ubuntu_tool_prefix}_create_files`** to write `*.jq` / shell scripts under **`$HOME/.<workflow_run_id>`**, then **`${ubuntu_tool_prefix}_execute_series`** with short commands. The subagent receives only the script **path** in its goal. Per the **Execution Optimization Protocol** (see **db-state-split-orchestration-sop**), multi-step shell work is **always** batched into one `execute_series` — never N rapid-succession `${ubuntu_tool_prefix}_execute_command` calls.  
+- **Do not** paste full state JSON into chat or into a subagent's spawn goal — use **`${shell_tool_prefix}_create_files`** to write `*.jq` / shell scripts under **`$HOME/.<workflow_run_id>`**, then **`${shell_tool_prefix}_execute_series`** with short commands. The subagent receives only the script **path** in its goal. Per the **Execution Optimization Protocol** (see **db-state-split-orchestration-sop**), multi-step shell work is **always** batched into one `execute_series` — never N rapid-succession `${shell_tool_prefix}_execute_command` calls.  
 - **Progressive passes:** instance count → provider/module histogram → manifest build, instead of one giant `jq` that materializes everything at once (avoids OOM, timeouts, and truncated tool args).  
-- Keep each **`${ubuntu_tool_prefix}_*`** step under typical integration time limits; split by module prefix or by cloud if the monolith is huge.
+- Keep each **`${shell_tool_prefix}_*`** step under typical integration time limits; split by module prefix or by cloud if the monolith is huge.
 
 ### Edge cases (addresses, deposed, data sources)
 

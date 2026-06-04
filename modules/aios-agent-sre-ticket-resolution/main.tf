@@ -318,7 +318,7 @@ resource "sg_workflow" "servicenow_ticket_resolution" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = 40
+    planner_max_tool_iterations = "40"
   }
 
   triggers = [

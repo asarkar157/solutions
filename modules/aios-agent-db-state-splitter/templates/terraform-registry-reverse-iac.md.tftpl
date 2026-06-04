@@ -6,18 +6,18 @@ Keywords: import block, terraform import, moved block, module registry, stackgen
 
 This stage runs **after** ingest / discover / allocate / count-reconcile. Always start with **`read_notes`** for:
 
-- **`repo_clone_path`** — writable Ubuntu path, normally under `$HOME/.<workflow_run_id>/repo`.
+- **`repo_clone_path`** — writable runner path, normally under `$HOME/.<workflow_run_id>/repo`.
 - **`monolith_state_local_path`** — downloaded `terraform.tfstate` (or `terraform show -json` snapshot).
 - **`logical_group_manifest`** (or legacy `shard_manifest`) — `group_id -> { cloud_hint, resource_addresses[] }`.
 - **`count_reconciliation_ok`** — must be `"true"`; if not, do **not** start this stage.
 
 **Never `notify` the operator** for those values. If `read_notes` returns nothing, recover under `$HOME/.<workflow_run_id>/` and re-run the upstream procedure (re-clone repo, re-download state, re-run shard extraction) before any escalation. AppStack materialization is the **next** stage — this stage produces TF roots, import/moved blocks, and `registry_mapping_report` only; do not ask whether StackGen MCP is attached.
 
-## Execution (Ubuntu + large states)
+## Execution (remote runner + large states)
 
-- All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **Ubuntu CLI** under a **writable** tree — default **`$HOME/.<workflow_run_id>/`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
-- **Chunk** work by `group_id` (or by cloud): one bounded **`${ubuntu_tool_prefix}_execute_series`** per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation). Per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*, multi-step shell work is **always** one `execute_series` — never N concurrent `${ubuntu_tool_prefix}_execute_command` calls in the same turn. `${ubuntu_tool_prefix}_execute_command` is reserved for a single cohesive command; `${ubuntu_tool_prefix}_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned way to fan out independent work.  
-- Prefer **`${ubuntu_tool_prefix}_create_files`** for generated HCL/scripts, then short **`execute_series`** steps that reference the script path.
+- All **`terraform show -json`**, generated **`import`** / **`moved`** snippets, and **`groups/<group_id>/`** trees live on **remote runner** under a **writable** tree — default **`$HOME/.<workflow_run_id>/`** per **db-state-split-orchestration-sop** if the sandbox root is read-only.  
+- **Chunk** work by `group_id` (or by cloud): one bounded **`${shell_tool_prefix}_execute_series`** per slice — avoid one shell invocation that streams the entire monolith JSON back through the agent (timeouts and truncation). Per **db-state-split-orchestration-sop** § *Execution Optimization Protocol*, multi-step shell work is **always** one `execute_series` — never N concurrent `${shell_tool_prefix}_execute_command` calls in the same turn. `${shell_tool_prefix}_execute_command` is reserved for a single cohesive command; `${shell_tool_prefix}_execute_parallel` (or `flow_type:"parallel"` subagent batches) is the only sanctioned way to fan out independent work.  
+- Prefer **`${shell_tool_prefix}_create_files`** for generated HCL/scripts, then short **`execute_series`** steps that reference the script path.
 
 ## Reverse IaC
 
@@ -29,7 +29,7 @@ This stage runs **after** ingest / discover / allocate / count-reconcile. Always
 
 ## HCL hydration (mandatory — no human "HCL author" handoff)
 
-`tofu plan` in a per-group root will report `N to add` (and never converge to "No changes") whenever a `resource "X" "Y" {}` body is **missing or empty**. Do **not** leave 402 (or any) stub `main.tf` files for a human to fill in. Hydrate them in two passes per group, both Ubuntu CLI:
+`tofu plan` in a per-group root will report `N to add` (and never converge to "No changes") whenever a `resource "X" "Y" {}` body is **missing or empty**. Do **not** leave 402 (or any) stub `main.tf` files for a human to fill in. Hydrate them in two passes per group, both remote runner:
 
 1. **Pass 1 — generate config from import blocks.** In `groups/<group_id>/` (writable, under `$HOME/.<workflow_run_id>` if needed):
 
@@ -80,7 +80,7 @@ Hard rules:
 
 ## StackGen module / template cross-check
 
-The StackGen **user** MCP (`…/api/mcp/user`) does **not** expose Terraform module catalog tools (`get_module_versions`, `module_usage_in_appstacks`). For **StackGen** alignment use **`get_supported_resource_types`**, **`get_resource_type_configurations`**, and **`get_appstacks`** (e.g. `labels: ["template"]`) plus **`get_appstack_resources`** on candidate templates. For **Terraform** module sources (AIOS `github.com/appcd-dev/solutions`, pins, double-slash paths), use **Ubuntu CLI** + `git` / registry browser patterns in this runbook — not MCP module-metadata calls unless a **different** integration provides them.
+The StackGen **user** MCP (`…/api/mcp/user`) does **not** expose Terraform module catalog tools (`get_module_versions`, `module_usage_in_appstacks`). For **StackGen** alignment use **`get_supported_resource_types`**, **`get_resource_type_configurations`**, and **`get_appstacks`** (e.g. `labels: ["template"]`) plus **`get_appstack_resources`** on candidate templates. For **Terraform** module sources (AIOS `github.com/appcd-dev/solutions`, pins, double-slash paths), use **remote runner** + `git` / registry browser patterns in this runbook — not MCP module-metadata calls unless a **different** integration provides them.
 
 ## Registry best-fit (AIOS-oriented inventory — align versions with consumer)
 

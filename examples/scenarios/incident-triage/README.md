@@ -2,7 +2,7 @@
 
 ## Pitch (read this on the call)
 
-> "Grafana fires 200 alerts a day, your on-call mutes the channel by lunch. Aiden takes the alert, decides if it is AWS or Kubernetes or a managed service, routes the RCA to the right agent, posts the narrative to Slack — and only pages a human if the policy gate says so."
+> "Grafana fires 200 alerts a day, your on-call mutes the channel by lunch. Aiden ingests the alert through a Rego filter, searches prior incidents, probes the PromQL behind the rule, runs ReAcTree hypothesis branches, synthesizes an RCA, and posts the narrative to Slack — escalating to cloud specialists only when the signal warrants it."
 
 ## What this scenario wires
 
@@ -11,7 +11,7 @@
 - `aios-integration-grafana` — read access to alerts + dashboards
 - `aios-integration-slack` — RCA post target
 - `aios-agent-sre` — 5 SRE agents (triage, change-correlation, auto-remediation, risk-posture, incident)
-- `aios-agent-alert-triage` — the coordinator that routes incoming alerts
+- `aios-agent-alert-triage` — Grafana alert ingest, 12-stage RCA pipeline (prior-incident memory, query probe, hypothesis tree, Slack publish)
 
 ## Run
 
@@ -21,11 +21,11 @@ make demo SCENARIO=incident-triage
 
 ## Talk track (5 bullets, ~5 minutes)
 
-1. **Open Guild and show the agent fleet.** "One coordinator (`alert-triage-coordinator`) plus a pool of specialist agents. The coordinator's job is routing, not fixing."
-2. **Show the workflow graph.** Open `cross-platform-alert-triage` — the coordinator inspects alert labels, hands off to the specialist agent best matched to the service.
-3. **Fire a synthetic alert.** Type in chat: "A Grafana alert just fired: `ServiceUnavailable` on `payments-api`. Triage and route the RCA." Watch the routing decision happen in front of the prospect.
-4. **Show the policy gate.** `dangerous_ops` + `prod_write_gate` are attached. "Auto-remediation can propose a fix; a human still approves anything destructive."
-5. **Close on the Slack post.** This is what the on-call team actually sees. Compare it to the noise they get from Grafana today.
+1. **Open Guild and show the agent fleet.** "Three agents: ingest filter, RCA investigator with hypothesis subagents, and a coordinator for cloud escalation."
+2. **Show the workflow graph.** Open `cross-platform-alert-triage` — 12 stages from Rego ingest filter through query probe, cross-signal investigation, and Slack RCA publish.
+3. **Fire a synthetic alert.** Type in chat: "A Grafana alert just fired: `ServiceUnavailable` on `payments-api`. Run the full triage pipeline." Watch normalization, prior-incident search, and hypothesis branches in the trace.
+4. **Show the policy gate.** `dangerous_ops` is attached on the coordinator. "Cloud escalation and remediation stay bounded; destructive ops still need human approval."
+5. **Close on the Slack post.** This is what the on-call team actually sees — structured RCA with evidence, not raw Grafana noise.
 
 ## End-to-end (post-call)
 

@@ -4,7 +4,7 @@ Guild agents and **two workflows** for analyzing Java / Go / JavaScript / TypeSc
 
 ## Requirements
 
-- StackGen provider `>= 0.1.23`
+- StackGen provider `>= 0.1.21`
 - `module.foundation.model_names` and `module.policies.policy_ids.dangerous_ops`
 - GitHub + Ubuntu Guild integrations (provisioned via `github_secret_id` or pass `integration_names` / `existing_*`)
 
@@ -28,9 +28,8 @@ Both workflows set Guild execution metadata:
 | Key | Value | Purpose |
 |-----|-------|---------|
 | `halguard_skip_subagent_task_types` | `terminal_calling` | Skip HalGuard **PreCheck** on Ubuntu script runners (cost control) |
+| `terminal_calling_halguard_mode` | `paste_only_minimal_planner` | Paste-only runner discipline — short goals, verbatim decode command, no `load_skill` on embed stages |
 | `planner_max_tool_iterations` | `12` | Cap orchestrator tool loops per stage |
-
-Paste-only runner discipline (verbatim decode command, no `load_skill` on embed stages) is enforced via spawn contract context and stage notes — not workflow metadata.
 
 PostCheck still runs on runner stdout and architect/analyst synthesis.
 

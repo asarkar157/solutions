@@ -19,6 +19,46 @@ output "created" {
 }
 
 output "mothership_url" {
-  description = "StackGen mothership base URL (provider stackgen_url). Empty when runner was only looked up, not created in this root."
-  value       = ""
+  description = "StackGen mothership base URL when runner was created in this apply; empty on lookup-only."
+  value       = var.create_runner ? sg_remote_runner.this[0].mothership_url : ""
+}
+
+output "cli_start_command" {
+  description = "Copy-paste aiden-runner start command when create_runner is true."
+  value       = var.create_runner ? sg_remote_runner.this[0].cli_start_command : null
+  sensitive   = true
+}
+
+output "helm_install_command" {
+  description = "Copy-paste Helm install for aiden-runner when create_runner is true."
+  value       = var.create_runner ? sg_remote_runner.this[0].helm_install_command : null
+  sensitive   = true
+}
+
+output "runner_secrets_bound" {
+  description = "True when this apply configured sg_remote_runner_secrets on the runner."
+  value       = var.create_runner && local.bind_secrets
+}
+
+output "typed_secret_refs" {
+  description = "Typed vault bindings applied to the runner (echo of input when bound)."
+  value       = local.bind_secrets ? var.typed_secret_refs : {}
+}
+
+output "sync_cli_args" {
+  description = "Optional aiden-runner flags from sg_remote_runner_secrets (append to cli_start_command when non-empty)."
+  value = (
+    var.create_runner && local.bind_secrets
+    ? sg_remote_runner_secrets.this[0].sync_cli_args
+    : ""
+  )
+}
+
+output "cli_start_command_with_secrets" {
+  description = "aiden-runner start command with sync_cli_args appended when secrets are bound."
+  value = var.create_runner ? trimspace(join(" ", compact([
+    sg_remote_runner.this[0].cli_start_command,
+    local.bind_secrets ? sg_remote_runner_secrets.this[0].sync_cli_args : "",
+  ]))) : null
+  sensitive = true
 }

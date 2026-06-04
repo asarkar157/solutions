@@ -33,4 +33,5 @@ cp "${MOD}/personas/"*.tftpl "${TMP}/personas/"
 cp "${FIXTURE}/main.tf" "${TMP}/main.tf"
 
 (cd "${TMP}" && "${TF_BIN}" init -backend=false -input=false >/dev/null && "${TF_BIN}" validate >/dev/null)
+bash "${MOD}/tests/validate_ingest_embed.sh"
 echo "verify-db-state-split-templates: OK (${TF_BIN})"

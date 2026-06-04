@@ -181,7 +181,7 @@ resource "sg_workflow" "azure_devops_full_triage" {
 
 
   metadata = {
-    planner_max_tool_iterations = 40
+    planner_max_tool_iterations = "40"
   }
   triggers = [
     { field = "incident_title_contains", values = ["poison queue", "clickhouse", "azure function", "ingestion failure"], type = "passive" },

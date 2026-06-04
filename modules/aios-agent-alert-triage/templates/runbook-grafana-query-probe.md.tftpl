@@ -1,0 +1,26 @@
+Execute alert-rule PromQL and validate signal clarity using Grafana MCP triage tools.
+
+## Prerequisites
+
+- `normalized_alert`, `grafana_signals`, and optional `alert_classification` from prior stages.
+- Grafana integration with scoped tools: `get_alert_rule`, `list_firing_instances`, `query_metric`, `execute_command`.
+
+## Steps
+
+1. Read `rule_uid` from `normalized_alert.labels` or annotations.
+2. **`get_alert_rule(rule_uid)`** — parse datasource UID/name and PromQL from rule condition/data blocks.
+3. **`list_firing_instances(rule_uid)`** — capture active instance labels and values.
+4. **`query_metric`** — re-run rule PromQL with alert label selectors injected; add 2–4 companion queries (error rate, latency p95, saturation) scoped to `namespace`/`service`/`cluster`.
+5. Run datasource probe steps from the datasource-probe runbook; merge into this stage output.
+6. Assign **clarity verdict**:
+   - `signal_confirmed` — metric still breaching threshold
+   - `transient_or_recovered` — alert firing but instant query now green
+   - `datasource_or_query_issue` — probe failed; likely observability gap
+   - `ambiguous` — hand off to ReAcTree hypothesis stage
+7. Emit `grafana_query_probe` JSON with rule excerpts, query results, datasource status, and verdict.
+
+## Guardrails
+
+- **Never** run `gcx alert rules list` or unscoped `gcx alert instances list` during triage.
+- Read-only — no alert silencing or rule edits.
+- PromQL via `query_metric`; LogQL via `execute_command` when Loki panels are implicated.

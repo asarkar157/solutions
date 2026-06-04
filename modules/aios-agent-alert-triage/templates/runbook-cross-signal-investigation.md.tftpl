@@ -1,0 +1,22 @@
+Cross-signal investigation for a Grafana alert using Grafana signals, AWS, and GitHub.
+
+## Prerequisites
+
+- `normalized_alert`, `grafana_signals`, `grafana_query_probe`, and optional `k8s_context` from prior stages.
+- Grafana integration for scoped alert and metric queries.
+- AWS integration for ECS deployment history and CloudTrail (skip substeps when not attached).
+- GitHub integration for commit history on repos: ${github_default_repos} (org hint: `${github_default_org}`).
+
+## Steps
+
+1. **Time window** — Anchor ±15 minutes around `fired_at`; extend to ±30 minutes if deploy correlation is suspected.
+2. **Grafana sweep** — Use prior `grafana_query_probe` verdict; pull related co-firing alerts and trace hints when Tempo/Loki datasources exist.
+3. **AWS ECS deploy history** — Use cluster hints ${aws_ecs_cluster_hints} in region `${aws_region}` to describe-services and list deployment events (skip when AWS not wired).
+4. **AWS CloudTrail** — lookup-events for RunTask, UpdateService, RegisterTaskDefinition, and IAM changes in the window (skip when AWS not wired).
+5. **GitHub correlation** — git log on suspect paths in default repos; match commit SHAs to deploy timestamps (skip when GitHub not wired).
+6. **ReAcTree hypothesis tree** — Follow hypothesis-tree runbook: spawn parallel subagents, merge results, prune low-confidence branches.
+7. Emit `investigation_report` with `hypotheses[]`, `evidence[]`, `deploy_correlation`, and `severity_recommendation`.
+
+## Output schema
+
+Return `investigation_report` with ranked hypotheses, cross-signal evidence links, and clarity verdict from grafana_query_probe.

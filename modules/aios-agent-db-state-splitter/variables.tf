@@ -21,12 +21,29 @@ variable "stackgen_mcp_integration_name" {
 }
 
 variable "model_names" {
-  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
+  description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Efficiency/mini models (names matching mini|flash|nano|haiku) are filtered out before sg_agent.model_names unless non_trivial_model_names is set."
   type        = list(string)
 
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."
+  }
+}
+
+variable "non_trivial_model_names" {
+  description = "Optional override for sg_agent.model_names on script/MCP-heavy sub-agents. When empty, model_names is filtered to drop efficiency-tier models (mini, flash, nano, haiku)."
+  type        = list(string)
+  default     = []
+}
+
+variable "subagent_task_type" {
+  description = "Genie task_type for db-state-split runner sub-agents (ingest, registry, converge, appstack batch). Use coding or planning for paste-heavy shell/MCP work; avoid terminal_calling/efficiency which routes to mini/flash models."
+  type        = string
+  default     = "coding"
+
+  validation {
+    condition     = contains(["coding", "planning", "tool_calling", "terminal_calling", "efficiency"], var.subagent_task_type)
+    error_message = "subagent_task_type must be one of: coding, planning, tool_calling, terminal_calling, efficiency."
   }
 }
 
@@ -39,24 +56,18 @@ variable "policy_ids" {
 
 # =============================================================================
 # Self-contained integration wiring (replaces the old `integration_names` map).
-# Pass `github_secret_id` + `aws_secret_id` and this module provisions its own
-# GitHub, Ubuntu, and AWS Guild integrations under module-prefixed names. The
-# `existing_*_integration_name` overrides bind to integrations already created
-# elsewhere when tenants prefer to share containers across agent modules.
+# Pass `github_secret_id` + `aws_secret_id` for GitHub/AWS MCP integrations.
+# Shell / tofu / git / state download run on the module's remote runner — wire
+# git + cloud credentials on the runner host (env, K8s Secret, or mothership sync).
 # =============================================================================
 
 variable "github_secret_id" {
   description = <<-EOT
-    Optional `sg_secret` ID for the GitHub PAT used by `gh api` and
-    `git clone` / `git push` inside the Ubuntu sandbox. When set (and
-    `existing_github_integration_name` is empty), this module provisions
-    its own GitHub Guild integration internally. When you already manage
-    the GitHub integration elsewhere, leave this empty and pass
-    `existing_github_integration_name` instead.
-
-    Forward [`aios-integration-github-from-secret`](../aios-integration-github-from-secret).secret_id
-    here for the canonical Provider/github shape — the Ubuntu image's
-    `pre_launch.sh` surfaces it as `GIT_TOKEN` / `GIT_HOST` / `GIT_USERNAME`.
+    Optional `sg_secret` ID for the GitHub PAT used by `gh api` MCP tools.
+    When set (and `existing_github_integration_name` is empty), this module provisions
+    its own GitHub Guild integration internally. **`git clone` / `git push`** for IaC
+    repos run on the **remote runner** — mount the same PAT on the runner env as
+    `GIT_TOKEN` / `GIT_HOST` / `GIT_USERNAME` (see README).
 
     One of `github_secret_id` / `existing_github_integration_name` must be
     provided. The same secret can be reused across agent modules (one Vault
@@ -93,19 +104,6 @@ variable "existing_github_integration_name" {
   default     = ""
 }
 
-variable "existing_ubuntu_integration_name" {
-  description = <<-EOT
-    Optional Guild integration name to use for the Ubuntu CLI sandbox instead
-    of the module-provisioned one. When set (non-empty), this module does NOT
-    create its own Ubuntu integration. The named integration MUST already have
-    the git + AWS secrets attached via `secret_ref_ids` and `tofu`, `gh`,
-    `awscli`, `jq`, `git`, `curl` available — see `aios-integration-ubuntu`
-    `install_tools`.
-  EOT
-  type        = string
-  default     = ""
-}
-
 variable "existing_aws_integration_name" {
   description = <<-EOT
     Optional Guild integration name to use for the AWS MCP sandbox instead of
@@ -136,28 +134,33 @@ variable "name_suffix" {
 }
 
 # =============================================================================
-# Remote runner attach (optional)
+# Remote runner (required — primary shell / tofu / state-download execution)
 # =============================================================================
 
 variable "remote_runner_name" {
   description = <<-EOT
-    Optional Guild remote runner name. When set, SOPs instruct fan-out `tofu plan` / heavy reads on that
-    runner when attached. Set `create_remote_runner = true` to register `sg_remote_runner` (provider **>= 0.1.23**)
-    and surface CLI/Helm install commands in module outputs for on-prem deployment (outbound-only to mothership).
+    Guild remote runner name. Defaults to `<module_prefix>-runner[-<suffix>]` when empty.
+    Shell subagents use `<name>_execute_command|series|parallel|create_files`.
+    Set `create_remote_runner = true` to register `sg_remote_runner` (provider **>= 0.1.23**)
+    and surface CLI/Helm install commands in module outputs.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "runner_work_home" {
+  description = <<-EOT
+    Scratch directory root on the remote runner host (per-run dirs are `<runner_work_home>/.<workflow_run_id>/`).
+    Must match aiden-runner `HOME` or the user the runner process uses. Default `/home/runner`.
   EOT
   type        = string
   default     = ""
 }
 
 variable "create_remote_runner" {
-  description = "When true, creates `sg_remote_runner` via `aios-remote-runner`. Requires non-empty `remote_runner_name`."
+  description = "When true, creates `sg_remote_runner` via `aios-remote-runner`. Default true for new installs."
   type        = bool
-  default     = false
-
-  validation {
-    condition     = !var.create_remote_runner || trimspace(var.remote_runner_name) != ""
-    error_message = "create_remote_runner requires a non-empty remote_runner_name."
-  }
+  default     = true
 }
 
 variable "remote_runner_description" {
@@ -174,20 +177,108 @@ variable "remote_runner_labels" {
 
 variable "remote_runner_attach_to_agent" {
   description = <<-EOT
-    When true, sets `remote_runners` on the Guild agent (requires non-empty `remote_runner_name`).
-    Leave false to only document the runner in SOPs until the runner is online.
+    When true, sets `remote_runners` on the Guild agent (default true). The runner must be **online**
+    before workflows invoke remote runner execute tools.
   EOT
   type        = bool
-  default     = false
+  default     = true
+}
 
-  validation {
-    condition     = !var.remote_runner_attach_to_agent || trimspace(var.remote_runner_name) != ""
-    error_message = "remote_runner_attach_to_agent requires a non-empty remote_runner_name."
-  }
+variable "runner_git_token" {
+  description = <<-EOT
+    GitHub/GitLab HTTPS token for **remote runner** `git clone` / `gh pr` (not the `gh api` MCP integration).
+    When non-empty and `create_remote_runner` is true, provisions a vault secret with `GIT_TOKEN`/`GIT_HOST`
+    metadata and binds it on the runner typed `github` slot via `sg_remote_runner_secrets`.
+    Use **repo:write** when IaC PR creation is required. Mutually exclusive with `runner_git_env_secret_id`.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "runner_git_host" {
+  description = "Git host for runner sync secret metadata (no scheme), e.g. github.com."
+  type        = string
+  default     = "github.com"
+}
+
+variable "runner_git_username" {
+  description = "Git HTTPS username paired with runner_git_token (GitHub convention: x-access-token)."
+  type        = string
+  default     = "x-access-token"
+}
+
+variable "runner_git_env_secret_id" {
+  description = <<-EOT
+    Pre-existing vault secret UUID whose metadata is already flat env keys (`GIT_TOKEN`, `GIT_HOST`, …).
+    Used when `runner_git_token` is empty. Bound to typed slot `github` when `remote_runner_secret_sync_enabled`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "runner_aws_access_key_id" {
+  description = "AWS access key for runner S3 state download / tofu (synced via typed `aws` slot when set with secret key)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "runner_aws_secret_access_key" {
+  description = "AWS secret access key paired with runner_aws_access_key_id."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "runner_aws_region" {
+  description = "AWS region written into runner sync secret metadata."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "runner_aws_env_secret_id" {
+  description = "Pre-existing vault secret UUID with flat `AWS_*` metadata for runner sync when inline AWS keys are omitted."
+  type        = string
+  default     = ""
+}
+
+variable "runner_script_pack_env_secret_id" {
+  description = <<-EOT
+    Pre-existing vault secret UUID whose metadata includes `DBSPLIT_SCRIPT_PACK_*` env keys
+    (allocate/runner b64 + sha256 + version). When empty and `create_remote_runner` is true,
+    the module provisions `sg_secret.runner_script_pack_env` and binds it via generic runner sync.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "remote_runner_secret_sync_enabled" {
+  description = "When true, applies sg_remote_runner_secrets when typed/generic refs resolve non-empty."
+  type        = bool
+  default     = true
+}
+
+variable "remote_runner_typed_secret_refs" {
+  description = "Extra typed vault bindings (subcategory → secret UUID) merged with module-provisioned git/aws runner secrets."
+  type        = map(string)
+  default     = {}
+}
+
+variable "remote_runner_generic_secret_ref_ids" {
+  description = "Generic vault secret UUIDs merged into runner env at mothership sync."
+  type        = list(string)
+  default     = []
+}
+
+variable "remote_runner_secrets_sync_interval_seconds" {
+  description = "aiden-runner secrets sync poll interval (default 60s)."
+  type        = number
+  default     = 60
 }
 
 variable "enable_cce" {
-  description = "When true, embeds CCE script pack on the Ubuntu integration for optional application-repo entitlement scans (iac-alignment)."
+  description = "When true, attaches optional CCE iac-alignment runbook (requires `cce` on the remote runner image when used)."
   type        = bool
   default     = true
 }

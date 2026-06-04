@@ -48,4 +48,22 @@ Provider `stackgen_url` must be the mothership URL reachable from the runner hos
 3. Run on the runner host / cluster; confirm runner shows **online** in Guild.
 4. Attach runner name on agent modules (`remote_runner_attach_to_agent = true`).
 
-The module does **not** install cloud CLIs or secrets on the runner image — bind credentials on the runner OS or Kubernetes secret as you would for any CI worker.
+The module does **not** install cloud CLIs on the runner image.
+
+### Mothership secret sync
+
+Pass `typed_secret_refs` / `generic_secret_ref_ids` (vault UUIDs whose metadata is **flat env keys**, e.g. `GIT_TOKEN`, `AWS_ACCESS_KEY_ID`). When `bind_runner_secrets` is true (default), Terraform manages `sg_remote_runner_secrets` so aiden-runner receives merged env on sync (memory-only). Use output **`cli_start_command_with_secrets`** for the recommended start command.
+
+```hcl
+module "onprem_tofu_runner" {
+  source = "github.com/appcd-dev/solutions//modules/aios-remote-runner?ref=main"
+
+  create_runner = true
+  name          = "org-tofu-runner"
+
+  typed_secret_refs = {
+    github = sg_secret.runner_git.id
+    aws    = sg_secret.runner_aws.id
+  }
+}
+```

@@ -488,7 +488,7 @@ resource "sg_workflow" "gitops_sre_incident_response" {
   evidence_checklist_ref = var.enable_evidence_checklist ? sg_evidence_checklist.gitops_sre_rca[0].name : null
 
   metadata = {
-    planner_max_tool_iterations = 45
+    planner_max_tool_iterations = "45"
   }
 
   triggers = [
@@ -642,7 +642,7 @@ resource "sg_workflow" "gitops_sre_quality_audit" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = 30
+    planner_max_tool_iterations = "30"
   }
 
   triggers = [

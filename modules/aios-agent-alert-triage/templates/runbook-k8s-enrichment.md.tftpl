@@ -1,0 +1,25 @@
+K8s context enrichment via remote runner (Robusta-like bounded kubectl).
+
+## Prerequisites
+
+- `normalized_alert` with `namespace`, `service`, and `cluster` labels when available.
+- Remote runner attached to rca-investigator agent (`remote_runner_name` set on module).
+
+## Steps
+
+When remote runner is **not** configured, emit `k8s_context: { "skipped": true, "reason": "no remote runner" }` and return.
+
+When configured:
+1. Resolve namespace from `normalized_alert.namespace` (required for kubectl scope).
+2. Via remote runner, run bounded read-only commands:
+   - `kubectl get events -n <namespace> --field-selector involvedObject.kind=Pod --sort-by=.lastTimestamp | tail -20`
+   - `kubectl logs -n <namespace> -l app=<service> --tail=50 --prefix=true` (when service label maps to app selector)
+   - `kubectl top pods -n <namespace>` when metrics-server available
+3. Redact secrets and tokens from log excerpts.
+4. Emit `k8s_context` JSON with events, log excerpts, and resource pressure hints.
+
+## Guardrails
+
+- Read-only kubectl — no deletes, restarts, or scale operations.
+- Scope strictly to alert namespace; never cluster-wide pod listing without namespace filter.
+- Skip when namespace label is missing.

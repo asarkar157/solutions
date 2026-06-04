@@ -6,9 +6,8 @@ terraform {
       version = ">= 2.4.0"
     }
     sg = {
-      source = "releases.stackgen.com/stackgen/stackgen"
-      # workflow metadata int fields + sg_agent optional-computed stability (>= 0.1.23).
-      version = ">= 0.1.23, < 0.2.0"
+      source  = "releases.stackgen.com/stackgen/stackgen"
+      version = ">= 0.1.21, < 0.2.0"
     }
   }
 }
@@ -102,11 +101,13 @@ locals {
     key => coalesce(try(var.subagent_budgets[key], null), default)
   }
 
-  # Guild WorkflowMetadata (OpenAPI): planner_max_tool_iterations (integer), halguard_skip_subagent_task_types (string).
-  # Paste-only runner discipline lives in spawn_contract context and stage notes — not workflow metadata.
+  # Guild reads halguard_skip_subagent_task_types to skip HalGuard PreCheck on
+  # terminal_calling runners (short decode command in spawn context; B64 in sidecar env). terminal_calling_halguard_mode
+  # documents paste-only runner discipline for personas/SOPs.
   workflow_execution_metadata = {
-    planner_max_tool_iterations       = 12
+    planner_max_tool_iterations       = "12"
     halguard_skip_subagent_task_types = "terminal_calling"
+    terminal_calling_halguard_mode    = "paste_only_minimal_planner"
   }
 
   # Embed shell templates must not reference resolved_* integration names — those depend on

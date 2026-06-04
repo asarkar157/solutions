@@ -451,7 +451,7 @@ resource "sg_workflow" "datadog_multitenant_rca" {
   evidence_checklist_ref = var.enable_evidence_checklist ? sg_evidence_checklist.multitenant_rca[0].name : null
 
   metadata = {
-    planner_max_tool_iterations = 45
+    planner_max_tool_iterations = "45"
   }
 
   triggers = [
@@ -544,7 +544,7 @@ resource "sg_workflow" "datadog_rca_collaboration" {
   approve     = true
 
   metadata = {
-    planner_max_tool_iterations = 30
+    planner_max_tool_iterations = "30"
   }
 
   triggers = [

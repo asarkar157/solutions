@@ -207,12 +207,12 @@ if ! grep -q 'halguard_skip_subagent_task_types' "${MAIN}"; then
   exit 1
 fi
 
-if ! grep -qE 'planner_max_tool_iterations[[:space:]]*=[[:space:]]*12' "${MAIN}"; then
-  echo "FAIL: workflow metadata must set planner_max_tool_iterations = 12 (integer, Guild WorkflowMetadata)" >&2
+if ! grep -q 'terminal_calling_halguard_mode' "${MAIN}"; then
+  echo "FAIL: workflow metadata must include terminal_calling_halguard_mode" >&2
   exit 1
 fi
 
-if ! grep -q 'HALGUARD: halguard_skip_subagent_task_types=terminal_calling (Guild WorkflowMetadata)' "${ROOT}/spawn_contracts.tf"; then
+if ! grep -q 'HALGUARD: workflow metadata halguard_skip_subagent_task_types=terminal_calling' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: spawn_contracts must document HalGuard metadata for terminal runners" >&2
   exit 1
 fi

@@ -57,7 +57,11 @@ Guild agent plus **skills** (`sg_runbook_sop`) and **two workflows** for splitti
   For SSH-key auth instead of HTTPS tokens, mount `GIT_SSH_PRIVATE_KEY` (PEM body) and `GIT_SSH_KNOWN_HOSTS` and the agent will write them to `~/.ssh/` with `chmod 600` before cloning. For multi-host setups (mixed GitHub + GitLab + internal git), repeat the secret with per-host metadata (e.g. `GIT_TOKEN_GITHUB`, `GIT_HOST_GITHUB`, `GIT_TOKEN_GITLAB`, `GIT_HOST_GITLAB`) — the SOPs match on the host parsed from `iac_repository_url`.
 
   Wire the secret in the same two ways as the AWS one: (a) define the Ubuntu `sg_guild_integration` in your root with `secret_ref_ids = [sg_secret.ubuntu_git.id, sg_secret.ubuntu_aws_readonly.id]`, or (b) extend `modules/aios-integration-ubuntu` with an `extra_secret_ref_ids` variable that fans both in. If the repo also needs to be written back to (PR creation for `orphan-iac-module-authoring`), the token must have `repo:write` (or equivalent) — but the **primary** split workflow only needs read.
-- **Remote runners (on-prem).** Set `create_remote_runner = true` and `remote_runner_name` to register `sg_remote_runner` and read **`remote_runner_cli_start_command`** / **`remote_runner_helm_install_command`** from module outputs (aiden-runner connects **outbound-only** to mothership — no inbound firewall rules). After the runner is **online**, set `remote_runner_attach_to_agent = true`. The module does **not** install `tofu`, `jq`, or cloud/git secrets on the runner host — mirror the Ubuntu credential guidance above on the runner image.
+- **Remote runners (on-prem).** Set `create_remote_runner = true` and register the runner via module outputs **`remote_runner_cli_start_command_with_secrets`** (preferred when secrets are bound) or **`remote_runner_cli_start_command`**. After the runner is **online**, set `remote_runner_attach_to_agent = true`.
+
+  **Mothership secret sync (recommended):** pass **`runner_git_token`** (and optionally **`runner_aws_access_key_id`** / **`runner_aws_secret_access_key`**) or pre-existing **`runner_git_env_secret_id`** / **`runner_aws_env_secret_id`** vault UUIDs whose metadata uses flat env keys (`GIT_TOKEN`, `GIT_HOST`, `AWS_ACCESS_KEY_ID`, …). Terraform also provisions **`sg_secret.runner_script_pack_env`** and binds it on the runner generic sync slot so aiden-runner receives **`DBSPLIT_SCRIPT_PACK_*`** (allocate/runner script b64 + sha256 + version) — required for **ingest-and-split**. After `tofu apply` when **`script_pack_version`** changes, restart aiden-runner (or wait for secrets sync) before re-running workflows. Use **`repo:write`** on the git token when the registry stage must open IaC PRs. SCM-shaped integration secrets (`token` only) are for **`gh api` MCP** — do not bind those to the runner typed `github` slot.
+
+  **Local mount (Mode 1):** set `remote_runner_secret_sync_enabled = false` and inject the same env vars via K8s Secret / `docker -e` — see [aiden-runner README](https://github.com/appcd-dev/stackgen-guild/blob/main/cmd/aiden-runner/README.md). For ingest without mothership sync, export either individual **`DBSPLIT_SCRIPT_PACK_*`** keys or **`DBSPLIT_SCRIPT_PACK_ENV_JSON`** (same JSON object stored in vault generic secret `value`). Also set **`GIT_TOKEN`** when ingest needs git. Mount host tfstate at `/tmp/splits` for `file://` monolith URIs. Run `scripts/preflight.sh` before triggering the workflow.
 
 ## Security & privacy
 
@@ -89,6 +93,9 @@ module "db_state_splitter" {
   # create_remote_runner            = true
   # remote_runner_name              = "org-tofu-runner"
   # remote_runner_attach_to_agent   = true
+  # runner_git_token                = var.git_readonly_token  # repo:write for IaC PRs
+  # runner_aws_access_key_id        = var.aws_readonly_access_key_id
+  # runner_aws_secret_access_key    = var.aws_readonly_secret_access_key
 
   # Optional: GitHub ingress to primary workflow (default false to avoid duplicate webhooks).
   # enable_github_webhook = true

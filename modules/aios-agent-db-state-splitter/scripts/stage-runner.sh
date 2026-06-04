@@ -4,7 +4,7 @@
 # Usage: DBSPLIT_EMBEDDED=1 bash -s <command> [args...] << 'DBSPLIT_STAGE_RUNNER' ... DBSPLIT_STAGE_RUNNER
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="20260531.32"
+SCRIPT_PACK_VERSION="20260604.7"
 DBSPLIT_DEFAULT_STRATEGY="${DBSPLIT_DEFAULT_STRATEGY:-tag_seeded_connectivity}"
 DBSPLIT_DEFAULT_CAP="${DBSPLIT_DEFAULT_CAP:-0}"
 REQUIRED_ALLOCATE_MARKER="def merge_small_by_seed"
@@ -39,6 +39,22 @@ note_or_default() {
     return 0
   fi
   printf '%s' "$default"
+}
+
+# ensure_stackgen_project_note mirrors stackgen_project_name from env when absent in notes.json.
+# Without this, materialize-appstacks batches call MCP with empty project_name (trace ed5e991a).
+ensure_stackgen_project_note() {
+  local work_root="${1:?WORK_ROOT}"
+  local val
+  val="$(read_note "$work_root" "stackgen_project_name" 2>/dev/null || true)"
+  if [ -n "$val" ]; then
+    return 0
+  fi
+  val="${DBSPLIT_STACKGEN_PROJECT_NAME:-${STACKGEN_PROJECT_NAME:-}}"
+  if [ -n "$val" ]; then
+    mirror_note "$work_root" "stackgen_project_name" "$val"
+    echo "stackgen_project_name=${val}"
+  fi
 }
 
 _runner_dir() {
@@ -454,6 +470,7 @@ cmd_split_manifest() {
   mirror_note "$work_root" "logical_group_seeds_path" "${work_root}/logical_group_seeds.json"
   mirror_note "$work_root" "db_anchor_inventory_path" "${work_root}/db_anchor_inventory.json"
 
+  ensure_stackgen_project_note "$work_root"
   echo "count_reconciliation_ok=${ok}"
   emit_script_pack_verify "$work_root"
   emit_ingest_handoff_summary "$work_root"
@@ -587,6 +604,16 @@ repo_full_name_from_url() {
   printf '%s' "$url"
 }
 
+record_git_credentials_blocker() {
+  local work_root="${1:?WORK_ROOT}"
+  local detail="${2:-unknown}"
+  mirror_note "$work_root" "pr_blocker" "git_credentials_missing"
+  mirror_note "$work_root" "iac_push_status" "failed"
+  mirror_note "$work_root" "git_credentials_error" "$detail"
+  echo "pr_blocker=git_credentials_missing"
+  echo "iac_push_status=failed"
+}
+
 cmd_clone_iac_repo() {
   local work_root="${1:?WORK_ROOT}"
   local repo_url="${2:-}"
@@ -606,17 +633,41 @@ cmd_clone_iac_repo() {
 
   mirror_note "$work_root" "iac_repository_url" "$repo_url"
   mirror_note "$work_root" "default_branch" "$default_branch"
-  bootstrap_gh || true
+  mkdir -p "${work_root}/.work"
 
-  local repo_dir clone_url
+  local repo_dir clone_url git_token
   repo_dir="$(resolve_repo_dir "$work_root")"
   mkdir -p "$(dirname "$repo_dir")"
   clone_url="$(git_clone_url "$repo_url")"
+  git_token="${GIT_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
+
+  if [[ "$repo_url" =~ ^https:// ]] && [ -z "$git_token" ] && [[ ! "$clone_url" =~ ^https://[^/@]+@ ]]; then
+    record_git_credentials_blocker "$work_root" "GIT_TOKEN_missing_for_https_clone"
+    echo "clone_error=git_credentials_missing"
+    return 1
+  fi
+
+  if ! bootstrap_gh; then
+    if [[ "$repo_url" =~ ^https:// ]]; then
+      record_git_credentials_blocker "$work_root" "bootstrap_gh_no_token"
+      echo "clone_error=git_credentials_missing"
+      return 1
+    fi
+  fi
 
   if [ ! -d "$repo_dir/.git" ]; then
     rm -rf "$repo_dir"
-    git clone --depth 1 --branch "$default_branch" "$clone_url" "$repo_dir" \
-      || git clone --depth 1 "$clone_url" "$repo_dir"
+    if ! git clone --depth 1 --branch "$default_branch" "$clone_url" "$repo_dir" \
+      2>"${work_root}/.work/clone.err"; then
+      if ! git clone --depth 1 "$clone_url" "$repo_dir" 2>>"${work_root}/.work/clone.err"; then
+        if grep -qiE 'terminal prompt disabled|authentication failed|could not read Username|403|401|invalid credentials|permission denied' \
+          "${work_root}/.work/clone.err" 2>/dev/null; then
+          record_git_credentials_blocker "$work_root" "git_clone_auth_failed"
+        fi
+        echo "clone_error=git_clone_failed"
+        return 1
+      fi
+    fi
   fi
 
   cd "$repo_dir"
@@ -692,48 +743,32 @@ cmd_prepare_parallel_artifacts() {
   local work_root="${1:?WORK_ROOT}"
   require_embedded_invocation || return 1
 
-  local manifest_path="${work_root}/logical_group_manifest.json"
-  if [ ! -f "$manifest_path" ]; then
-    echo "prepare_error=missing_logical_group_manifest"
-    return 1
-  fi
-
-  local sample_ids sample_path payloads_path idmap_path
-  sample_ids="$(sample_group_ids_json "$work_root")"
-  sample_path="${work_root}/sample_group_ids.json"
-  payloads_path="${work_root}/batch_payloads.json"
-  idmap_path="${work_root}/identifier_map.json"
-
-  printf '%s\n' "$sample_ids" >"$sample_path"
-  mirror_note "$work_root" "large_state_sample_group_ids" "$sample_ids"
-
-  jq --argjson ids "$sample_ids" '
-    [ . as $m | $ids[] | {
-        group_id: .,
-        cloud_hint: ($m[.].cloud_hint // "aws"),
-        resource_addresses: ($m[.].resource_addresses // [])
-      } ]
-  ' "$manifest_path" >"$payloads_path"
-
-  if [ -f "${work_root}/registry_mapping_report.json" ]; then
-    jq '
-      if type == "object" and has("address_to_identifier") then .address_to_identifier
-      elif type == "object" and has("identifier_map") then .identifier_map
-      else {} end
-    ' "${work_root}/registry_mapping_report.json" >"$idmap_path" 2>/dev/null \
-      || echo '{}' >"$idmap_path"
-  else
-    echo '{}' >"$idmap_path"
-  fi
-
-  mirror_note "$work_root" "sample_group_ids_path" "$sample_path"
-  mirror_note "$work_root" "batch_payloads_path" "$payloads_path"
-  mirror_note "$work_root" "identifier_map_path" "$idmap_path"
+  DBSPLIT_QUIET_PY=1 run_py "$work_root" prepare-parallel-artifacts "$work_root"
+  ensure_stackgen_project_note "$work_root"
   mirror_note "$work_root" "stage_summary:prepare-parallel-artifacts" "ok"
 
-  echo "sample_group_ids_path=${sample_path}"
-  echo "batch_payloads_path=${payloads_path}"
-  echo "identifier_map_path=${idmap_path}"
+  local sample_ids
+  sample_ids="$(jq -c '.' "${work_root}/sample_group_ids.json")"
+  mirror_note "$work_root" "large_state_sample_group_ids" "$sample_ids"
+  mirror_note "$work_root" "sample_group_ids_path" "${work_root}/sample_group_ids.json"
+  mirror_note "$work_root" "batch_payloads_path" "${work_root}/batch_payloads.json"
+  mirror_note "$work_root" "identifier_map_path" "${work_root}/identifier_map.json"
+
+  local group_count sample_size
+  group_count="$(jq 'length' "${work_root}/logical_group_manifest.json")"
+  if [ "$group_count" -gt 40 ]; then
+    sample_size=20
+    mirror_note "$work_root" "large_state_sample_mode" "true"
+    mirror_note "$work_root" "large_state_sample_size" "$sample_size"
+  else
+    sample_size="$group_count"
+    mirror_note "$work_root" "large_state_sample_mode" "false"
+    mirror_note "$work_root" "large_state_sample_size" "$sample_size"
+  fi
+
+  echo "sample_group_ids_path=${work_root}/sample_group_ids.json"
+  echo "batch_payloads_path=${work_root}/batch_payloads.json"
+  echo "identifier_map_path=${work_root}/identifier_map.json"
   echo "large_state_sample_group_ids=${sample_ids}"
 }
 
@@ -754,13 +789,26 @@ open(path, "w", encoding="utf-8").write("".join(out))
 PY
 }
 
+plan_change_counts_json() {
+  local tofu_bin="${1:?TOFU}"
+  local plan_file="${2:?PLAN_FILE}"
+  local json add change destroy
+  json="$("$tofu_bin" show -json "$plan_file" 2>/dev/null)" || return 1
+  add="$(printf '%s' "$json" | jq '[.resource_changes[]? | select(.change.actions | index("create")) | select((.change.actions | index("delete")) | not)] | length' 2>/dev/null || echo 0)"
+  change="$(printf '%s' "$json" | jq '[.resource_changes[]? | select(.change.actions | index("update"))] | length' 2>/dev/null || echo 0)"
+  destroy="$(printf '%s' "$json" | jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' 2>/dev/null || echo 0)"
+  printf '{"add":%s,"change":%s,"destroy":%s}' "${add:-0}" "${change:-0}" "${destroy:-0}"
+}
+
 hydrate_one_group() {
   local work_root="${1:?WORK_ROOT}"
   local group_id="${2:?GROUP_ID}"
   local tofu_bin="${3:?TOFU}"
   local groups_dir="${work_root}/groups/${group_id}"
   local gen_tf="${groups_dir}/generated.tf"
-  local status_json plan_out remaining
+  local max_attempts="${DBSPLIT_HYDRATE_MAX_ATTEMPTS:-3}"
+  local attempt=1
+  local status_json plan_out remaining_json plan_file
 
   if [ ! -d "$groups_dir" ]; then
     echo "group_skip=${group_id} reason=no_group_dir"
@@ -769,29 +817,43 @@ hydrate_one_group() {
 
   cd "$groups_dir"
   "$tofu_bin" init -input=false -no-color >/dev/null 2>&1 || {
-    mirror_note "$work_root" "hcl_hydration_status:${group_id}" "{\"plan_no_changes\":false,\"failure_reason\":\"init_failed\"}"
+    mirror_note "$work_root" "hcl_hydration_status:${group_id}" "{\"plan_no_changes\":false,\"failure_reason\":\"init_failed\",\"attempt\":1}"
     return 1
   }
 
-  "$tofu_bin" plan -generate-config-out=generated.tf -input=false -lock=false -no-color \
-    -out=hydrate.tfplan >/dev/null 2>&1 || true
-  if [ -f "$gen_tf" ]; then
-    fix_generated_tf_name_conflicts "$gen_tf"
-    "$tofu_bin" fmt -no-color "$gen_tf" >/dev/null 2>&1 || true
-  fi
+  while [ "$attempt" -le "$max_attempts" ]; do
+    "$tofu_bin" plan -generate-config-out=generated.tf -input=false -lock=false -no-color \
+      -out="hydrate-${attempt}.tfplan" >/dev/null 2>&1 || true
+    if [ -f "$gen_tf" ]; then
+      fix_generated_tf_name_conflicts "$gen_tf"
+      "$tofu_bin" fmt -no-color "$gen_tf" >/dev/null 2>&1 || true
+    fi
 
-  plan_out="$("$tofu_bin" plan -input=false -lock=false -no-color -out=verify.tfplan 2>&1)" || true
-  remaining="$(printf '%s' "$plan_out" | grep -Eo '[0-9]+ to (add|change|destroy)' | head -1 || true)"
-  if printf '%s' "$plan_out" | grep -q 'No changes'; then
-    status_json="{\"generated_tf_path\":\"${gen_tf}\",\"plan_no_changes\":true,\"remaining_actions\":\"0\",\"attempt\":1}"
-    mirror_note "$work_root" "hcl_hydration_status:${group_id}" "$status_json"
-    echo "group_ok=${group_id}"
-    return 0
-  fi
+    plan_file="verify-${attempt}.tfplan"
+    plan_out="$("$tofu_bin" plan -refresh=false -input=false -lock=false -no-color -out="$plan_file" 2>&1)" || true
+    remaining_json="$(plan_change_counts_json "$tofu_bin" "$plan_file" 2>/dev/null || echo '{"add":0,"change":0,"destroy":0}')"
 
-  status_json="{\"generated_tf_path\":\"${gen_tf}\",\"plan_no_changes\":false,\"remaining_actions\":\"${remaining:-unknown}\",\"attempt\":1}"
+    if printf '%s' "$plan_out" | grep -q 'No changes'; then
+      status_json="{\"generated_tf_path\":\"${gen_tf}\",\"plan_no_changes\":true,\"remaining_actions\":${remaining_json},\"attempt\":${attempt}}"
+      mirror_note "$work_root" "hcl_hydration_status:${group_id}" "$status_json"
+      echo "group_ok=${group_id} attempt=${attempt}"
+      return 0
+    fi
+
+    if [ "$remaining_json" = '{"add":0,"change":0,"destroy":0}' ] && \
+      ! printf '%s' "$plan_out" | grep -qE '[0-9]+ to (add|change|destroy)'; then
+      status_json="{\"generated_tf_path\":\"${gen_tf}\",\"plan_no_changes\":true,\"remaining_actions\":${remaining_json},\"attempt\":${attempt}}"
+      mirror_note "$work_root" "hcl_hydration_status:${group_id}" "$status_json"
+      echo "group_ok=${group_id} attempt=${attempt}"
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  status_json="{\"generated_tf_path\":\"${gen_tf}\",\"plan_no_changes\":false,\"remaining_actions\":${remaining_json},\"attempt\":$((max_attempts))}"
   mirror_note "$work_root" "hcl_hydration_status:${group_id}" "$status_json"
-  echo "group_fail=${group_id} remaining=${remaining:-unknown}"
+  echo "group_fail=${group_id} remaining=${remaining_json} attempt=${max_attempts}"
   return 1
 }
 
@@ -801,9 +863,9 @@ cmd_hydrate_and_plan_matrix() {
 
   local tofu_bin
   if ! tofu_bin="$(resolve_tofu_bin)"; then
-    mirror_note "$work_root" "blocked:ubuntu_infra_tofu_missing" "true"
+    mirror_note "$work_root" "blocked:remote_runner_tofu_missing" "true"
     mirror_note "$work_root" "multi_plan_zero_diff_ok" "false"
-    echo 'blocked:ubuntu_infra_tofu_missing: "true"'
+    echo 'blocked:remote_runner_tofu_missing: "true"'
     echo 'multi_plan_zero_diff_ok: "false"'
     return 1
   fi
@@ -840,6 +902,99 @@ cmd_hydrate_and_plan_matrix() {
   echo "multi_plan_zero_diff_ok: \"${multi_ok}\""
 }
 
+build_iac_pr_title() {
+  local work_root="${1:?WORK_ROOT}"
+  local repo_full="${2:?REPO}"
+  local custom
+  custom="$(read_note "$work_root" "iac_pr_title" 2>/dev/null || true)"
+  if [ -n "$custom" ]; then
+    printf '%s' "$custom"
+    return 0
+  fi
+  local repo_name group_count monolith_count
+  repo_name="${repo_full##*/}"
+  group_count="$(read_note "$work_root" "logical_group_count" 2>/dev/null || echo unknown)"
+  monolith_count="$(read_note "$work_root" "monolith_resource_count" 2>/dev/null || echo unknown)"
+  printf 'chore(terraform): split %s monolith state into %s groups (%s resources)' \
+    "$repo_name" "$group_count" "$monolith_count"
+}
+
+write_iac_pr_body() {
+  local work_root="${1:?WORK_ROOT}"
+  local workflow_run_id="${2:?WORKFLOW_RUN_ID}"
+  local repo_full="${3:?REPO}"
+  local default_branch="${4:-main}"
+  local out_file="${5:?OUT}"
+
+  local custom_body
+  custom_body="$(read_note "$work_root" "iac_pr_body_path" 2>/dev/null || true)"
+  if [ -n "$custom_body" ] && [ -f "$custom_body" ]; then
+    cp "$custom_body" "$out_file"
+    return 0
+  fi
+
+  local group_count monolith_count aggregate_count reconcile_ok grouping_strategy groups_synced monolith_uri stackgen_project
+  group_count="$(read_note "$work_root" "logical_group_count" 2>/dev/null || echo unknown)"
+  monolith_count="$(read_note "$work_root" "monolith_resource_count" 2>/dev/null || echo unknown)"
+  aggregate_count="$(read_note "$work_root" "aggregate_group_resource_count" 2>/dev/null || echo unknown)"
+  reconcile_ok="$(read_note "$work_root" "count_reconciliation_ok" 2>/dev/null || echo unknown)"
+  grouping_strategy="$(read_note "$work_root" "grouping_strategy" 2>/dev/null || echo unknown)"
+  groups_synced="$(read_note "$work_root" "groups_synced_to_repo" 2>/dev/null || echo unknown)"
+  monolith_uri="$(read_note "$work_root" "monolith_state_uri" 2>/dev/null || echo unknown)"
+  stackgen_project="$(read_note "$work_root" "stackgen_project_name" 2>/dev/null || echo unknown)"
+
+  local sample_groups=""
+  if [ -f "${work_root}/sample_group_ids.json" ]; then
+    sample_groups="$(jq -r '.[:8][]' "${work_root}/sample_group_ids.json" 2>/dev/null | paste -sd, - || true)"
+  fi
+
+  mkdir -p "$(dirname "$out_file")"
+  {
+    echo "## Summary"
+    echo
+    echo "Automated **terraform state shard split** from the StackGen \`db-monorepo-state-split-convergence\` workflow."
+    echo "This PR adds per-group \`groups/<group_id>/\` directories with split \`.tfstate\` shards and registry scaffold files."
+    echo
+    echo "## Split metrics"
+    echo
+    echo "| Metric | Value |"
+    echo "| --- | --- |"
+    echo "| Repository | \`${repo_full}\` |"
+    echo "| Base branch | \`${default_branch}\` |"
+    echo "| Logical groups | \`${group_count}\` |"
+    echo "| Monolith resources | \`${monolith_count}\` |"
+    echo "| Aggregate group resources | \`${aggregate_count}\` |"
+    echo "| Count reconciliation | \`${reconcile_ok}\` |"
+    echo "| Grouping strategy | \`${grouping_strategy}\` |"
+    echo "| Groups synced in this PR | \`${groups_synced}\` |"
+    if [ -n "$stackgen_project" ] && [ "$stackgen_project" != "unknown" ]; then
+      echo "| StackGen project | \`${stackgen_project}\` |"
+    fi
+    if [ -n "$monolith_uri" ] && [ "$monolith_uri" != "unknown" ]; then
+      echo "| Source monolith URI | \`${monolith_uri}\` |"
+    fi
+    echo
+    if [ -n "$sample_groups" ]; then
+      echo "## Sample group IDs (hydrate/plan matrix)"
+      echo
+      echo "\`${sample_groups}\`"
+      echo
+    fi
+    echo "## Review checklist"
+    echo
+    echo "- [ ] \`groups/\` tree matches expected group count"
+    echo "- [ ] Per-group state files present under each \`groups/<id>/\`"
+    echo "- [ ] Import/registry scaffold files look correct for your repo layout"
+    echo "- [ ] Follow-up: run \`shell-converge-matrix\` / zero-diff plans on sample groups before merge"
+    echo
+    echo "## Provenance"
+    echo
+    echo "- workflow_run_id: \`${workflow_run_id}\`"
+    echo "- script_pack: \`${SCRIPT_PACK_VERSION}\`"
+    echo "- generated_by: StackGen db-state-splitter (\`iac-pr-pipeline\`)"
+  } >"$out_file"
+}
+
 cmd_commit_pr() {
   local work_root="${1:?WORK_ROOT}"
   local repo_url="${2:-}"
@@ -860,8 +1015,8 @@ cmd_commit_pr() {
   fi
 
   if ! bootstrap_gh; then
-    mirror_note "$work_root" "pr_blocker" "auth"
-    echo "pr_blocker=auth"
+    mirror_note "$work_root" "pr_blocker" "git_credentials_missing"
+    echo "pr_blocker=git_credentials_missing"
     return 1
   fi
 
@@ -884,20 +1039,13 @@ cmd_commit_pr() {
   fi
 
   git switch -c "$branch" 2>/dev/null || git switch "$branch"
-  pr_title="Split monolith tfstate (${workflow_run_id})"
+  pr_title="$(build_iac_pr_title "$work_root" "$repo_full")"
   pr_body_file="${work_root}/.work/pr-body.md"
-  mkdir -p "${work_root}/.work"
-  {
-    echo "# Monolith state split"
-    echo
-    echo "Automated split from db-monorepo-state-split-convergence workflow."
-    echo
-    echo "- workflow_run_id: \`${workflow_run_id}\`"
-    echo "- groups: \`$(read_note "$work_root" "logical_group_count" 2>/dev/null || echo unknown)\`"
-    echo "- script_pack: \`${SCRIPT_PACK_VERSION}\`"
-  } >"$pr_body_file"
+  write_iac_pr_body "$work_root" "$workflow_run_id" "$repo_full" "$default_branch" "$pr_body_file"
 
-  git commit -m "split: db-monorepo state shards (${workflow_run_id})" || {
+  local commit_groups
+  commit_groups="$(read_note "$work_root" "groups_synced_to_repo" 2>/dev/null || read_note "$work_root" "logical_group_count" 2>/dev/null || echo unknown)"
+  git commit -m "split: ${repo_full##*/} state into ${commit_groups} groups (${workflow_run_id})" || {
     echo "pr_error=nothing_to_commit"
     return 1
   }
@@ -935,6 +1083,8 @@ cmd_iac_pr_pipeline() {
   local workflow_run_id="${4:-${WORKFLOW_RUN_ID:-}}"
 
   require_embedded_invocation || return 1
+
+  ensure_stackgen_project_note "$work_root"
 
   local reconcile_ok
   reconcile_ok="$(read_note "$work_root" "count_reconciliation_ok" 2>/dev/null || true)"
