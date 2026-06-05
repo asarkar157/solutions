@@ -29,7 +29,15 @@ cmd_build() {
         outbound_edges: ((.depends_on // []) | length)
       }
     )) as $enriched |
-    ($enriched | sort_by(-.inbound_edges) | .[0].path // "") as $hub |
+    def hub_excluded($p):
+      $p | test("-(test|bom|all)$|_test$|^test-"; "i");
+    ($enriched
+      | map(select(.path | hub_excluded(.) | not))
+      | sort_by(-.inbound_edges)
+      | .[0].path // "") as $hub_candidate |
+    (if $hub_candidate != "" then $hub_candidate
+     else ($enriched | sort_by(-.inbound_edges) | .[0].path // "")
+     end) as $hub |
     ($enriched | [.[].path]) as $all_paths |
     ($enriched | reduce .[] as $m (
       [];

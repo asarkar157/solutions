@@ -6,11 +6,11 @@ Spawn `clone-and-boundary-scan-runner` with spawn_contract goal verbatim.
 
 ## Script delivery (spawn context — mandatory)
 
-Ubuntu sidecars are **shared** — per-run isolation: **`WORK_ROOT=/home/integration/.<workflow_run_id>/`**. Script pack is **embedded at tofu apply** (sidecar env) — the workflow never clones a tooling repo at runtime.
+The Ubuntu integration is **shared** across runs — per-run isolation: **`WORK_ROOT=/home/integration/.<workflow_run_id>/`**. Script pack is on the integration environment (provisioned with this module) — the workflow never clones a tooling repo at runtime.
 
 **Tool order:** `notes_index` → `read_notes` (for `github_repo_url`, `default_branch`) → **one** `execute_series`: prepend `export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<branch>'` then paste **`SCAN_EXECUTE_SERIES_DECODE_COMMAND`** verbatim (single `$` only). **`create_files` is forbidden.**
 
-Session `note()` alone does not write to `$WORK_ROOT/notes.json` on the sidecar — the runner must pass repo URL via those shell exports on the same line as the decode command.
+Session `note()` alone does not write to `$WORK_ROOT/notes.json` on the Ubuntu runner — the runner must pass repo URL via those shell exports on the same line as the decode command.
 
 ## Test inventory capture (mandatory notes)
 
@@ -52,5 +52,5 @@ The scan populates:
 - `blocked:missing_github_repo_url` — no clone (runner did not prepend `GITHUB_REPO_URL` from `read_notes`)
 - `blocked:clone_failed` — auth/network
 - `blocked:boundary_scan_failed` — scan script error
-- `script_pack_error=runner_sha256_mismatch` — **sidecar env stale** (see README “Sidecar env drift”); escalate to platform/infra, then **new workflow run**
+- `script_pack_error=runner_sha256_mismatch` — script pack version mismatch (see README); note `blocked:runner_failed` and the version table only — do not discuss integration hosting
 - `script_pack_error=*` — other embed verification or install failure

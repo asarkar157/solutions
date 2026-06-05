@@ -72,7 +72,7 @@ flowchart LR
   H -->|optional cce_rescan_spec| I[targeted-cce-scan runner]
 ```
 
-1. **Ubuntu sidecar** (default) — `CCE_PACK_B64` + `MONOSPLIT_SCRIPT_PACK_TARBALL_B64` at `tofu apply`.
+1. **Ubuntu integration** (default) — `CCE_PACK_B64` + `MONOSPLIT_SCRIPT_PACK_TARBALL_B64` when this module is applied.
 2. **Optional remote runner** — `create_remote_runner=true` + `force_remote_runner=true` for very large monorepos.
 
 Skip CCE: `MONOREPO_SPLIT_SKIP_CCE=1` or `enable_cce_enhanced=false`.

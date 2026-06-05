@@ -109,7 +109,7 @@ Extract services from approved plan at docs/architecture/service-catalog.yaml
 
 ## Script pack and runners
 
-Deterministic work lives in `scripts/` (version **20260604.1**). The bootstrap B64 and script-pack tarball are **baked into the Ubuntu sidecar env at `tofu apply`** (`MONOSPLIT_SCRIPT_PACK_TARBALL_B64`, `CCE_PACK_B64` when CCE is enabled) — workflows do **not** clone tooling repos at runtime. Runners receive a short decode command (~300 chars) via spawn context and run **one `execute_series`** (no LLM `create_files` paste). Ubuntu sidecars are shared — per-run state under `/home/integration/.<workflow_run_id>/` only.
+Deterministic work lives in `scripts/` (version **20260604.5**). The bootstrap B64 and script-pack tarball are set on the **Ubuntu integration** when you apply this module (`MONOSPLIT_SCRIPT_PACK_TARBALL_B64`, `CCE_PACK_B64` when CCE is enabled) — workflows do **not** clone tooling repos at runtime. Runners receive a short decode command (~300 chars) via spawn context and run **one `execute_series`** (no LLM `create_files` paste). The Ubuntu container is shared across runs — per-run state under `/home/integration/.<workflow_run_id>/` only.
 
 | Script | Stage |
 |--------|-------|
@@ -134,15 +134,15 @@ When `enable_cce_enhanced = true` (default), clone-and-scan runs [Code Context E
 | Analyst LLM | `split-domain-analyst` | Reads **`boundary_scan_summary`** + **`cce_summary` only** — never full entitlement arrays |
 | Targeted rescan | architect spawns runner | When analyst notes `cce_rescan_spec`, optional custom lens → scoped CCE |
 
-Default recipes: `cloud-entitlements`, `microservice-decomposition`, `monorepo-intelligence`. Skip with `enable_cce_enhanced = false` or `MONOREPO_SPLIT_SKIP_CCE=1` on the sidecar. Detail: [`cce-powers.md`](../modules/aios-agent-monorepo-services-splitter/docs/cce-powers.md) and [CCE × AIOS integration map]({% include doc_url.html path="cce-agent-integrations.md" %}).
+Default recipes: `cloud-entitlements`, `microservice-decomposition`, `monorepo-intelligence`. Skip with `enable_cce_enhanced = false` or `MONOREPO_SPLIT_SKIP_CCE=1` on the Ubuntu integration. Detail: [`cce-powers.md`](../modules/aios-agent-monorepo-services-splitter/docs/cce-powers.md) and [CCE × AIOS integration map]({% include doc_url.html path="cce-agent-integrations.md" %}).
 
 ### Optional remote runner
 
-For very large monorepos, set `create_remote_runner = true` and optionally `force_remote_runner = true` to route embed stages to **aiden-runner** instead of the shared Ubuntu sidecar. Script pack and git credentials sync via vault secret refs. Outputs include `remote_runner_cli_start_command` and `remote_runner_helm_install_command`.
+For very large monorepos, set `create_remote_runner = true` and optionally `force_remote_runner = true` to route embed stages to **aiden-runner** instead of the shared Ubuntu integration. Script pack and git credentials sync via vault secret refs. Outputs include `remote_runner_cli_start_command` and `remote_runner_helm_install_command`.
 
-### Sidecar env drift (`runner_sha256_mismatch`)
+### Script pack version mismatch (`runner_sha256_mismatch`)
 
-If a run fails with `script_pack_error=runner_sha256_mismatch`, the Ubuntu sidecar env does not match this module's `script_pack_version` at apply time — **not** fixable inside a running workflow. Escalate to the platform team that provisions the Ubuntu integration with `workflow_run_id`, `script_pack_version`, expected vs actual SHA-256 from runner stderr. After the sidecar is re-provisioned, start a **new** analysis workflow run.
+If a run fails with `script_pack_error=runner_sha256_mismatch`, the Ubuntu integration env does not match this module's `script_pack_version` — **not** fixable inside a running workflow. Re-apply this Terraform module, then compare `workflow_run_id`, `script_pack_version`, and expected vs actual SHA-256 from runner stderr. Workflow agents report the mismatch only; integration container lifecycle is a Guild/platform concern.
 
 ---
 

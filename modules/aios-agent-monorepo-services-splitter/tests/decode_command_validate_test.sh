@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Validates tofu-rendered *_EXECUTE_SERIES_DECODE_COMMAND strings parse under dash/sh,
-# read B64 from sidecar env (not inline paste), and round-trip decode.
+# read B64 from Ubuntu integration env (not inline paste), and round-trip decode.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,7 +37,7 @@ decode_specs = [
 
 main_tf = (root / "main.tf").read_text()
 if "MONOSPLIT_B64=" in main_tf:
-    print("FAIL: decode commands must not assign inline MONOSPLIT_B64= (use sidecar env)", file=sys.stderr)
+    print("FAIL: decode commands must not assign inline MONOSPLIT_B64= (use integration env)", file=sys.stderr)
     sys.exit(1)
 if "MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2" not in main_tf:
     print("FAIL: ubuntu integration env_vars must set MONOSPLIT_*_EXECUTE_SERIES_B64_V2", file=sys.stderr)
@@ -105,7 +105,7 @@ for label, decode_expr, env_name, b64_expr in decode_specs:
         print(f"FAIL: {label} must not embed inline B64 in decode command", file=sys.stderr)
         sys.exit(1)
     if env_name not in cmd:
-        print(f"FAIL: {label} must read {env_name} from sidecar env", file=sys.stderr)
+        print(f"FAIL: {label} must read {env_name} from integration env", file=sys.stderr)
         sys.exit(1)
     if "$$" in cmd:
         print(f"FAIL: {label} decode command contains $$ (PID expansion corrupts shell vars)", file=sys.stderr)
@@ -114,11 +114,11 @@ for label, decode_expr, env_name, b64_expr in decode_specs:
         print(f"FAIL: {label} must pipe {env_name} through printf", file=sys.stderr)
         sys.exit(1)
     if "missing_b64_env" not in cmd:
-        print(f"FAIL: {label} must guard missing sidecar env with missing_b64_env sentinel", file=sys.stderr)
+        print(f"FAIL: {label} must guard missing integration env with missing_b64_env sentinel", file=sys.stderr)
         sys.exit(1)
 
     if len(b64) > 12000:
-        print(f"FAIL: {label} sidecar B64 too large ({len(b64)} bytes)", file=sys.stderr)
+        print(f"FAIL: {label} integration B64 too large ({len(b64)} bytes)", file=sys.stderr)
         sys.exit(1)
 
     for shell in ("dash", "sh", "bash"):
@@ -135,5 +135,5 @@ if has_shellcheck:
 else:
     print("WARN: shellcheck not installed; skipped SC checks")
 
-print("OK: tofu-rendered decode commands validated (short paste, sidecar env B64, decode roundtrip)")
+print("OK: tofu-rendered decode commands validated (short paste, integration env B64, decode roundtrip)")
 PY

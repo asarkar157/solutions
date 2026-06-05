@@ -59,7 +59,7 @@ variable "aws_integration_assume_role_policy_json" {
   validation {
     condition = (
       length(var.aws_stackgen_trust_arns) > 0 ||
-      length(trimspace(coalesce(var.aws_integration_assume_role_policy_json, ""))) > 0
+      try(length(trimspace(var.aws_integration_assume_role_policy_json)) > 0, false)
     )
     error_message = "Set aws_stackgen_trust_arns to one or more principal ARNs from StackGen AWS setup, or set aws_integration_assume_role_policy_json to the full trust policy JSON."
   }

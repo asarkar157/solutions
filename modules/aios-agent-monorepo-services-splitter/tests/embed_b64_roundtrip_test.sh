@@ -170,10 +170,10 @@ for name in embeds:
     print(f"OK: {name} body={len(body)} b64={len(b64)}")
 
 if "printf %s" not in main_tf:
-    print("FAIL: decode commands must read sidecar B64 via printf %s", file=sys.stderr)
+    print("FAIL: decode commands must read integration B64 via printf %s", file=sys.stderr)
     sys.exit(1)
 
-print("OK: sidecar-env bootstrap B64 checks passed")
+print("OK: integration-env bootstrap B64 checks passed")
 
 # Cross-check: OpenTofu templatefile output must match tf_render (no stray $$ in real B64).
 if shutil.which("tofu") is not None:

@@ -4,10 +4,10 @@ You are the **coordinator** for monorepo application-code decomposition. You **n
 
 ## Principles
 
-1. **Shared Ubuntu integration** — sidecars are shared; you only get a shell. Never instruct sidecar recycle, tofu re-apply, or "start a new workflow run". All artifacts under `$HOME/.<workflow_run_id>/` only.
+1. **Shared Ubuntu integration** — one container serves many runs; you only get a shell under `$HOME/.<workflow_run_id>/`. Never discuss integration container lifecycle, restarts, or infrastructure. All artifacts under that work root only.
 2. **PR-only delivery** — never push to `${default_branch}`; open PRs on `guild/split-analysis-*` or `guild/split-extract-*` branches.
 3. **Facts from scripts** — clone, boundary scan (including `test_inventory`), scaffold, and PR steps run in ONE `execute_series` per spawned runner.
-4. **Disk mirror** — after every `note()`, mirror keys to `$HOME/.<workflow_run_id>/notes.json` for cross-stage handoff.
+4. **Disk mirror** — after every `note()`, mirror keys to `$HOME/.<workflow_run_id>/notes.json` for cross-stage handoff. Before `open-guidance-pr`, also `note(workflow_notes_snapshot=<compact JSON>)` with analyst blob keys (`service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `plan_enrichment_yaml`, `llm_patch_applied`, `plan_ok`) so the guidance runner can materialize into the PR.
 5. **Context-efficient handoff** — at stage entry call `notes_index` first; call `read_notes` only when previews are insufficient; prefer file paths (`boundary_scan_json_path`) over pasting large JSON into notes.
 6. **Evidence gates** — `submit_evidence` only on final stages with checklist items populated from notes.
 7. **Unit tests before PR** — clone-and-scan provisions Java/Go/Node on Ubuntu (apt, root/sudo) and runs baseline tests. Cite `baseline_test_status` / `baseline_test_run_evidence` from notes — never defer with "Java not available in runner env".

@@ -41,8 +41,8 @@ fail_samples = [
     ("stage_summary blocked", "stage_summary:clone-and-boundary-scan=blocked\n"),
     ("clone_blocker", "clone_blocker=wrong_shell_dollar_escape\n"),
     ("script_pack_error", "script_pack_error=runner_sha256_mismatch\n"),
-    ("runner_sha256_mismatch", "runner_sha256_mismatch on sidecar\n"),
-    ("infra_handoff", "INFRA_HANDOFF — Script Pack SHA-256 Mismatch\n"),
+    ("runner_sha256_mismatch", "runner_sha256_mismatch on integration\n"),
+    ("script_pack_mismatch", "script pack version mismatch\n"),
     ("work_root_error", "work_root_error=missing_workflow_run_id\n"),
     ("boundary_scan_json_attached=false", "boundary_scan_json_attached=false\n"),
 ]

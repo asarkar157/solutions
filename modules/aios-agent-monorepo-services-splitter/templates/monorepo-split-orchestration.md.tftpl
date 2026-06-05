@@ -5,7 +5,7 @@ Skill: Orchestration for **monorepo application-code splitting** — analysis PR
 ```
 clone-and-boundary-scan → scan-blocked-gate → parallel-plan-prep (3 runners) → plan-fan-in-gate
   → plan-validation-gate → [llm-plan-review if plan failed] → llm-os-enrichment (optional)
-  → [targeted-cce-rescan if analyst requested] → open-guidance-pr → final-evidence-gate
+  → [targeted-cce-rescan if analyst requested] → open-guidance-pr (final commit; same PR updated incrementally when `enable_incremental_guidance_pr`) → final-evidence-gate
 ```
 
 Deterministic scripts produce `service-catalog.yaml`, `coupling-matrix.json`, and audience-tiered docs under `docs/architecture/`. LLM stages are escalation and advisory enrichment only.
@@ -51,9 +51,9 @@ After distilling handoff keys into notes, call **`delete_context`** on bulky too
 
 ## Execution optimization
 
-- **Shared Ubuntu sidecar** — integration containers are shared across runs. Agents cannot recycle sidecars or re-apply tofu. Isolation is **`WORK_ROOT=/home/integration/.<workflow_run_id>/`** only (clone, scripts, notes, scan artifacts). Never write shared paths like `.monosplit-work`.
+- **Shared Ubuntu integration** — many runs share one Ubuntu container. Per-run isolation is **`WORK_ROOT=/home/integration/.<workflow_run_id>/`** only (clone, scripts, notes, scan artifacts). Never write shared paths like `.monosplit-work`. Do not discuss integration container lifecycle or infrastructure in workflow output.
 - **Architect = coordinator only** on Ubuntu stages — spawn exactly one runner per script stage.
-- **Script pack delivery (mandatory):** Bootstrap B64 + script tarball are in sidecar env at `tofu apply` — **no runtime tooling-repo clone**. Spawn context carries short **`_*_EXECUTE_SERIES_DECODE_COMMAND`**. Runner: `read_notes` → prepend `export GITHUB_REPO_URL=…` → paste decode on one `execute_series` line. **`execute_command` and `create_files` are forbidden** on runners.
+- **Script pack delivery (mandatory):** Bootstrap B64 + script tarball are on the Ubuntu integration environment (provisioned with this module) — **no runtime tooling-repo clone**. Spawn context carries short **`_*_EXECUTE_SERIES_DECODE_COMMAND`**. Runner: `read_notes` → prepend `export GITHUB_REPO_URL=…` → paste decode on one `execute_series` line. **`execute_command` and `create_files` are forbidden** on runners.
 - **Analyst stages** — no shell; consume `boundary_scan.json` including `test_inventory`.
 
 ## HalGuard grounding (mandatory)
@@ -61,7 +61,7 @@ After distilling handoff keys into notes, call **`delete_context`** on bulky too
 - **Never invent repo facts** when scan failed — emit `blocked:runner_failed` or `blocked:missing_scan_artifact`; scan-blocked-gate skips analyst/PR stages.
 - **Terminal runners** (`task_type=terminal_calling`): workflow metadata `halguard_skip_subagent_task_types=terminal_calling` skips HalGuard **PreCheck** on inline bootstrap decode goals (cost control). **PostCheck still runs** on runner stdout summaries.
 - **Architect / analyst**: HalGuard **PostCheck** applies to orchestrator output — cite only paths and note keys from runners, not training-data package inventories.
-- **Forbidden operator instructions:** never tell users to recycle sidecars, re-apply tofu, re-inject `MONOSPLIT_*_B64`, or abandon the current `workflow_run_id` for a new run.
+- **Forbidden in workflow output:** integration container lifecycle, restarts, recycle, manual env re-injection, or abandoning the current `workflow_run_id` to work around a blocked scan.
 
 ## Blocked sentinels (plan-blocked-gate — extract)
 

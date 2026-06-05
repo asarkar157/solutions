@@ -177,7 +177,7 @@ if ! grep -q 'MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2' "${MAIN}"; then
 fi
 
 if grep -q 'MONOSPLIT_B64=' "${MAIN}"; then
-  echo "FAIL: decode commands must not assign inline MONOSPLIT_B64= (B64 belongs in sidecar env)" >&2
+  echo "FAIL: decode commands must not assign inline MONOSPLIT_B64= (B64 belongs on Ubuntu integration env)" >&2
   exit 1
 fi
 
@@ -192,7 +192,7 @@ if ! grep -q 'monosplit_b64_decode_suffix' "${MAIN}"; then
 fi
 
 if ! grep -q 'printf %s' "${MAIN}"; then
-  echo "FAIL: decode commands must read sidecar B64 via printf %s" >&2
+  echo "FAIL: decode commands must read integration B64 via printf %s" >&2
   exit 1
 fi
 
@@ -375,10 +375,15 @@ if ! grep -q '\$HOME/.<workflow_run_id>/' "${MAIN}"; then
   exit 1
 fi
 
-if grep -RinE 'must recycle|docker rm -f guild-integration|re-inject MONOSPLIT|Re-apply Tofu to re-inject' \
+if grep -RinE 'must recycle|docker rm -f guild-integration|recycle sidecar|reprovision sidecar|re-inject MONOSPLIT|Re-apply Tofu to re-inject' \
   "${ROOT}/templates" "${ROOT}/personas" "${MAIN}" 2>/dev/null \
-  | grep -vE 'FORBIDDEN|Never instruct|never tell|Forbidden operator|do not tell'; then
-  echo "FAIL: runbooks must not instruct sidecar recycle or integration env B64 re-inject" >&2
+  | grep -vE 'FORBIDDEN|Never instruct|never tell|Forbidden|do not tell|Do not discuss|must not'; then
+  echo "FAIL: runbooks must not instruct integration container lifecycle or manual B64 re-inject" >&2
+  exit 1
+fi
+
+if grep -Rin 'sidecar' "${ROOT}/templates" "${ROOT}/personas" "${ROOT}/spawn_contracts.tf" "${MAIN}" 2>/dev/null; then
+  echo "FAIL: workflow-facing text must not use sidecar terminology" >&2
   exit 1
 fi
 
@@ -388,7 +393,7 @@ if grep -q 'monosplit-work' "${ROOT}/templates/monosplit-resolve-env.sh.tftpl"; 
 fi
 
 if ! grep -q 'ubuntu_shared_integration_rule' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: spawn_contracts must document shared Ubuntu sidecar isolation" >&2
+  echo "FAIL: spawn_contracts must document shared Ubuntu integration isolation" >&2
   exit 1
 fi
 

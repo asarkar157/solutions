@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Monorepo CCE critical-path scan — cce plan, scoped cce run -recipes, lens use-case passes.
-# Requires CCE_PACK_B64 / CCE_PACK_DIR on Ubuntu sidecar (tofu apply).
+# Requires CCE_PACK_B64 / CCE_PACK_DIR on the Ubuntu integration environment.
 set -euo pipefail
 
 CCE_RECIPES="${CCE_RECIPES:-cloud-entitlements,microservice-decomposition,platform-adoption}"

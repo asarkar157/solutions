@@ -4,7 +4,7 @@
 #   merge-enrichment | write-guidance-artifacts | guidance-pr | scaffold-services | extract-pr
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="20260604.5"
+SCRIPT_PACK_VERSION="20260604.7"
 RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 TEXT_SANITIZE="${RUNNER_DIR}/text-sanitize.sh"
 
@@ -108,7 +108,8 @@ install_script_pack() {
   copy_script_pack_file "${runner_dir}/text-sanitize.sh" "${scripts_dir}/text-sanitize.sh"
   copy_script_pack_file "${runner_dir}/stage-runner.sh" "${scripts_dir}/stage-runner.sh"
   for extra in build-coupling-matrix.sh detect-repo-archetype.sh synthesize-split-plan.sh \
-    fetch-repo-context.sh materialize-analyst-artifacts.sh validate-and-merge-enrichment.sh; do
+    fetch-repo-context.sh materialize-analyst-artifacts.sh validate-and-merge-enrichment.sh \
+    sync-workflow-notes.sh; do
     if [ -f "${runner_dir}/${extra}" ]; then
       copy_script_pack_file "${runner_dir}/${extra}" "${scripts_dir}/${extra}"
     fi
@@ -190,6 +191,90 @@ is_placeholder_service_catalog() {
   local catalog="${1:?CATALOG}"
   [ -f "$catalog" ] || return 1
   grep -qE 'name:[[:space:]]*example-service' "$catalog" 2>/dev/null
+}
+
+is_mechanical_service_catalog() {
+  local catalog="${1:?CATALOG}"
+  [ -f "$catalog" ] || return 0
+  local total mechanical
+  total="$(grep -cE '^- name:' "$catalog" 2>/dev/null || echo 0)"
+  mechanical="$(grep -c 'Group centered on' "$catalog" 2>/dev/null || echo 0)"
+  if [ "$total" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$mechanical" -ge "$total" ]; then
+    return 0
+  fi
+  return 1
+}
+
+prepare_guidance_notes_and_artifacts() {
+  local work_root="${1:?WORK_ROOT}"
+
+  if [ -f "${work_root}/scripts/sync-workflow-notes.sh" ]; then
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/sync-workflow-notes.sh" sync "$work_root" || true
+  fi
+  if [ -f "${work_root}/scripts/materialize-analyst-artifacts.sh" ]; then
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/materialize-analyst-artifacts.sh" materialize "$work_root" || true
+  fi
+}
+
+write_workflow_progress() {
+  local repo_dir="${1:?REPO_DIR}"
+  local stage_name="${2:?STAGE}"
+  local workflow_run_id="${3:?WORKFLOW_RUN_ID}"
+  local progress="${repo_dir}/docs/architecture/WORKFLOW_PROGRESS.md"
+  mkdir -p "$(dirname "$progress")"
+
+  if [ ! -f "$progress" ]; then
+    cat >"$progress" <<EOF
+# Monorepo split workflow progress
+
+Guild updates **this same pull request** with one commit per completed stage so reviewers can follow progress.
+
+- **Workflow run:** \`${workflow_run_id}\`
+- **Branch:** \`guild/split-analysis-${workflow_run_id}\`
+
+| Stage | Status | Commit prefix |
+|-------|--------|---------------|
+EOF
+  fi
+
+  if ! grep -Fq "| ${stage_name} |" "$progress" 2>/dev/null; then
+    echo "| ${stage_name} | complete | \`docs(monorepo-split): [stage:${stage_name}]\` |" >>"$progress"
+  fi
+}
+
+apply_analyst_artifacts_over_deterministic() {
+  local work_root="${1:?WORK_ROOT}"
+  local arch="${work_root}/docs/architecture"
+  mkdir -p "$arch"
+
+  local llm_patch catalog_src
+  llm_patch="$(jq -r '.llm_patch_applied // .llm_plan_review_complete // "false"' "${work_root}/notes.json" 2>/dev/null || echo "false")"
+  catalog_src="${work_root}/service-catalog.yaml"
+  if [ ! -f "$catalog_src" ]; then
+    return 0
+  fi
+  if [ "$llm_patch" != "true" ] && is_mechanical_service_catalog "$catalog_src"; then
+    return 0
+  fi
+  if is_mechanical_service_catalog "$catalog_src"; then
+    return 0
+  fi
+
+  cp "$catalog_src" "${arch}/service-catalog.yaml"
+  sanitize_text_artifact "${arch}/service-catalog.yaml"
+  mirror_note "$work_root" "plan_source" "analyst_catalog"
+  if [ -f "${work_root}/migration-phases.md" ]; then
+    cp "${work_root}/migration-phases.md" "${arch}/migration-phases.md"
+    sanitize_text_artifact "${arch}/migration-phases.md"
+  fi
+  if [ -f "${work_root}/bounded-context-map.mermaid" ]; then
+    cp "${work_root}/bounded-context-map.mermaid" "${arch}/bounded-context-map.mermaid"
+    sanitize_text_artifact "${arch}/bounded-context-map.mermaid"
+  fi
+  echo "analyst_catalog_applied_over_deterministic=true"
 }
 
 merge_analyst_artifacts_into_repo() {
@@ -309,9 +394,8 @@ cmd_fetch_repo_context() {
 cmd_merge_enrichment() {
   local work_root="${1:?WORK_ROOT}"
   install_script_pack "$work_root"
-  if [ -f "${work_root}/scripts/materialize-analyst-artifacts.sh" ]; then
-    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/materialize-analyst-artifacts.sh" materialize "$work_root" || true
-  fi
+  prepare_guidance_notes_and_artifacts "$work_root"
+  apply_analyst_artifacts_over_deterministic "$work_root"
   if [ -f "${work_root}/scripts/validate-and-merge-enrichment.sh" ]; then
     MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/validate-and-merge-enrichment.sh" merge "$work_root"
   fi
@@ -327,9 +411,8 @@ cmd_write_guidance_artifacts() {
   deterministic="$(jq -r '.deterministic_plan_produced // "false"' "$notes" 2>/dev/null || echo "false")"
 
   mkdir -p "$repo_dir/docs/architecture"
-  if [ -f "${work_root}/scripts/materialize-analyst-artifacts.sh" ]; then
-    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/materialize-analyst-artifacts.sh" materialize "$work_root" || true
-  fi
+  prepare_guidance_notes_and_artifacts "$work_root"
+  apply_analyst_artifacts_over_deterministic "$work_root"
   if [ -f "${work_root}/scripts/validate-and-merge-enrichment.sh" ]; then
     MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/validate-and-merge-enrichment.sh" merge "$work_root" || true
   fi
@@ -426,6 +509,59 @@ EOF
   echo "guidance_artifacts_written=true"
 }
 
+cmd_incremental_guidance_commit() {
+  local work_root="${1:?WORK_ROOT}"
+  local workflow_run_id="${2:?WORKFLOW_RUN_ID}"
+  local default_branch="${3:-main}"
+  local stage_name="${4:?STAGE_NAME}"
+
+  install_script_pack "$work_root"
+  ensure_repo_cloned "$work_root"
+  local repo_dir="$work_root/repo"
+  local branch="guild/split-analysis-${workflow_run_id}"
+
+  if [ "$stage_name" = "parallel-plan-prep" ]; then
+    cmd_write_guidance_artifacts "$work_root" "$repo_dir"
+  fi
+  if [ "$stage_name" = "llm-plan-review" ]; then
+    prepare_guidance_notes_and_artifacts "$work_root"
+    apply_analyst_artifacts_over_deterministic "$work_root"
+    cmd_write_guidance_artifacts "$work_root" "$repo_dir"
+    merge_analyst_artifacts_into_repo "$work_root" "$repo_dir"
+  fi
+  if [ "$stage_name" = "llm-os-enrichment" ]; then
+    prepare_guidance_notes_and_artifacts "$work_root"
+    apply_analyst_artifacts_over_deterministic "$work_root"
+    cmd_merge_enrichment "$work_root" || true
+    merge_analyst_artifacts_into_repo "$work_root" "$repo_dir"
+  fi
+
+  write_workflow_progress "$repo_dir" "$stage_name" "$workflow_run_id"
+
+  MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" ensure-branch \
+    "$work_root" "$branch"
+  MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" commit-and-push \
+    "$work_root" "docs(monorepo-split): [stage:${stage_name}] workflow ${workflow_run_id}"
+
+  local pr_url
+  pr_url="$(jq -r '.guidance_pr_url // .pr_url // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  if [ "$stage_name" = "parallel-plan-prep" ] && [ -z "$pr_url" ]; then
+    local pr_body
+    pr_body="$(MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" render-pr-body \
+      "$work_root" "guidance")"
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" open-pr \
+      "$work_root" "WIP: Monorepo split analysis (${workflow_run_id})" "$pr_body" "$default_branch" "draft"
+    pr_url="$(jq -r '.guidance_pr_url // .pr_url // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  fi
+
+  mirror_note "$work_root" "guidance_pr_url" "$pr_url"
+  mirror_note "$work_root" "guidance_pr_last_commit_stage" "$stage_name"
+  mirror_note "$work_root" "incremental_guidance_commit_ok" "true"
+  echo "incremental_guidance_commit_stage=${stage_name}"
+  echo "guidance_pr_url=${pr_url}"
+  echo "stage_summary:incremental-guidance-commit-${stage_name}=ok"
+}
+
 cmd_guidance_pr() {
   local work_root="${1:?WORK_ROOT}"
   local workflow_run_id="${2:-split}"
@@ -442,8 +578,9 @@ cmd_guidance_pr() {
   local plan_ok llm_patch
   plan_ok="$(jq -r '.plan_ok // .deterministic_plan_produced // "false"' "$work_root/notes.json" 2>/dev/null || echo "false")"
   llm_patch="$(jq -r '.llm_patch_applied // .llm_plan_review_complete // "false"' "$work_root/notes.json" 2>/dev/null || echo "false")"
-  if [ "$plan_ok" != "true" ] && [ "$llm_patch" = "true" ]; then
-    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/materialize-analyst-artifacts.sh" materialize "$work_root" || true
+  if [ "$llm_patch" = "true" ] || [ -f "${work_root}/service-catalog.yaml" ]; then
+    prepare_guidance_notes_and_artifacts "$work_root"
+    apply_analyst_artifacts_over_deterministic "$work_root"
     merge_analyst_artifacts_into_repo "$work_root" "$repo_dir"
     if [ -f "$work_root/service-catalog.yaml" ]; then
       cp "$work_root/service-catalog.yaml" "$catalog_path"
@@ -465,17 +602,31 @@ cmd_guidance_pr() {
     exit 1
   fi
 
-  MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" create-branch \
+  write_workflow_progress "$repo_dir" "final" "$workflow_run_id"
+
+  MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" ensure-branch \
     "$work_root" "$branch"
   MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" commit-and-push \
-    "$work_root" "docs: monorepo split analysis (${workflow_run_id})"
+    "$work_root" "docs(monorepo-split): [stage:final] monorepo split analysis (${workflow_run_id})"
   local pr_body
   pr_body="$(MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" render-pr-body \
     "$work_root" "guidance")"
-  MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" open-pr \
-    "$work_root" "Monorepo split analysis" "$pr_body" "$default_branch"
+  local pr_url
+  pr_url="$(jq -r '.guidance_pr_url // .pr_url // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  if [ -z "$pr_url" ]; then
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" open-pr \
+      "$work_root" "Monorepo split analysis (${workflow_run_id})" "$pr_body" "$default_branch"
+    pr_url="$(jq -r '.pr_url // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  fi
+  if [ -n "$pr_url" ]; then
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" update-pr-body \
+      "$work_root" "$pr_body" || true
+    MONOREPO_SPLIT_ALLOW_DIRECT=1 bash "${work_root}/scripts/clone-and-pr.sh" update-pr-title \
+      "$work_root" "Monorepo split analysis (${workflow_run_id})" || true
+  fi
 
-  mirror_note "$work_root" "guidance_pr_url" "$(jq -r '.pr_url // empty' "$work_root/notes.json")"
+  mirror_note "$work_root" "guidance_pr_url" "$pr_url"
+  mirror_note "$work_root" "guidance_pr_last_commit_stage" "final"
   echo "stage_summary:open-guidance-pr=ok"
 }
 
@@ -589,6 +740,7 @@ main() {
     fetch-repo-context) cmd_fetch_repo_context "$@" ;;
     merge-enrichment) cmd_merge_enrichment "$@" ;;
     write-guidance-artifacts) cmd_write_guidance_artifacts "$@" ;;
+    incremental-guidance-commit) cmd_incremental_guidance_commit "$@" ;;
     guidance-pr) cmd_guidance_pr "$@" ;;
     scaffold-services) cmd_scaffold_services "$@" ;;
     extract-pr) cmd_extract_pr "$@" ;;

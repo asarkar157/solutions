@@ -162,13 +162,13 @@ variable "webhook_trigger_org_id" {
 }
 
 variable "script_pack_git_ref" {
-  description = "Deprecated — script pack is embedded in the Ubuntu sidecar at tofu apply (MONOSPLIT_SCRIPT_PACK_TARBALL_B64). Ignored."
+  description = "Deprecated — script pack is embedded on the Ubuntu integration when this module is applied (MONOSPLIT_SCRIPT_PACK_TARBALL_B64). Ignored."
   type        = string
   default     = ""
 }
 
 variable "script_pack_git_repo" {
-  description = "Deprecated — script pack is embedded in the Ubuntu sidecar at tofu apply. Ignored; workflows do not clone tooling repos at runtime."
+  description = "Deprecated — script pack is embedded on the Ubuntu integration when this module is applied. Ignored; workflows do not clone tooling repos at runtime."
   type        = string
   default     = ""
 }
@@ -301,6 +301,12 @@ variable "enable_os_enrichment" {
 
 variable "enable_parallel_plan_prep" {
   description = "When true, architect spawns synthesize-plan, agents-md-scaffold, and fetch-repo-context runners in parallel after scan."
+  type        = bool
+  default     = true
+}
+
+variable "enable_incremental_guidance_pr" {
+  description = "When true, opens a draft guidance PR after plan prep and pushes one commit per major stage (plan prep, LLM review, enrichment, final) on the same branch so reviewers can follow progress in the PR timeline."
   type        = bool
   default     = true
 }

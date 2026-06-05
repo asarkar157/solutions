@@ -106,7 +106,7 @@ locals {
   agents_md_scaffold_script         = trimspace(file("${path.module}/scripts/agents-md-scaffold.sh"))
   runtime_deps_provision_script     = trimspace(file("${path.module}/scripts/runtime-deps-provision.sh"))
   ubuntu_integration_home           = "/home/integration"
-  script_pack_version               = "20260604.5"
+  script_pack_version               = "20260604.7"
   monosplit_script_pack_tarball_b64 = filebase64(data.archive_file.monosplit_script_pack.output_path)
   # Hash on-disk script bytes (must match archive_file tarball entries; trimspace is only for embed templates).
   script_pack_runner_sha256             = sha256(file("${path.module}/scripts/stage-runner.sh"))
@@ -123,6 +123,9 @@ locals {
     guidance_pr_max_llm_calls              = 35
     guidance_pr_max_tool_iterations        = 40
     guidance_pr_timeout_seconds            = 1200
+    incremental_commit_max_llm_calls       = 8
+    incremental_commit_max_tool_iterations = 12
+    incremental_commit_timeout_seconds     = 900
     scaffold_services_max_llm_calls        = 35
     scaffold_services_max_tool_iterations  = 40
     scaffold_services_timeout_seconds      = 1200
@@ -148,7 +151,7 @@ locals {
   }
 
   # Guild reads halguard_skip_subagent_task_types to skip HalGuard PreCheck on
-  # terminal_calling runners (short decode command in spawn context; B64 in sidecar env). terminal_calling_halguard_mode
+  # terminal_calling runners (short decode command in spawn context; B64 on Ubuntu integration env). terminal_calling_halguard_mode
   # documents paste-only runner discipline for personas/SOPs.
   workflow_execution_metadata = {
     planner_max_tool_iterations       = "12"
@@ -258,6 +261,13 @@ locals {
     "${path.module}/templates/monosplit-fetch-repo-context-execute-series-embedded.sh.tftpl",
     local.embed_template_vars,
   )
+  monosplit_incremental_commit_execute_series_body = templatefile(
+    "${path.module}/templates/monosplit-incremental-guidance-commit-embedded.sh.tftpl",
+    local.embed_template_vars,
+  )
+
+  monosplit_incremental_commit_decode_prefix = "export MONOSPLIT_INCREMENTAL_STAGE='{{stage}}' WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && "
+  monosplit_incremental_commit_decode_suffix = "if [ -n \"$MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
 
   monosplit_scan_execute_series_b64               = base64encode(trimspace(local.monosplit_scan_execute_series_body))
   monosplit_guidance_pr_execute_series_b64        = base64encode(trimspace(local.monosplit_guidance_pr_execute_series_body))
@@ -267,6 +277,7 @@ locals {
   monosplit_synthesize_plan_execute_series_b64    = base64encode(trimspace(local.monosplit_synthesize_plan_execute_series_body))
   monosplit_agents_md_execute_series_b64          = base64encode(trimspace(local.monosplit_agents_md_execute_series_body))
   monosplit_fetch_repo_context_execute_series_b64 = base64encode(trimspace(local.monosplit_fetch_repo_context_execute_series_body))
+  monosplit_incremental_commit_execute_series_b64 = base64encode(trimspace(local.monosplit_incremental_commit_execute_series_body))
 
   # Bootstrap B64 lives in Ubuntu integration env (tofu apply). Spawn context carries a short
   # decode command (~300 chars) so LLM runners paste reliably — inline ~9KB B64 pastes corrupt.
@@ -282,6 +293,9 @@ locals {
   monosplit_synthesize_plan_execute_series_decode_command    = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_SYNTHESIZE_PLAN_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
   monosplit_agents_md_execute_series_decode_command          = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
   monosplit_fetch_repo_context_execute_series_decode_command = "export WORK_ROOT='/home/integration/.{{workflow_run_id}}' WORKFLOW_RUN_ID='{{workflow_run_id}}' && if [ -n \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2\" ]; then printf %s \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2\" | ${local.monosplit_b64_decode_suffix}; exit 0; fi && if [ -z \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64\" ]; then echo monosplit_pack_error=missing_b64_env env=MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2; exit 1; fi && printf %s \"$MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64\" | ${local.monosplit_b64_decode_suffix}"
+  monosplit_incremental_commit_decode_command_plan           = "${replace(replace(local.monosplit_incremental_commit_decode_prefix, "{{stage}}", "parallel-plan-prep"), "{{workflow_run_id}}", "{{workflow_run_id}}")}${local.monosplit_incremental_commit_decode_suffix}"
+  monosplit_incremental_commit_decode_command_review         = "${replace(replace(local.monosplit_incremental_commit_decode_prefix, "{{stage}}", "llm-plan-review"), "{{workflow_run_id}}", "{{workflow_run_id}}")}${local.monosplit_incremental_commit_decode_suffix}"
+  monosplit_incremental_commit_decode_command_enrichment     = "${replace(replace(local.monosplit_incremental_commit_decode_prefix, "{{stage}}", "llm-os-enrichment"), "{{workflow_run_id}}", "{{workflow_run_id}}")}${local.monosplit_incremental_commit_decode_suffix}"
 
   remote_runner_block = trimspace(<<-RUNNER
     **Optional remote runner:** when `create_remote_runner=true` and `force_remote_runner=true`, scan stages may use **`${local.shell_tool_prefix}_execute_series`** instead of Ubuntu. Script pack bytes sync via vault secret at tofu apply.
@@ -289,11 +303,11 @@ locals {
   )
 
   # Line-anchored sentinels only — substring match on prose like "No `blocked:clone_failed`" false-positives the gate.
-  scan_blocked_gate_match_regex         = "(?m)(?:^blocked:|^stage_summary:clone-and-boundary-scan=blocked|^clone_blocker=|^work_root_error=|^script_pack_error=|^monosplit_pack_error=|^missing_b64_env|runner_sha256_mismatch|INFRA_HANDOFF|^boundary_scan_json_attached=false|^boundary_scan_ok=false|^boundary_scan_ok: false)"
+  scan_blocked_gate_match_regex         = "(?m)(?:^blocked:|^stage_summary:clone-and-boundary-scan=blocked|^clone_blocker=|^work_root_error=|^script_pack_error=|^monosplit_pack_error=|^missing_b64_env|runner_sha256_mismatch|script pack version mismatch|^boundary_scan_json_attached=false|^boundary_scan_ok=false|^boundary_scan_ok: false)"
   plan_blocked_gate_match_regex         = "(?m)(?:^blocked:missing_plan_artifact|^blocked:plan_load_failed|^plan_loaded=false|^plan_loaded: false)"
   targeted_cce_skip_gate_match_regex    = "(?m)(?:^targeted_cce_skipped=true|^targeted_cce_status=skipped|cce_rescan_spec_absent=true)"
   parallel_prep_failed_gate_match_regex = "(?m)(?:^blocked:parallel_prep_failed|^parallel_prep_failed=true|synthesize_plan_ok=false|agents_md_scaffold_ok=false|repo_context_ok=false)"
-  plan_validation_ok_gate_match_regex   = "(?m)(?:^plan_ok=true|^deterministic_plan_produced=true)"
+  plan_validation_ok_gate_match_regex   = "(?m)(?:^plan_ok=true|^deterministic_plan_produced=true|deterministic_plan_produced=true)"
   plan_validation_fail_gate_match_regex = "(?m)(?:^plan_validation_failed=true|^plan_ok=false|repo_archetype=ambiguous)"
   os_enrichment_skip_gate_match_regex   = "(?m)(?:^enrichment_skip=true|enable_os_enrichment=false)"
 }
@@ -427,6 +441,8 @@ module "ubuntu_integration" {
       MONOSPLIT_AGENTS_MD_EXECUTE_SERIES_B64_V2          = local.monosplit_agents_md_execute_series_b64
       MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64    = local.monosplit_fetch_repo_context_execute_series_b64
       MONOSPLIT_FETCH_REPO_CONTEXT_EXECUTE_SERIES_B64_V2 = local.monosplit_fetch_repo_context_execute_series_b64
+      MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64    = local.monosplit_incremental_commit_execute_series_b64
+      MONOSPLIT_INCREMENTAL_COMMIT_EXECUTE_SERIES_B64_V2 = local.monosplit_incremental_commit_execute_series_b64
       MONOSPLIT_STAGE_RUNNER_SHA256                      = local.script_pack_runner_sha256
       MONOSPLIT_BOUNDARY_SCAN_SHA256                     = local.script_pack_boundary_scan_sha256
       CCE_RECIPES                                        = local.cce_recipes_csv
@@ -729,12 +745,12 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
       )
       spawn_contracts = local.spawn_contracts_clone_and_scan
       note            = <<-EOT
-        **Shared Ubuntu integration:** sidecars are **shared** across concurrent runs — agents cannot recycle pods, reprovision sidecars, or run `tofu apply`. All mutable state lives under `WORK_ROOT=/home/integration/.<workflow_run_id>/` (copy `workflow_run_id` from the stagerunner header). Never use `/home/integration/.monosplit-work` or other shared scratch paths.
+        **Shared Ubuntu integration:** many workflow runs share one Ubuntu integration container. All mutable state for this run lives under `WORK_ROOT=/home/integration/.<workflow_run_id>/` (copy `workflow_run_id` from the stagerunner header). Never use `/home/integration/.monosplit-work` or other shared scratch paths. Do not discuss integration container lifecycle or infrastructure operations in workflow output.
         **Coordinator only:** resolve `github_repo_url` from inputs; if empty → `note blocked:missing_github_repo_url` and return without spawn.
         Spawn **exactly one** `clone-and-boundary-scan-runner`. Architect MUST NOT call ${local.resolved_ubuntu_integration_name}_execute_* directly.
         After runner: `note()` boundary_scan_json_path, boundary_scan_json_attached, **boundary_scan_summary**, **cce_summary** (compact JSON from runner stdout), test_inventory_attached, test_confidence_score, runtime_deps_provisioned, baseline_test_status, baseline_test_run_evidence, script_pack_version=${local.script_pack_version}. Bootstrap installs JDK/Go/Node via apt (runners have root/sudo) — never defer baseline tests with "Java not available in runner env".
         If runner stdout contains `71WORK_ROOT`/`79WORK_ROOT` or `clone_blocker=wrong_shell_dollar_escape`: note the sentinel, re-spawn **once** with `SCAN_EXECUTE_SERIES_DECODE_COMMAND` pasted verbatim (single `$` only — never `$$`).
-        If runner stdout contains `script_pack_error=runner_sha256_mismatch` (or any `script_pack_error=*_sha256_mismatch`): `note blocked:runner_failed` and `stage_summary:clone-and-boundary-scan=blocked`. Give the user an **INFRA_HANDOFF** table: workflow_run_id, script_pack_version=${local.script_pack_version}, expected SHA-256 `${local.script_pack_runner_sha256}`, actual from runner stderr. Tell them to contact the **platform/infra team** that provisions the Ubuntu sidecar — **do not** tell them to recycle sidecars or re-apply tofu manually. After the sidecar is re-provisioned with matching env, they should **start a new workflow run** (new `workflow_run_id`).
+        If runner stdout contains `script_pack_error=runner_sha256_mismatch` (or any `script_pack_error=*_sha256_mismatch`): `note blocked:runner_failed` and `stage_summary:clone-and-boundary-scan=blocked`. Note a **script pack version mismatch** with workflow_run_id, script_pack_version=${local.script_pack_version}, expected SHA-256 `${local.script_pack_runner_sha256}`, actual from runner stderr. Do not instruct container restarts, integration recycle, or infrastructure changes — report the mismatch only.
         If runner fails for other reasons after one re-spawn → `note blocked:runner_failed` and **stop** — never substitute domain knowledge or invent scan results.
         Mirror keys to `$HOME/.<workflow_run_id>/notes.json`.
       EOT
@@ -787,12 +803,17 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         ["monorepo-split-orchestration-sop", "monorepo-clone-and-scan-sop"],
         try(var.workflow_skill_refs["monorepo-services-split-analysis::parallel-plan-prep"], []),
       )
-      spawn_contracts = local.spawn_contracts_parallel_plan_prep
-      note            = <<-EOT
+      spawn_contracts = concat(
+        local.spawn_contracts_parallel_plan_prep,
+        local.spawn_contracts_incremental_commit_plan,
+      )
+      note = <<-EOT
         **Coordinator only.** If workflow input `target_pr_repo` is set, `note(target_pr_repo=<url>)` before spawn.
         When enable_parallel_plan_prep=true: spawn **three** terminal runners in **one** parallel `create_agent` turn: `synthesize-split-plan-runner`, `agents-md-scaffold-runner`, `fetch-repo-context-runner`. Each runner: ONE execute_series — paste the matching *_EXECUTE_SERIES_DECODE_COMMAND verbatim. Forbidden on runners: execute_command, create_files, second execute_series.
         After all succeed: `note(plan_fan_in_ready=true)` and mirror stdout sentinels (`deterministic_plan_produced`, `agents_md_scaffold_ok`, `repo_context_ok`). If any runner fails: `note(blocked:parallel_prep_failed)` and stop — **no** architect execute_series recovery.
         When enable_parallel_plan_prep=false: spawn only `synthesize-split-plan-runner`.
+        Stage closing message MUST include a line-anchored sentinel `deterministic_plan_produced=true` when synthesize succeeded (so `plan-validation-gate` can skip LLM plan review).
+        When enable_incremental_guidance_pr=true (${var.enable_incremental_guidance_pr}): after prep succeeds, spawn **one** `incremental-guidance-commit-runner` — paste `INCREMENTAL_COMMIT_DECODE_PARALLEL_PLAN_PREP`. This opens a **draft** PR (if new) and commits `[stage:parallel-plan-prep]` docs. `note(guidance_pr_url)` from runner stdout.
       EOT
     },
     {
@@ -830,7 +851,12 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         ["library-module-split-recommendation-sop", "monorepo-split-orchestration-sop"],
         try(var.workflow_skill_refs["monorepo-services-split-analysis::llm-plan-review"], []),
       )
-      note = "Escalation only when `plan_validation_failed=true` or `repo_archetype=ambiguous`. Write artifacts to notes (`service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `agents_md_analyst_sections`) for the guidance runner to materialize. `note(llm_patch_applied=true)` and `note(plan_ok=true)` when catalog is ready. No shell."
+      spawn_contracts = local.spawn_contracts_incremental_commit_review
+      note            = <<-EOT
+        Escalation only when `plan_validation_failed=true` or `repo_archetype=ambiguous`. Write artifacts to notes (`service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `agents_md_analyst_sections`) and mirror the same keys into `workflow_notes_snapshot` (compact JSON) plus `$HOME/.<workflow_run_id>/notes.json`.
+        `note(llm_patch_applied=true)` and `note(plan_ok=true)` when catalog is ready. No shell.
+        When enable_incremental_guidance_pr=true (${var.enable_incremental_guidance_pr}): spawn **one** `incremental-guidance-commit-runner` — paste `INCREMENTAL_COMMIT_DECODE_LLM_PLAN_REVIEW`. Pushes `[stage:llm-plan-review]` commit to the **same** guidance PR. `note(guidance_pr_url)`.
+      EOT
     },
     {
       stage_id         = "os-enrichment-skip-gate"
@@ -855,7 +881,11 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         ["open-system-plan-enrichment-sop", "monorepo-split-orchestration-sop"],
         try(var.workflow_skill_refs["monorepo-services-split-analysis::llm-os-enrichment"], []),
       )
-      note = "Advisory enrichment only: `plan-enrichment.yaml` with audience_docs and service_notes. Cannot change depends_on or module membership. `note(enrichment_ready=true)` when done. Optional `note(cce_rescan_spec)` for targeted CCE. No shell."
+      spawn_contracts = local.spawn_contracts_incremental_commit_enrichment
+      note            = <<-EOT
+        Advisory enrichment only: `plan_enrichment_yaml` with audience_docs and service_notes (also mirror into `workflow_notes_snapshot`). Cannot change depends_on or module membership. `note(enrichment_ready=true)` when done. Optional `note(cce_rescan_spec)` for targeted CCE. No shell.
+        When enable_incremental_guidance_pr=true (${var.enable_incremental_guidance_pr}): spawn **one** `incremental-guidance-commit-runner` — paste `INCREMENTAL_COMMIT_DECODE_LLM_OS_ENRICHMENT`. Pushes `[stage:llm-os-enrichment]` commit to the same PR.
+      EOT
     },
     {
       stage_id         = "targeted-cce-skip-gate"
@@ -896,7 +926,11 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         try(var.workflow_skill_refs["monorepo-services-split-analysis::open-guidance-pr"], []),
       )
       spawn_contracts = local.spawn_contracts_guidance_pr
-      note            = "Spawn guidance-pr-runner only — ONE execute_series. **Forbidden:** architect execute_series, create_files, manual git push, or recovery runners. After runner: note guidance_pr_url and agents_md_produced=true. PR includes docs/architecture/ audience docs + AGENTS.md. PR-only — never push ${trimspace(var.default_branch)}."
+      note            = <<-EOT
+        Before spawn: `read_notes` analyst blobs; `note(workflow_notes_snapshot=<JSON>)` with `service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `plan_enrichment_yaml`, `llm_patch_applied`, `plan_ok` when present; mirror the same keys to `$HOME/.<workflow_run_id>/notes.json`.
+        Spawn guidance-pr-runner only — ONE execute_series. **Forbidden:** architect execute_series, create_files, manual git push, or recovery runners. Runner syncs notes, materializes analyst YAML, merges enrichment, then pushes `[stage:final]` commit. If incremental PR already exists, updates PR title/body (removes draft); otherwise opens PR.
+        After runner: note guidance_pr_url and agents_md_produced=true. PR includes docs/architecture/ audience docs + AGENTS.md + WORKFLOW_PROGRESS.md. PR-only — never push ${trimspace(var.default_branch)}.
+      EOT
     },
     {
       stage_id         = "final-evidence-gate"
@@ -907,7 +941,7 @@ resource "sg_workflow" "monorepo_services_split_analysis" {
         ["monorepo-split-orchestration-sop"],
         try(var.workflow_skill_refs["monorepo-services-split-analysis::final-evidence-gate"], []),
       )
-      note = "submit_evidence for monorepo-split-analysis-evidence checklist. If blocked upstream, note `stage_summary:final-evidence-gate=blocked` only — never instruct operator to recycle sidecars, re-apply tofu, or abandon the current workflow_run_id."
+      note = "submit_evidence for monorepo-split-analysis-evidence checklist. If blocked upstream, note `stage_summary:final-evidence-gate=blocked` only — do not instruct integration container lifecycle or infrastructure operations."
     },
   ]
 }

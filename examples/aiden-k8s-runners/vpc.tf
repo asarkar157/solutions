@@ -3,7 +3,7 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix  = "${var.project_name}-${var.environment}"
   cluster_name = local.name_prefix
 
   azs = slice(data.aws_availability_zones.available.names, 0, var.availability_zone_count)
@@ -41,9 +41,9 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(local.common_tags, {
-    Name                                        = "${local.name_prefix}-public-${local.azs[count.index]}"
+    Name                                          = "${local.name_prefix}-public-${local.azs[count.index]}"
     "kubernetes.io/cluster/${local.cluster_name}" = "shared"
-    "kubernetes.io/role/elb"                    = "1"
+    "kubernetes.io/role/elb"                      = "1"
   })
 }
 
@@ -55,9 +55,9 @@ resource "aws_subnet" "private" {
   availability_zone = local.azs[count.index]
 
   tags = merge(local.common_tags, {
-    Name                                        = "${local.name_prefix}-private-${local.azs[count.index]}"
+    Name                                          = "${local.name_prefix}-private-${local.azs[count.index]}"
     "kubernetes.io/cluster/${local.cluster_name}" = "shared"
-    "kubernetes.io/role/internal-elb"           = "1"
+    "kubernetes.io/role/internal-elb"             = "1"
   })
 }
 

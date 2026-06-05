@@ -1,8 +1,12 @@
 Skill: **Open guidance PR** — docs under `docs/architecture/` on branch `guild/split-analysis-<workflow_run_id>`.
 
+## Before spawn
+
+`read_notes` for analyst artifacts. `note(workflow_notes_snapshot=<JSON>)` including `service_catalog_yaml`, `migration_phases_md`, `bounded_context_map_mermaid`, `plan_enrichment_yaml` when present. Mirror the same keys to `$HOME/.<workflow_run_id>/notes.json`.
+
 ## Runner
 
-Spawn `guidance-pr-runner` — ONE `execute_series` with `guidance-pr` command.
+Spawn `guidance-pr-runner` — ONE `execute_series` with `guidance-pr` command (syncs notes, materializes analyst YAML, merges enrichment).
 
 ## PR deliverables
 
@@ -23,6 +27,19 @@ docs/architecture/
 ```
 
 `AGENTS.md` is scaffolded from `boundary_scan.json` (setup, test commands, conventions) plus optional analyst sections from `agents_md_analyst_sections` in notes.
+
+## Incremental PR (default)
+
+When `enable_incremental_guidance_pr=true`, the **same** PR is updated before this stage:
+
+| When | Commit message |
+|------|----------------|
+| After parallel-plan-prep | `docs(monorepo-split): [stage:parallel-plan-prep] …` (opens **draft** PR) |
+| After llm-plan-review | `… [stage:llm-plan-review] …` |
+| After llm-os-enrichment | `… [stage:llm-os-enrichment] …` |
+| This stage (final) | `… [stage:final] …` — PR title/body refreshed |
+
+Track progress in `docs/architecture/WORKFLOW_PROGRESS.md` on the branch.
 
 ## Success
 

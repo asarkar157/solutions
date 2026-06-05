@@ -165,8 +165,8 @@ variable "aiden_runner_tokens" {
     Obtain each token from StackGen → Settings → Remote Runners → Create New Runner.
     Example: { "runner-prod" = "sg_aios_xxx...", "runner-dev" = "sg_aios_yyy..." }
   EOT
-  type      = map(string)
-  sensitive = true
+  type        = map(string)
+  sensitive   = true
 }
 
 variable "aiden_mothership_url" {
@@ -254,8 +254,8 @@ variable "eks_access_trusted_principal_arns" {
     Use full IAM role ARNs (arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME) — sts:assumed-role session ARNs are not valid in trust policies.
     Example: ["arn:aws:iam::123456789012:role/my-admin-role", "arn:aws:iam::123456789012:user/alice"]
   EOT
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
 }
 
 variable "eks_cluster_access_policy_arn" {

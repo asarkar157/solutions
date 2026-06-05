@@ -28,8 +28,8 @@ if ! grep -q 'MONOSPLIT_SCRIPT_PACK_TARBALL_B64' main.tf; then
   echo "FAIL: ubuntu integration env_vars must set MONOSPLIT_SCRIPT_PACK_TARBALL_B64" >&2
   exit 1
 fi
-if grep -q 'recycle_ubuntu_sidecar' templates/monosplit-install-script-pack.sh.tftpl 2>/dev/null; then
-  echo "FAIL: install template must not tell operators to recycle sidecars" >&2
+if grep -qE 'recycle_ubuntu|recycle.*sidecar' templates/monosplit-install-script-pack.sh.tftpl 2>/dev/null; then
+  echo "FAIL: install template must not tell operators to recycle integration containers" >&2
   exit 1
 fi
 

@@ -66,24 +66,25 @@ See [`examples/scenarios/monorepo-services-split/`](../../examples/scenarios/mon
 
 ## Script pack
 
-Deterministic analysis lives in `scripts/stage-runner.sh`, `boundary-scan.sh`, `build-coupling-matrix.sh`, `synthesize-split-plan.sh`, `monorepo-cce-scan.sh`, `runtime-deps-provision.sh`, `agents-md-scaffold.sh`, `clone-and-pr.sh`, and `scaffold-services.sh`. Version **20260604.4** — bootstrap B64 and script-pack tarball are baked into the Ubuntu **sidecar env** at `tofu apply`. After scan, **parallel-plan-prep** runs `synthesize-split-plan.sh` (real Gradle/Go edges → `coupling-matrix.json` + audience-tiered `docs/architecture/*`), `agents-md-scaffold.sh`, and `fetch-repo-context.sh`. Optional **`target_pr_repo`** clones/pushes a fork while `github_repo_url` stays the upstream reference. **`enable_os_enrichment`** (default true) adds advisory LLM prose only — never `depends_on` edits. Clone-and-scan runs **[CCE](https://github.com/appcd-dev/cce)** via [`aios-cce-scripts`](../aios-cce-scripts/). See **[docs/cce-powers.md](docs/cce-powers.md)**.
+Deterministic analysis lives in `scripts/stage-runner.sh`, `boundary-scan.sh`, `build-coupling-matrix.sh`, `synthesize-split-plan.sh`, `monorepo-cce-scan.sh`, `runtime-deps-provision.sh`, `agents-md-scaffold.sh`, `clone-and-pr.sh`, and `scaffold-services.sh`. Version **20260604.7** — bootstrap B64 and script-pack tarball are set on the Ubuntu integration when you apply this module. After scan, **parallel-plan-prep** runs `synthesize-split-plan.sh` (real Gradle/Go edges → `coupling-matrix.json` + audience-tiered `docs/architecture/*`), `agents-md-scaffold.sh`, and `fetch-repo-context.sh`. Optional **`target_pr_repo`** clones/pushes a fork while `github_repo_url` stays the upstream reference. **`enable_os_enrichment`** (default true) adds advisory LLM prose only — never `depends_on` edits. Clone-and-scan runs **[CCE](https://github.com/appcd-dev/cce)** via [`aios-cce-scripts`](../aios-cce-scripts/). See **[docs/cce-powers.md](docs/cce-powers.md)**.
 
 Clone-and-scan **provisions language runtimes** (OpenJDK, Go, Node via apt — runners have root/sudo) and runs baseline tests from `test_inventory` before analyst stages. Never defer Java with "not available in runner env".
 
-### Sidecar env drift (`runner_sha256_mismatch`)
+### Script pack version mismatch (`runner_sha256_mismatch`)
 
-If a run fails with `script_pack_error=runner_sha256_mismatch`, the **Ubuntu sidecar env** (`MONOSPLIT_SCRIPT_PACK_TARBALL_B64` / bootstrap B64) does not match this module’s `script_pack_version` at apply time. That is **not** fixed inside a running workflow.
+If a run fails with `script_pack_error=runner_sha256_mismatch`, the Ubuntu integration’s `MONOSPLIT_SCRIPT_PACK_TARBALL_B64` / bootstrap B64 does not match this module’s `script_pack_version`. That cannot be fixed inside a running workflow.
 
-**Workflow agents must not** tell end users to recycle sidecars or re-apply tofu manually. Escalate to the **platform/infra team** that provisions the Ubuntu integration with:
+**Operators (Terraform):** re-apply this module so the Ubuntu integration picks up the current script pack. Compare:
 
 | Item | Value |
 |------|--------|
 | `workflow_run_id` | from stagerunner header |
-| `script_pack_version` | from spawn context (e.g. `20260602.10`) |
+| `script_pack_version` | from spawn context (e.g. `20260604.7`) |
+| `enable_incremental_guidance_pr` | default `true` — one PR, commits per stage (`[stage:parallel-plan-prep]`, review, enrichment, `final`) |
 | Expected SHA-256 | `stage_runner_script_sha256` in spawn context |
 | Actual SHA-256 | from runner stderr (`actual=…`) |
 
-After the sidecar is re-provisioned with matching env, start a **new** `monorepo-services-split-analysis` workflow run (new `workflow_run_id`) for the target `github_repo_url`.
+**Workflow agents** report the mismatch only — they do not describe integration container lifecycle or Guild infrastructure. After you apply the module, start a new analysis run for the target `github_repo_url`.
 
 Guidance PRs add repo-root **[AGENTS.md](https://agents.md/)** (setup, tests, conventions from scan + analyst notes) alongside `docs/architecture/`.
 

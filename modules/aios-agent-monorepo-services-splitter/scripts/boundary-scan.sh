@@ -3,7 +3,7 @@
 # Writes $WORK_ROOT/boundary_scan.json and mirrors key paths to notes.json.
 set -euo pipefail
 
-SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260604.5}"
+SCRIPT_PACK_VERSION="${SCRIPT_PACK_VERSION:-20260604.7}"
 
 mirror_note() {
   local work_root="${1:?WORK_ROOT}"
@@ -650,11 +650,11 @@ cmd_scan() {
   fi
   mirror_note "$work_root" "cce_summary" "$cce_summary_compact"
 
-  # Compact handoff for analyst stages (session notes / read_notes — not sidecar paths).
+  # Compact handoff for analyst stages (session notes / read_notes — not integration host paths).
   local summary_compact
   local repo_archetype primary_ecosystem hub_module
   if [ -f "${work_root}/scripts/detect-repo-archetype.sh" ]; then
-    repo_archetype="$(bash "${work_root}/scripts/detect-repo-archetype.sh" detect "$out" 2>/dev/null | sed -n 's/^repo_archetype=//p' | head -1)"
+    repo_archetype="$(bash "${work_root}/scripts/detect-repo-archetype.sh" detect "$out" 2>/dev/null | sed -n 's/^repo_archetype=//p' | head -1 || true)"
   else
     repo_archetype="mixed"
   fi

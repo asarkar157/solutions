@@ -10,7 +10,7 @@ Ubuntu execute_series shell: use single $ for variables ($WORK_ROOT, $WORKFLOW_R
 EOT
 
   ubuntu_shared_integration_rule = <<-EOT
-SHARED_UBUNTU: The ${local.resolved_ubuntu_integration_name} sidecar is shared by many concurrent workflow runs. Agents have shell only — no power to delete pods, recycle sidecars, or tofu apply. Never tell the operator to do those steps. Per-run isolation: WORK_ROOT=/home/integration/.{{workflow_run_id}}/ (repo, scripts, notes, scans). Decode commands export WORK_ROOT and WORKFLOW_RUN_ID before bootstrap — paste *_EXECUTE_SERIES_DECODE_COMMAND verbatim. Never use /home/integration/.monosplit-work or other shared scratch.
+SHARED_UBUNTU: The ${local.resolved_ubuntu_integration_name} Ubuntu integration is shared by concurrent workflow runs. Per-run isolation only: WORK_ROOT=/home/integration/.{{workflow_run_id}}/ (repo, scripts, notes, scans). Do not discuss integration container lifecycle, restarts, or infrastructure operations — that is outside this workflow. Paste *_EXECUTE_SERIES_DECODE_COMMAND verbatim. Never use /home/integration/.monosplit-work or other shared scratch.
 EOT
 
   remote_runner_shell_rule = local.use_remote_runner_shell ? trimspace(<<-EOT
@@ -31,16 +31,16 @@ cce_critical_path_max_dirs: ${var.cce_critical_path_max_dirs}
 cce_full_tree_max_files: ${var.cce_full_tree_max_files}
 ${local.ubuntu_shared_integration_rule}
 ${local.remote_runner_shell_rule}
-MONOSPLIT_PACK: Bootstrap B64 + script pack tarball are in sidecar env (set at tofu apply). Spawn context has a short *_EXECUTE_SERIES_DECODE_COMMAND only — paste verbatim; never inline B64 in tool JSON. Runners MUST NOT create_files embed scripts. No runtime clone of any tooling repo — only the user's github_repo_url is cloned for analysis.
+MONOSPLIT_PACK: Bootstrap B64 + script pack tarball are on the Ubuntu integration environment (provisioned with this module). Spawn context has a short *_EXECUTE_SERIES_DECODE_COMMAND only — paste verbatim; never inline B64 in tool JSON. Runners MUST NOT create_files embed scripts. No runtime clone of any tooling repo — only the user's github_repo_url is cloned for analysis.
 ${local.ubuntu_execute_series_shell_dollar_rule}
 HALGUARD: workflow metadata halguard_skip_subagent_task_types=terminal_calling skips PreCheck on task_type=terminal_calling (short decode goals). terminal_calling_halguard_mode=paste_only_minimal_planner — copy decode command verbatim, never load_skill script pack on embed stages. PostCheck still runs on runner stdout.
-EMBED_SIZE: decode command is ~300 chars; bootstrap + script pack tarball are sidecar env (tofu apply). After read_notes, prepend exports on the same line: export GITHUB_REPO_URL='<url>' DEFAULT_BRANCH='<branch>' then paste decode command.
+EMBED_SIZE: decode command is ~300 chars; bootstrap + script pack tarball are read from Ubuntu integration env vars. After read_notes, prepend exports on the same line: export GITHUB_REPO_URL='<url>' DEFAULT_BRANCH='<branch>' then paste decode command.
 EOT
 
   monorepo_spawn_context_scan = <<-EOT
 ${local.monorepo_spawn_context_base}
 
-SCAN_RUNNER_RULE: notes_index then read_notes for github_repo_url and default_branch. Tool order: ONE execute_series (working_dir=/, timeout_seconds=${local.subagent_budgets.boundary_scan_timeout_seconds}): prepend export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<from read_notes or main>' then paste SCAN_EXECUTE_SERIES_DECODE_COMMAND exactly (same shell line). Bootstrap prefers MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2 (falls back to V1) plus MONOSPLIT_SCRIPT_PACK_TARBALL_B64 from sidecar env — never git-clone tooling repos. CCE Tier-1: cce plan + cce run -recipes ${local.cce_recipes_csv} on critical-path dirs; Tier-1 lens add-on: cce-scan.sh for ${local.cce_lens_use_cases_csv} (releases.stackgen.com lenses). See boundary_scan_summary.critical_path_dirs. On script_pack_error=runner_sha256_mismatch: note blocked:runner_failed and stage_summary:clone-and-boundary-scan=blocked; include INFRA_HANDOFF table (workflow_run_id, script_pack_version=${local.script_pack_version}, expected stage_runner_script_sha256=${local.script_pack_runner_sha256}, actual from stderr). Tell user to contact platform/infra team for Ubuntu sidecar reprovisioning — do NOT instruct recycle sidecars or manual tofu apply. After sidecar is fixed, user starts a NEW workflow run (new workflow_run_id). On 71WORK_ROOT/79WORK_ROOT: clone_blocker=wrong_shell_dollar_escape. On monosplit_pack_error=missing_b64_env or missing_script_pack_tarball_b64: sidecar env missing or stale. On blocked:missing_github_repo_url: prepend exports from read_notes. Success stdout: boundary_scan_json_attached or stage_summary:clone-and-boundary-scan=ok. Forbidden: execute_command, create_files, second execute_series. After success: note() boundary_scan_json_path, boundary_scan_json_attached, boundary_scan_summary, cce_summary, test_inventory_attached, runtime_deps_provisioned, baseline_test_status, script_pack_version=${local.script_pack_version}.
+SCAN_RUNNER_RULE: notes_index then read_notes for github_repo_url and default_branch. Tool order: ONE execute_series (working_dir=/, timeout_seconds=${local.subagent_budgets.boundary_scan_timeout_seconds}): prepend export GITHUB_REPO_URL='<from read_notes>' DEFAULT_BRANCH='<from read_notes or main>' then paste SCAN_EXECUTE_SERIES_DECODE_COMMAND exactly (same shell line). Bootstrap prefers MONOSPLIT_SCAN_EXECUTE_SERIES_B64_V2 (falls back to V1) plus MONOSPLIT_SCRIPT_PACK_TARBALL_B64 from Ubuntu integration env — never git-clone tooling repos. CCE Tier-1: cce plan + cce run -recipes ${local.cce_recipes_csv} on critical-path dirs; Tier-1 lens add-on: cce-scan.sh for ${local.cce_lens_use_cases_csv} (releases.stackgen.com lenses). See boundary_scan_summary.critical_path_dirs. On script_pack_error=runner_sha256_mismatch: note blocked:runner_failed and stage_summary:clone-and-boundary-scan=blocked; include HANDOFF table (workflow_run_id, script_pack_version=${local.script_pack_version}, expected stage_runner_script_sha256=${local.script_pack_runner_sha256}, actual from stderr). Do not diagnose or fix integration hosting — only report the version mismatch. On 71WORK_ROOT/79WORK_ROOT: clone_blocker=wrong_shell_dollar_escape. On monosplit_pack_error=missing_b64_env or missing_script_pack_tarball_b64: integration env vars missing. On blocked:missing_github_repo_url: prepend exports from read_notes. Success stdout: boundary_scan_json_attached or stage_summary:clone-and-boundary-scan=ok. Forbidden: execute_command, create_files, second execute_series. After success: note() boundary_scan_json_path, boundary_scan_json_attached, boundary_scan_summary, cce_summary, test_inventory_attached, runtime_deps_provisioned, baseline_test_status, script_pack_version=${local.script_pack_version}.
 
 SCAN_EXECUTE_SERIES_DECODE_COMMAND:
 ${local.monosplit_scan_execute_series_decode_command}
@@ -63,6 +63,75 @@ GUIDANCE_PR_RUNNER_RULE: notes_index then read_notes if repo_clone_path or defau
 GUIDANCE_PR_EXECUTE_SERIES_DECODE_COMMAND:
 ${local.monosplit_guidance_pr_execute_series_decode_command}
 EOT
+
+  monorepo_spawn_context_incremental_commit = <<-EOT
+${local.monorepo_spawn_context_base}
+
+INCREMENTAL_COMMIT_RUNNER_RULE: notes_index then read_notes; mirror workflow_notes_snapshot to notes.json when analyst blobs exist. ONE execute_series: paste the stage-specific INCREMENTAL_COMMIT_DECODE_COMMAND from this context (sets MONOSPLIT_INCREMENTAL_STAGE). Commits to guild/split-analysis-<workflow_run_id> on the same PR. After parallel-plan-prep: opens a **draft** PR if none exists. Forbidden: execute_command, create_files, second execute_series.
+
+INCREMENTAL_COMMIT_DECODE_PARALLEL_PLAN_PREP:
+${local.monosplit_incremental_commit_decode_command_plan}
+
+INCREMENTAL_COMMIT_DECODE_LLM_PLAN_REVIEW:
+${local.monosplit_incremental_commit_decode_command_review}
+
+INCREMENTAL_COMMIT_DECODE_LLM_OS_ENRICHMENT:
+${local.monosplit_incremental_commit_decode_command_enrichment}
+EOT
+
+  spawn_contracts_incremental_commit_plan = var.enable_incremental_guidance_pr ? [
+    {
+      sub_agent_name = "incremental-guidance-commit-runner"
+      task_type      = var.subagent_task_type
+      tool_names = [
+        local.monosplit_shell_execute_series_tool,
+        "note",
+        "notes_index",
+        "read_notes",
+      ]
+      max_llm_calls       = local.subagent_budgets.incremental_commit_max_llm_calls
+      max_tool_iterations = local.subagent_budgets.incremental_commit_max_tool_iterations
+      timeout_seconds     = local.subagent_budgets.incremental_commit_timeout_seconds
+      goal                = "ONE execute_series: paste INCREMENTAL_COMMIT_DECODE_PARALLEL_PLAN_PREP exactly. After series: note() guidance_pr_url guidance_pr_last_commit_stage=parallel-plan-prep from stdout."
+      context             = local.monorepo_spawn_context_incremental_commit
+    },
+  ] : []
+
+  spawn_contracts_incremental_commit_review = var.enable_incremental_guidance_pr ? [
+    {
+      sub_agent_name = "incremental-guidance-commit-runner"
+      task_type      = var.subagent_task_type
+      tool_names = [
+        local.monosplit_shell_execute_series_tool,
+        "note",
+        "notes_index",
+        "read_notes",
+      ]
+      max_llm_calls       = local.subagent_budgets.incremental_commit_max_llm_calls
+      max_tool_iterations = local.subagent_budgets.incremental_commit_max_tool_iterations
+      timeout_seconds     = local.subagent_budgets.incremental_commit_timeout_seconds
+      goal                = "ONE execute_series: paste INCREMENTAL_COMMIT_DECODE_LLM_PLAN_REVIEW exactly. Requires workflow_notes_snapshot with analyst YAML. After series: note() guidance_pr_url."
+      context             = local.monorepo_spawn_context_incremental_commit
+    },
+  ] : []
+
+  spawn_contracts_incremental_commit_enrichment = var.enable_incremental_guidance_pr ? [
+    {
+      sub_agent_name = "incremental-guidance-commit-runner"
+      task_type      = var.subagent_task_type
+      tool_names = [
+        local.monosplit_shell_execute_series_tool,
+        "note",
+        "notes_index",
+        "read_notes",
+      ]
+      max_llm_calls       = local.subagent_budgets.incremental_commit_max_llm_calls
+      max_tool_iterations = local.subagent_budgets.incremental_commit_max_tool_iterations
+      timeout_seconds     = local.subagent_budgets.incremental_commit_timeout_seconds
+      goal                = "ONE execute_series: paste INCREMENTAL_COMMIT_DECODE_LLM_OS_ENRICHMENT exactly. After series: note() guidance_pr_url."
+      context             = local.monorepo_spawn_context_incremental_commit
+    },
+  ] : []
 
   monorepo_spawn_context_scaffold = <<-EOT
 ${local.monorepo_spawn_context_base}

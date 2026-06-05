@@ -227,8 +227,9 @@ write_service_catalog() {
   jq -r --arg arch "$archetype" --arg hub "$hub" --argjson max "$max_groups" '
     def kind_for:
       if $arch == "service_monorepo" then "runnable_service" else "library_module" end;
+    def prod_dep($d): $d | test("-(test|bom|all)$|_test$"; "i") | not;
     .modules | sort_by(-.inbound_edges) | .[0:$max] | .[] |
-    "- name: \(.path)\n  kind: \(kind_for)\n  modules: [\(.path)]\n  depends_on: \(.depends_on // [])\n  never_extract: \(if .path == $hub or .inbound_edges > 5 then true else false end)\n  summary_plain: \"Group centered on \(.path) (inbound_edges=\(.inbound_edges)).\"\n  developer_notes: \"Run scoped tests for \(.path) before API changes.\"\n  tech_lead_notes: \"Schedule after hub stabilization when never_extract is true.\"\n  architect_notes: \"See coupling-matrix.json for edge evidence.\""
+    "- name: \(.path)\n  kind: \(kind_for)\n  modules: [\(.path)]\n  depends_on: \((.depends_on // []) | map(select(prod_dep(.))))\n  never_extract: \(if .path == $hub or (.inbound_edges > 5 and (.path | test("-(test|bom|all)$"; "i") | not)) then true else false end)\n  summary_plain: \"Group centered on \(.path) (inbound_edges=\(.inbound_edges)).\"\n  developer_notes: \"Run scoped tests for \(.path) before API changes.\"\n  tech_lead_notes: \"Schedule after hub stabilization when never_extract is true.\"\n  architect_notes: \"See coupling-matrix.json for edge evidence.\""
   ' "$matrix_path" >>"${arch_dir}/service-catalog.yaml"
 }
 
@@ -241,8 +242,16 @@ write_testing_strategy() {
 Per-ecosystem commands detected during boundary scan. Run these before and after each extraction phase.
 EOF
   jq -r '
-    .test_inventory // {} | to_entries[] |
-    "- **\(.key)**: recommended `\(.value.recommended_command // "see AGENTS.md")` (confidence: \(.value.confidence // "n/a"))"
+    (.languages // []) as $langs |
+    .test_inventory // {} | to_entries[] | . as $e |
+    select(
+      ($e.value.confidence // "n/a") != "n/a"
+      and (
+        ($langs | length) == 0
+        or ($langs | index($e.key))
+      )
+    ) |
+    "- **\($e.key)**: recommended `\($e.value.recommended_command // "see AGENTS.md")` (confidence: \($e.value.confidence // "n/a"))"
   ' "$scan_path" 2>/dev/null >>"${arch_dir}/testing-strategy.md" || true
   if jq -e '(.packages_without_tests // []) | length > 0' "$scan_path" >/dev/null 2>&1; then
     echo "" >>"${arch_dir}/testing-strategy.md"
@@ -267,12 +276,19 @@ cmd_synthesize() {
     bash "${work_root}/scripts/build-coupling-matrix.sh" build "$scan" "$matrix"
   fi
 
-  local archetype
+  local archetype detected
   archetype="$(jq -r '.repo_archetype // "mixed"' "$scan")"
-  if [ -f "${work_root}/scripts/detect-repo-archetype.sh" ] && [ "$archetype" = "null" ] || [ -z "$archetype" ]; then
-    archetype="$(bash "${work_root}/scripts/detect-repo-archetype.sh" detect "$scan" 2>/dev/null | sed -n 's/^repo_archetype=//p' | head -1)"
+  if [ -f "${work_root}/scripts/detect-repo-archetype.sh" ]; then
+    detected="$(bash "${work_root}/scripts/detect-repo-archetype.sh" detect "$scan" 2>/dev/null | sed -n 's/^repo_archetype=//p' | head -1)" || detected=""
+    if [ -z "$archetype" ] || [ "$archetype" = "null" ] || [ "$archetype" = "mixed" ]; then
+      if [ -n "$detected" ] && [ "$detected" != "ambiguous" ]; then
+        archetype="$detected"
+      fi
+    fi
   fi
-  [ -n "$archetype" ] && [ "$archetype" != "null" ] || archetype="mixed"
+  if [ -z "$archetype" ] || [ "$archetype" = "null" ]; then
+    archetype="mixed"
+  fi
 
   local mod_count hub test_cmd
   mod_count="$(jq -r '.modules | length' "$scan")"

@@ -29,6 +29,7 @@ cmd_materialize() {
   materialize_key "bounded_context_mermaid" "${work_root}/bounded-context-map.mermaid"
   materialize_key "bounded_context_map_mermaid" "${work_root}/bounded-context-map.mermaid"
   materialize_key "agents_md_analyst_sections" "${work_root}/agents-md-analyst-sections.md"
+  materialize_key "plan_enrichment_yaml" "${work_root}/plan-enrichment.yaml"
 
   if [ "$wrote" -eq 0 ]; then
     echo "analyst_artifacts_materialized=false"

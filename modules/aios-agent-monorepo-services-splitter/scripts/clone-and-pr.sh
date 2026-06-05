@@ -29,7 +29,7 @@ bootstrap_gh() {
 
 git_clone_url() {
   local url="${1:?REPO_CLONE_URL}"
-  # Plain URL only: bootstrap_gh configures the credential helper (shared sidecar — no PAT in .git/config).
+  # Plain URL only: bootstrap_gh configures the credential helper (shared Ubuntu integration — no PAT in .git/config).
   printf '%s' "$url"
 }
 
@@ -88,10 +88,23 @@ cmd_clone() {
 cmd_create_branch() {
   local work_root="${1:?WORK_ROOT}"
   local branch_name="${2:?BRANCH_NAME}"
+  cmd_ensure_branch "$work_root" "$branch_name"
+}
+
+# ensure_branch checks out an existing branch or creates it (idempotent for incremental PR commits).
+cmd_ensure_branch() {
+  local work_root="${1:?WORK_ROOT}"
+  local branch_name="${2:?BRANCH_NAME}"
   local repo_dir="$work_root/repo"
 
   cd "$repo_dir"
-  git checkout -b "$branch_name"
+  if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
+    git checkout "$branch_name"
+    echo "branch_action=checked_out_existing"
+  else
+    git checkout -b "$branch_name"
+    echo "branch_action=created_new"
+  fi
   mirror_note "$work_root" "working_branch" "$branch_name"
   echo "working_branch=${branch_name}"
 }
@@ -122,6 +135,7 @@ cmd_open_pr() {
   local title="${2:?PR_TITLE}"
   local body="${3:-Automated monorepo split guidance from Guild.}"
   local default_branch="${4:-main}"
+  local draft_mode="${5:-}"
   local repo_dir="$work_root/repo"
   local branch
   branch="$(jq -r '.working_branch // empty' "$work_root/notes.json" 2>/dev/null || true)"
@@ -135,7 +149,20 @@ cmd_open_pr() {
 
   cd "$repo_dir"
   local pr_url
-  pr_url="$(gh pr create --base "$default_branch" --head "$branch" --title "$title" --body "$body" 2>"$work_root/pr.err" || true)"
+  pr_url="$(gh pr view "$branch" --json url -q .url 2>/dev/null || true)"
+  if [ -n "$pr_url" ]; then
+    mirror_note "$work_root" "pr_url" "$pr_url"
+    mirror_note "$work_root" "guidance_pr_url" "$pr_url"
+    echo "pr_url=${pr_url}"
+    echo "pr_already_exists=true"
+    return 0
+  fi
+
+  local draft_args=()
+  if [ "$draft_mode" = "draft" ]; then
+    draft_args=(--draft)
+  fi
+  pr_url="$(gh pr create --base "$default_branch" --head "$branch" --title "$title" --body "$body" "${draft_args[@]}" 2>"$work_root/pr.err" || true)"
   if [ -z "$pr_url" ]; then
     mirror_note "$work_root" "pr_blocker" "gh_pr_create_failed"
     cat "$work_root/pr.err" >&2 || true
@@ -143,7 +170,52 @@ cmd_open_pr() {
     exit 1
   fi
   mirror_note "$work_root" "pr_url" "$pr_url"
+  mirror_note "$work_root" "guidance_pr_url" "$pr_url"
   echo "pr_url=${pr_url}"
+}
+
+cmd_update_pr_title() {
+  local work_root="${1:?WORK_ROOT}"
+  local title="${2:?TITLE}"
+  local repo_dir="$work_root/repo"
+  local branch
+  branch="$(jq -r '.working_branch // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  [ -n "$branch" ] || branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD)"
+
+  bootstrap_gh || {
+    echo "pr_update_blocker=gh_auth_missing"
+    exit 1
+  }
+
+  cd "$repo_dir"
+  gh pr edit "$branch" --title "$title" 2>"$work_root/pr.err" || {
+    cat "$work_root/pr.err" >&2 || true
+    echo "pr_update_blocker=gh_pr_edit_title_failed"
+    exit 1
+  }
+  echo "pr_title_updated=true"
+}
+
+cmd_update_pr_body() {
+  local work_root="${1:?WORK_ROOT}"
+  local body="${2:?BODY}"
+  local repo_dir="$work_root/repo"
+  local branch
+  branch="$(jq -r '.working_branch // empty' "$work_root/notes.json" 2>/dev/null || true)"
+  [ -n "$branch" ] || branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD)"
+
+  bootstrap_gh || {
+    echo "pr_update_blocker=gh_auth_missing"
+    exit 1
+  }
+
+  cd "$repo_dir"
+  gh pr edit "$branch" --body "$body" 2>"$work_root/pr.err" || {
+    cat "$work_root/pr.err" >&2 || true
+    echo "pr_update_blocker=gh_pr_edit_failed"
+    exit 1
+  }
+  echo "pr_body_updated=true"
 }
 
 cmd_render_pr_body() {
@@ -199,10 +271,13 @@ case "${1:-}" in
   clone) shift; cmd_clone "$@" ;;
   create-branch) shift; cmd_create_branch "$@" ;;
   commit-and-push) shift; cmd_commit_and_push "$@" ;;
+  ensure-branch) shift; cmd_ensure_branch "$@" ;;
   open-pr) shift; cmd_open_pr "$@" ;;
+  update-pr-body) shift; cmd_update_pr_body "$@" ;;
+  update-pr-title) shift; cmd_update_pr_title "$@" ;;
   render-pr-body) shift; cmd_render_pr_body "$@" ;;
   *)
-    echo "usage: clone-and-pr.sh clone|create-branch|commit-and-push|open-pr ..." >&2
+    echo "usage: clone-and-pr.sh clone|create-branch|ensure-branch|commit-and-push|open-pr|update-pr-body ..." >&2
     exit 1
     ;;
 esac

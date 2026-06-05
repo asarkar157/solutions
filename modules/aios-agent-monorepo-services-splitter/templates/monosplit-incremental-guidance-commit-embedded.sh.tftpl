@@ -1,0 +1,35 @@
+set -euo pipefail
+export HOME=${ubuntu_integration_home}
+export MONOREPO_SPLIT_EMBEDDED=1
+export SCRIPT_PACK_VERSION="${script_pack_version}"
+if [ -z "$${MONOSPLIT_INCREMENTAL_STAGE:-}" ]; then
+  echo "incremental_commit_error=missing_MONOSPLIT_INCREMENTAL_STAGE" >&2
+  exit 1
+fi
+
+${monosplit_resolve_env_body}
+
+WORK_ROOT="$(monosplit_resolve_work_root)" || exit 1
+export WORK_ROOT
+mkdir -p "$WORK_ROOT/.work" "$WORK_ROOT/scripts"
+[ -f "$WORK_ROOT/notes.json" ] || echo '{}' >"$WORK_ROOT/notes.json"
+
+if [ -z "$${WORKFLOW_RUN_ID:-}" ]; then
+  echo "work_root_error=missing_workflow_run_id" >&2
+  exit 1
+fi
+export WORKFLOW_RUN_ID
+
+monosplit_seed_work_root_notes
+monosplit_resolve_default_branch
+if ! monosplit_resolve_repo_url; then
+  echo "blocked:missing_github_repo_url" >&2
+  exit 1
+fi
+
+${monosplit_install_script_pack_body}
+
+bash "$WORK_ROOT/scripts/stage-runner.sh" merge-enrichment "$WORK_ROOT" || true
+bash "$WORK_ROOT/scripts/stage-runner.sh" incremental-guidance-commit \
+  "$WORK_ROOT" "$WORKFLOW_RUN_ID" "$DEFAULT_BRANCH" "$MONOSPLIT_INCREMENTAL_STAGE"
+cat "$WORK_ROOT/notes.json" 2>/dev/null || echo '{}'

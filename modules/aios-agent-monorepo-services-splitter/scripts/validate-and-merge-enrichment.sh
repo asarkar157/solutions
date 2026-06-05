@@ -6,6 +6,16 @@ cmd_merge() {
   local work_root="${1:?WORK_ROOT}"
   local enrichment="${work_root}/plan-enrichment.yaml"
   local catalog="${work_root}/docs/architecture/service-catalog.yaml"
+  local notes="${work_root}/notes.json"
+
+  if [ ! -f "$enrichment" ] && [ -f "$notes" ]; then
+    local raw
+    raw="$(jq -r '.plan_enrichment_yaml // empty' "$notes" 2>/dev/null || true)"
+    if [ -n "$raw" ] && [ "$raw" != "null" ]; then
+      printf '%s\n' "$raw" >"$enrichment"
+      echo "plan_enrichment_materialized_from_notes=true"
+    fi
+  fi
 
   if [ ! -f "$enrichment" ]; then
     echo "enrichment_applied=false"

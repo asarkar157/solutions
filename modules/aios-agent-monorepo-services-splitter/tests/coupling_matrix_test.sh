@@ -25,4 +25,21 @@ hub="$(jq -r '.hub_module' "${WORK}/matrix.json")"
 [ "$outbound_c" = "2" ] || { echo "FAIL: c outbound_edges=$outbound_c"; exit 1; }
 [ "$hub" = "a" ] || { echo "FAIL: hub=$hub"; exit 1; }
 
+cat >"${WORK}/scan-test-hub.json" <<'EOF'
+{
+  "modules": [
+    {"path": "resilience4j-core", "depends_on": []},
+    {"path": "resilience4j-test", "depends_on": ["resilience4j-core"]},
+    {"path": "resilience4j-circuitbreaker", "depends_on": ["resilience4j-core", "resilience4j-test"]}
+  ]
+}
+EOF
+
+bash "${ROOT}/scripts/build-coupling-matrix.sh" build "${WORK}/scan-test-hub.json" "${WORK}/matrix-test-hub.json"
+hub_test="$(jq -r '.hub_module' "${WORK}/matrix-test-hub.json")"
+[ "$hub_test" = "resilience4j-core" ] || {
+  echo "FAIL: expected hub resilience4j-core excluding test module, got ${hub_test}"
+  exit 1
+}
+
 echo "OK: coupling matrix test passed"
