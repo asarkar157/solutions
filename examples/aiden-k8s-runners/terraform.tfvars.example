@@ -1,0 +1,152 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Aiden K8s Remote Runner — Terraform Variables
+#
+# Copy this file to terraform.tfvars and fill in your values:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Required fields (no default): aiden_runner_token, aiden_runner_image_name,
+#                                aiden_runner_image_version
+# All other fields have sensible defaults shown below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# =============================================================================
+# AWS & Deployment Identity
+# =============================================================================
+
+# AWS region where all resources (VPC, EKS, IAM) will be created.
+# Common values: us-east-1 | us-west-2 | eu-west-1 | ap-southeast-1
+aws_region = "us-east-1"
+
+# Short prefix used in every resource name and tag (e.g. "aiden-k8s" → "aiden-k8s-dev-vpc").
+# Lowercase letters, digits, and hyphens only. Max 24 characters.
+project_name = "aiden-k8s"
+
+# Deployment environment label applied to resource names and tags.
+# Typical values: dev | staging | prod
+environment = "dev"
+
+
+# =============================================================================
+# Networking (VPC)
+# =============================================================================
+
+# IPv4 CIDR for the new VPC. A /16 gives room for many subnets.
+# Change if this range conflicts with existing VPCs you need to peer with.
+vpc_cidr = "10.2.0.0/16"
+
+# How many Availability Zones to deploy public + private subnet pairs into.
+# 2 = minimum HA; 3 = extra resilience (adds one more NAT EIP ~$3/mo).
+availability_zone_count = 2
+
+
+# =============================================================================
+# EKS Cluster
+# =============================================================================
+
+# Kubernetes control plane version. AWS supports the last ~3 minor versions.
+# Reference: https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html
+kubernetes_version = "1.30"
+
+# Allow worker nodes to reach the API server over private (VPC-internal) networking.
+# Keep true — required for nodes to function.
+cluster_endpoint_private_access = true
+
+# Expose the EKS API server on the public internet.
+# Set to true for kubectl access from your laptop or CI pipelines outside the VPC.
+# Set to false only if you access the cluster entirely over VPN or a bastion host.
+cluster_endpoint_public_access = true
+
+
+# =============================================================================
+# Node Group (Worker Nodes)
+# =============================================================================
+
+# EC2 instance type(s) for worker nodes, in preference order.
+# The runner needs at least 2 vCPU / 4 GiB RAM → t3.medium is the minimum.
+# Use t3.large or m5.large for heavier concurrent job loads.
+node_instance_types = ["t3.medium"]
+
+# EC2 purchasing model.
+# ON_DEMAND = stable, uninterrupted capacity (recommended for production).
+# SPOT      = up to 90% cheaper; nodes may be reclaimed with 2-minute notice.
+node_capacity_type = "ON_DEMAND"
+
+# Target number of worker nodes under normal operation.
+# Must be between node_min_size and node_max_size.
+node_desired_size = 2
+
+# Minimum number of worker nodes (cluster never scales below this).
+node_min_size = 1
+
+# Maximum number of worker nodes (cluster never scales above this).
+node_max_size = 3
+
+# Root EBS volume size per worker node in GiB.
+# 50 GiB covers the OS, container runtime, pulled images, and temp artifacts.
+node_disk_size_gb = 50
+
+
+# =============================================================================
+# Aiden Remote Runners — StackGen Helm Chart (one or more)
+# =============================================================================
+
+# StackGen instance all runners connect to.
+# StackGen Cloud: https://main.dev.stackgen.com
+# Self-hosted:    https://your-stackgen.example.com
+aiden_mothership_url = "https://main.dev.stackgen.com"
+
+# Override STACKGEN_URL independently (leave empty to use aiden_mothership_url).
+# aiden_stackgen_url = ""
+
+# Explicit SERVER_URL override (leave empty to derive from aiden_mothership_url).
+# aiden_server_url = ""
+
+# Append /ai to aiden_mothership_url for SERVER_URL — enable for StackGen Cloud.
+# aiden_server_url_append_ai = false
+
+# Auto-register integrations and MCP servers on runner startup.
+aiden_auto_discover = true
+
+# Container image applied to all runners.
+# Find the latest release at: https://github.com/appcd-dev/stackgen-guild-aiden-runner/releases
+aiden_runner_image_name    = "ghcr.io/appcd-dev/stackgen-guild-aiden-runner"
+aiden_runner_image_version = "v0.1.34"
+
+# Helm chart settings (change only if you mirror the chart internally).
+# aiden_runner_chart_repository = "https://registry.devopsnow.io/chartrepo/public"
+# aiden_runner_chart_name       = "aiden-remote-runner"
+
+# Seconds to wait for each Helm release to become ready.
+# aiden_runner_helm_timeout = 600
+
+# Runner tokens — each key defines one runner deployment.
+# Key = Helm release name = Kubernetes namespace.
+# Add or remove entries to scale the number of runners on this cluster.
+# Obtain each token from StackGen → Settings → Remote Runners → Create New Runner.
+# Do not commit this file to version control — tokens are sensitive.
+aiden_runner_tokens = {
+  "runner-main" = "sg_aios_REPLACE_ME"
+
+  # Second runner (e.g. for a different StackGen workspace or team):
+  # "runner-secondary" = "sg_aios_REPLACE_ME_2"
+}
+
+
+# =============================================================================
+# EKS Cluster Access (IAM Role for kubectl / AWS CLI)
+# =============================================================================
+
+# Additional IAM principal ARNs that may assume the EKS access role.
+# The identity that ran terraform apply is always included automatically.
+# Add CI/CD roles, teammate roles, or SSO role ARNs here.
+# Use full IAM role ARNs — sts:assumed-role session ARNs are NOT valid.
+# eks_access_trusted_principal_arns = [
+#   "arn:aws:iam::123456789012:role/my-admin-role",
+#   "arn:aws:iam::123456789012:user/alice",
+# ]
+
+# EKS access policy attached to the kubectl IAM role.
+# AmazonEKSClusterAdminPolicy → full cluster admin (default).
+# AmazonEKSViewPolicy         → read-only access (for auditors).
+# eks_cluster_access_policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
