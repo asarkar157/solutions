@@ -33,6 +33,7 @@ permalink: module-catalog/
   > | "Fix reachable CVEs only." | `make demo SCENARIO=cve-reachability-fix` | foundation, policies, integration-github, agent-supply-chain-security |
   > | "Self-service infra with entitlement-sized IAM." | `make demo SCENARIO=agentic-infra-entitlements` | agentic-infrastructure + repo-to-iac CCE |
   > | "We want Claude on AWS Bedrock." | `make demo SCENARIO=bedrock-sonnet-demo` | foundation-bedrock, policies, integration-aws, agent-aws-sre |
+  > | "Intent → CloudFormation PR + drift management." | `make demo SCENARIO=cfn-author` | foundation-bedrock, policies, github, aws, agent-cfn-author |
   > | "Wipe to a clean baseline." | `make demo SCENARIO=clean-tenant-reset` | foundation, policies |
   >
   > Then browse the modules below if you want to compose your own root. The full prospect-question map lives in the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}). For **deployment-profile** use cases (Azure SaaS, PrivateSaaS, multi-tenant RCA, self-hosted infra), see the [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}).

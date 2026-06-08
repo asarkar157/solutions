@@ -1,0 +1,17 @@
+stackgen_url   = "https://your-tenant.stackgen.com"
+stackgen_token = "sgpat_..."
+
+# At least one LLM key
+openai_api_key = "sk-..."
+
+github_token  = "ghp_..."
+grafana_server = "https://grafana.example.com"
+grafana_token  = "glsa_..."
+slack_bot_token = "xoxb-..."
+
+openslo_repository_full_name = "my-org/observability"
+
+# Optional
+# slo_report_webhook_url = "https://hooks.example.com/slo-digest"
+# slack_channel_hint     = "#platform-sre"
+# discovery_dashboard_tags = ["team:payments"]

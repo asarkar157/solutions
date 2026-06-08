@@ -1,0 +1,6 @@
+{
+  "intent": "Private RDS instance in us-east-1 with encryption at rest",
+  "environment": "production",
+  "correlation_id": "gate-456",
+  "confirm_deploy": "false"
+}

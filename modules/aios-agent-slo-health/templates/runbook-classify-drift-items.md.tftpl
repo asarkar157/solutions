@@ -1,0 +1,8 @@
+Classify SLO config drift items with recommended actions.
+
+Apply taxonomy from `docs/SLO_CONFIG_DRIFT.md`:
+
+- Actions: UPDATE_GIT, ADD_SLO, DEPRECATE_GIT, SUGGEST_GRAFANA_CHANGE, IGNORE
+- PromQL equivalence: ${promql_equivalence_mode} (LLM judges semantic match)
+
+Emit **`slo_drift_classified`** JSON with actionable items for reconcile PR.

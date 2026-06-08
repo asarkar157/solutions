@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "compliance_report",
+  "type": "object",
+  "required": ["compliance_summary", "fedramp_findings", "baseline_findings"],
+  "properties": {
+    "compliance_summary": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "NEEDS_REVIEW"]
+    },
+    "workspace_id": { "type": "string" },
+    "correlation_id": { "type": "string" },
+    "fedramp_findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "baseline_findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "compliance_blocked": {
+      "type": "string",
+      "enum": ["true", "false"]
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["control_id", "severity", "message"],
+      "properties": {
+        "control_id": { "type": "string", "description": "FedRAMP or org control identifier" },
+        "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+        "resource": { "type": "string" },
+        "message": { "type": "string" },
+        "remediation_hint": { "type": "string" }
+      }
+    }
+  }
+}

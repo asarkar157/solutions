@@ -179,7 +179,10 @@ Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hos
 | [`aios-agent-privatesaas-devops-sre`](modules/aios-agent-privatesaas-devops-sre/) | PrivateSaaS: Grafana → AWS/PAN-OS → bounded remediation | 3 | 3+ |
 | [`aios-agent-privatesaas-sre`](modules/aios-agent-privatesaas-sre/) | PrivateSaaS SRE (Aiden): FireHydrant/Grafana, GCP, runbooks, **Bifrost LLM** | 3 | 3+ |
 | [`aios-agent-privatesaas-gitops-sre`](modules/aios-agent-privatesaas-gitops-sre/) | PrivateSaaS GitOps: Slack `/aiden`, GitLab/Argo CD/SonarQube | 3 | 3+ |
-| [`aios-agent-selfhosted-infra`](modules/aios-agent-selfhosted-infra/) | Self-hosted AWS: CloudFormation failures, drift, pre-deploy review | 3 | 3+ |
+| [`aios-agent-selfhosted-infra`](modules/aios-agent-selfhosted-infra/) | Self-hosted AWS: **stack failure** ingest, read-only RCA, pre-deploy review (not intent→PR) | 3 | 3+ |
+| [`aios-agent-cfn-author`](modules/aios-agent-cfn-author/) | CFN Author (Bedrock): intent→PR, drift reconcile, compliance preflight | 2 | 4 |
+| [`aios-agent-aiden-infra`](modules/aios-agent-aiden-infra/) | **Composition:** cfn-author + optional terraform-bot (single apply) | — | — |
+| [`aios-cfn-governance-runbooks`](modules/aios-cfn-governance-runbooks/) | Reusable CFN governance runbook SOP pack (5 pillars) | — | — |
 
 ### Solutions (Layer 3)
 

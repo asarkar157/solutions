@@ -1562,6 +1562,194 @@
       "usage": "module \"selfhosted_infra\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-selfhosted-infra?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    sre_remediation = module.policies.policy_ids.sre_remediation\n    prod_write_gate = module.policies.policy_ids.prod_write_gate\n  }\n\n  aws_secret_id = module.aws_integration.secret_id\n  self_hosted_environment_label = \"prod-us-east-1-vpc\"\n  cloudformation_stack_prefix_allowlist = [\"prod-\", \"staging-\"]\n}"
     },
     {
+      "id": "aios-agent-cfn-author",
+      "name": "CloudFormation Author",
+      "desc": "Aiden for CloudFormation — five governance pillars (remote orchestration, FedRAMP/baseline compliance, hardened synthesis, governed deployment, continuous drift). Workflows: intent-to-infrastructure, cloudformation-drift-management, cfn-contextual-compliance, cfn-governed-deployment. Triggers: Guild chat, intent/compliance/drift webhooks, optional drift cron. Bedrock Sonnet 4.6 only. See docs/cfn-author.md for sample payloads.",
+      "layer": 2,
+      "tags": [
+        "cloudformation",
+        "bedrock",
+        "aws",
+        "github",
+        "iac",
+        "drift",
+        "devops",
+        "aiden",
+        "use-case",
+        "selfhosted"
+      ],
+      "icon": "📜",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "target_repository_full_name",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "github_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "aws_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_drift_schedule",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_intent_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_compliance_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_drift_webhook",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "enable_security_guardrails_gate",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "webhook_trigger_base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "workspace",
+          "t": "object({workspace_id,...})",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_names",
+        "governance_runbook_names",
+        "github_integration_name",
+        "aws_integration_name",
+        "recommended_skill_names",
+        "drift_schedule_names",
+        "intent_webhook_ingress_payload_url",
+        "compliance_webhook_id",
+        "compliance_webhook_ingress_payload_url",
+        "drift_webhook_ingress_payload_url",
+        "remote_runner_cli_start_command"
+      ],
+      "usage": "module \"cfn_author\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-cfn-author?ref=main\"\n\n  model_names = module.foundation_bedrock.model_names\n  policy_ids = {\n    dangerous_ops   = module.policies.policy_ids.dangerous_ops\n    prod_write_gate = module.policies.policy_ids.prod_write_gate\n  }\n\n  target_repository_full_name = \"org/infra-templates\"\n  fedramp_profile             = \"moderate\"\n  org_baseline_name           = \"acme-prod-baseline-v2\"\n  github_secret_id            = module.github_integration.secret_id\n  aws_secret_id               = module.aws_integration.secret_id\n\n  enable_intent_webhook     = true\n  enable_compliance_webhook = true\n  enable_drift_webhook        = true\n  enable_drift_schedule       = true\n  webhook_trigger_base_url    = var.stackgen_url\n  webhook_trigger_org_id      = var.stackgen_project_id\n\n  # Trigger examples: docs/cfn-author.md\n}"
+    },
+    {
+      "id": "aios-cfn-governance-runbooks",
+      "name": "CFN Governance Runbooks",
+      "desc": "Reusable Guild runbook SOP pack for CloudFormation governance pillars: remote orchestration, contextual compliance (FedRAMP + org baseline), hardened synthesis, governed deployment, continuous governance. Nested by aios-agent-cfn-author; usable standalone for custom workflow wiring. Trigger docs: docs/cfn-author.md.",
+      "layer": 2,
+      "tags": [
+        "cloudformation",
+        "compliance",
+        "fedramp",
+        "governance",
+        "runbook",
+        "iac"
+      ],
+      "icon": "🛡️",
+      "vars": [
+        {
+          "n": "org_baseline_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "fedramp_profile",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "knowledge_base_path",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "deployment_process_doc",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "cfn_template_catalog_path",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "runbook_names",
+        "runbook_names_list"
+      ],
+      "usage": "module \"cfn_governance\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-cfn-governance-runbooks?ref=main\"\n\n  org_baseline_name         = \"acme-prod-baseline-v2\"\n  fedramp_profile           = \"moderate\"\n  cfn_template_catalog_path = \"cloudformation/catalog/\"\n}"
+    },
+    {
+      "id": "aios-agent-aiden-infra",
+      "name": "Aiden Infra (composition)",
+      "desc": "Thin TR-facing entry: nests aios-agent-cfn-author + optional aios-agent-terraform-bot. Single tofu apply for dual IaC (CFN intent/drift + TF module quality). No second StackGen MCP. See docs/tr-deployment-profile.md.",
+      "layer": 2,
+      "tags": [
+        "cloudformation",
+        "terraform",
+        "composition",
+        "bedrock",
+        "iac",
+        "aiden",
+        "selfhosted"
+      ],
+      "icon": "🏛️",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops,prod_write_gate?})",
+          "r": true
+        },
+        {
+          "n": "target_repository_full_name",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "enable_terraform_bot",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "cfn_author",
+        "terraform_bot",
+        "aiden_infra_workflow_names",
+        "webhook_trigger_endpoint"
+      ],
+      "usage": "module \"aiden_infra\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-aiden-infra?ref=main\"\n\n  model_names = module.foundation_bedrock.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  target_repository_full_name = \"org/infra-templates\"\n  github_secret_id            = module.github_integration.secret_id\n  aws_secret_id               = module.aws_integration.secret_id\n\n  enable_terraform_bot = true\n  stackgen_token_secret_id = var.stackgen_token_secret_id\n}"
+    },
+    {
       "id": "aios-agent-sre-ticket-resolution",
       "name": "SRE Ticket Resolution",
       "desc": "ServiceNow ticket resolution with webhook ingest, deterministic ticket filtering, Grafana/Prometheus + AWS investigation, bounded AWS remediation, and Slack notification. 3 agents, 1 workflow, optional sg_webhook.",
@@ -2764,6 +2952,61 @@
         "webhook"
       ],
       "usage": "module \"pipeline_insights\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-pipeline-insights?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  integration_names = {\n    github = module.github_integration.integration_name\n    slack  = module.slack_integration.integration_name\n  }\n}"
+    },
+    {
+      "id": "aios-agent-slo-health",
+      "name": "SLO Health",
+      "desc": "OpenSLO + Grafana SLO health: weekly error-budget review with config drift vs alerts/dashboards; bootstrap workflow discovers SLOs from Grafana and opens OpenSLO PR; drift-reconcile workflow patches Git via PR. Monday schedule on slo-health-review.",
+      "layer": 2,
+      "tags": [
+        "grafana",
+        "github",
+        "observability",
+        "slo",
+        "openslo",
+        "slack",
+        "schedule"
+      ],
+      "icon": "📊",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "openslo_repository_full_name",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "github_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "grafana_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "enable_weekly_schedule",
+          "t": "bool",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_name",
+        "workflow_names",
+        "schedule_names",
+        "grafana_integration_name"
+      ],
+      "usage": "module \"slo_health\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-slo-health?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n\n  openslo_repository_full_name = \"my-org/observability\"\n\n  github_secret_id  = module.github_pat.secret_id\n  grafana_secret_id = module.grafana_integration.secret_id\n  slack_secret_id   = module.slack_integration.secret_id\n}"
     },
     {
       "id": "aios-agent-release-tracker",

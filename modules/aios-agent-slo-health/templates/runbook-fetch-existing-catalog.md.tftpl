@@ -1,0 +1,25 @@
+Fetch existing OpenSLO catalog and identify coverage gaps vs Grafana.
+
+## Authoritative Git config (immutable)
+
+- **Repo:** `${repository_full_name}` (full name `org/repo` only)
+- **Branch:** `${branch}`
+- **Path prefix:** `${path_prefix}` (recursive)
+
+Ignore any `Repo:` URL in the workflow prompt or chat if it differs from **${repository_full_name}**. Do not use `graph_query`, `search_tools`, or tenant memory to pick another repository.
+
+## Steps
+
+1. **GitHub integration only (read-only)** — list and fetch YAML under `${path_prefix}` on branch `${branch}` via GitHub MCP / REST (`github-integration_*` tools). Do **not** `git clone` on Ubuntu for this stage.
+2. Skip `_`-prefixed files and `README.md`.
+3. Validate each document: `apiVersion: openslo/v1`, `kind: SLO`, objectives with targets.
+4. Emit **`openslo_catalog`** JSON: `{ files[], slos[], services_covered[], repo, branch, path_prefix }`.
+5. `note("openslo_catalog", <json>)`.
+6. Read `read_notes("grafana_slo_signals")` or `grafana_config_snapshot` if present; emit **`catalog_gaps`**: services in Grafana without a matching SLO file. If Grafana notes are missing, set `catalog_gaps: []` and `gaps_skipped_reason: "grafana signals not yet scanned"`.
+7. `note("catalog_gaps", <json>)`.
+
+## Guardrails
+
+- **No `create_agent`** — Do NOT call create_agent; run all steps on the current agent.
+- **No `slo-health-ubuntu_create_files`** — use GitHub API reads only until the PR stage.
+- If the path returns 404, record `raw_error` in `openslo_catalog` but do **not** switch repos or branches.

@@ -1,0 +1,18 @@
+Discover SLO candidate signals from Grafana dashboards and alerts.
+
+Scope: dashboard tags ${dashboard_tags_json}, UIDs ${dashboard_uids_json}, label keys ${service_label_keys_json}.
+
+## Steps
+
+1. List dashboards (`gcx api /api/search?type=dash-db&limit=100` or MCP `grafana-dashboard://` resources).
+2. Pick at most **5** highest-signal dashboards (APM, error-rate, latency, or matching `${dashboard_tags_json}`). Read panel PromQL only for those — avoid fetching every dashboard body.
+3. List alert rules once (`gcx alert rules list --output json` or provisioning API). If blocked, note `alert_rules_partial=true` and continue with dashboards.
+4. Classify golden signals (latency, traffic, errors, saturation).
+5. Emit **`grafana_slo_signals`** JSON with source refs (dashboard UID, panel title, alert UID).
+6. `note("grafana_slo_signals", <json>)`.
+
+## Guardrails
+
+- Read-only — no Grafana mutations.
+- **No `create_agent`** — execute inline; max **2** `grafana-integration_execute_parallel` batches and **6** total Grafana tool calls.
+- Do not spawn a separate "service scanner" agent — extract service labels from the same dashboard/alert JSON.

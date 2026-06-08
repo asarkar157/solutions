@@ -1,0 +1,19 @@
+{
+  "baseline": "organizational-baseline",
+  "rules": [
+    {
+      "id": "ORG-tagging-required",
+      "severity": "medium",
+      "intent_patterns": ["untagged", "no tags"],
+      "message": "Intent does not mention required resource tagging.",
+      "remediation_hint": "Apply Environment, Owner, and CostCenter tags per org baseline."
+    },
+    {
+      "id": "ORG-approved-regions",
+      "severity": "high",
+      "intent_patterns": ["cn-north", "ap-east-1"],
+      "message": "Intent references a non-standard AWS region.",
+      "remediation_hint": "Use approved regions from the org baseline catalog."
+    }
+  ]
+}

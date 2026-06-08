@@ -1,0 +1,9 @@
+{
+  "correlation_id": "drift-scan-789",
+  "workspace_id": "org/infra-templates",
+  "drifted_stacks": [
+    { "stack_name": "staging-vpc", "region": "us-east-1", "environment": "staging" },
+    { "stack_name": "staging-data", "region": "us-east-1", "environment": "staging" }
+  ],
+  "confirm_deploy": "false"
+}

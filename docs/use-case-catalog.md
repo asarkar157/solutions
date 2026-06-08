@@ -24,10 +24,15 @@ Maps **customer situations** to **Terraform modules** in this library. Each row 
 | PrivateSaaS SRE (Aiden for SRE): FireHydrant + Grafana ingest → GCP + internal console → multi-source runbooks → RCA (document-only prod recommendations) | [`aios-agent-privatesaas-sre`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-privatesaas-sre) | FireHydrant, Grafana, GCP, internal REST API | `privatesaas`, `webhook`, `rca`, **Bifrost LLM** |
 | PrivateSaaS GitOps: Slack `/aiden` for npm/deploy/pipeline failures → GitLab, Argo CD, DynamoDB, SonarQube → optional Ubuntu CLI / remote runner | [`aios-agent-privatesaas-gitops-sre`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-privatesaas-gitops-sre) | GitLab, Argo CD, SonarQube, AWS, Slack, Ubuntu (optional) | `privatesaas`, `gitops`, `webhook`, `remote-runner` |
 | Self-hosted private AWS: CloudFormation stack failure ingest → read-only AWS/CFN investigation → HITL change-set recommendations, drift audit, pre-deploy review | [`aios-agent-selfhosted-infra`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-selfhosted-infra) | AWS, Ubuntu CLI (optional), remote runner (optional) | `selfhosted`, `infra`, `webhook`, `remote-runner` |
+| Developer intent → company-standard CloudFormation (catalog reuse) → GitHub PR → change-set preview; Bedrock Sonnet 4.6 only | [`aios-agent-cfn-author`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-cfn-author) | AWS, GitHub, Ubuntu CLI, `aios-foundation-bedrock` | `cloudformation`, `bedrock`, `iac`, `selfhosted` |
+| Periodic / on-demand CloudFormation drift: parallel detect, FIX_DRIFT (risk) vs INCORPORATE_VIA_PR (reconcile PR) | [`aios-agent-cfn-author`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-cfn-author) | AWS, GitHub, optional `aios-agent-schedules` cron | `cloudformation`, `drift`, `bedrock`, `selfhosted` |
 | Application monolith → microservices: boundary scan + CCE (Go/Java/JS/TS), DDD guidance PR, optional `services/<name>/` scaffold + extract PR; optional aiden-runner for large repos | [`aios-agent-monorepo-services-splitter`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-monorepo-services-splitter) | GitHub, Ubuntu CLI, optional remote runner | `github`, `ubuntu`, `monorepo`, `microservices`, `ddd`, `cce`, `cce-enterprise` |
 | Terraform/OpenTofu monolith state → logical groups + optional per-group roots / AppStacks; optional CCE on app repo | [`aios-agent-db-state-splitter`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-db-state-splitter) | GitHub, Ubuntu CLI, StackGen MCP (optional) | `terraform`, `iac`, `github`, `ubuntu`, `cce`, `modernization` |
 | PR adds new cloud API calls → CCE entitlement delta comment before merge (`pre-deploy-iam-review`) | [`aios-agent-terraform-bot`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-terraform-bot) | GitHub, Ubuntu CLI | `cce`, `iam-gate`, `pre-deploy-iam`, `cce-enterprise` |
 | Grafana alert storm → CCE incident-scoping on service repos → scoped RCA (not whole org) | [`aios-agent-alert-triage`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-alert-triage) | Grafana, GitHub, Ubuntu, Slack | `sre`, `cce`, `incident-scope`, `cce-enterprise` |
+| Weekly SLO error budget + config drift digest from Git OpenSLO + Grafana | [`aios-agent-slo-health`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-slo-health) | GitHub, Grafana, Slack | `observability`, `slo`, `openslo`, `schedule` |
+| Discover SLOs from Grafana dashboards → OpenSLO YAML → GitHub PR | [`aios-agent-slo-health`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-slo-health) | GitHub, Grafana, Ubuntu CLI | `observability`, `slo`, `openslo`, `webhook` |
+| Reconcile OpenSLO Git drift with Grafana alert rules via PR | [`aios-agent-slo-health`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-slo-health) | GitHub, Grafana, Ubuntu CLI | `observability`, `slo`, `drift`, `webhook` |
 | Quarterly multi-repo CCE audit evidence (PCI/HIPAA/SOC touchpoints) | [`aios-agent-compliance-auditor`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-compliance-auditor) | GitHub, Ubuntu, AWS | `compliance`, `cce`, `compliance-evidence`, `cce-enterprise` |
 | GitOps deploy failure → CCE code scope → scoped Argo CD rollback (not cluster-wide) | [`aios-agent-privatesaas-gitops-sre`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-privatesaas-gitops-sre) | GitLab, Argo CD, SonarQube, AWS, Slack, Ubuntu | `gitops`, `cce`, `gitops-scope`, `cce-enterprise` |
 | npm/Dependabot noise → CCE CVE reachability → fix PRs for reachable only | [`aios-agent-supply-chain-security`]({{ site.github.repository_url }}/tree/main/modules/aios-agent-supply-chain-security) | GitHub, Ubuntu | `security`, `cce`, `cve-reachability`, `cce-enterprise` |
@@ -51,6 +56,14 @@ For customers splitting **both** application code and infrastructure state:
 Demo scenario: `make demo SCENARIO=monorepo-services-split`. Pair with **`db-state-splitter`** for full-stack modernization (`make demo` on both roots or compose in `examples/complete`).
 
 Flagship CCE demo — three-tier pipeline documented in [monorepo-services-splitter]({% include doc_url.html path="monorepo-services-splitter.md" %}) and [CCE enterprise workflows]({% include doc_url.html path="cce-enterprise-workflows.md" %}).
+
+---
+
+## CloudFormation Author (Bedrock)
+
+Intent → catalog-aligned CloudFormation → GitHub PR → change-set preview; optional FedRAMP/baseline compliance gate and drift reconcile PRs. Full trigger examples (chat, webhooks, schedule): **[CloudFormation Author]({% include doc_url.html path="cfn-author.md" %})**.
+
+Demo: `make demo SCENARIO=cfn-author`. Sample webhook payloads: [`docs/samples/cfn-intent-webhook.json`]({{ site.github.repository_url }}/blob/main/docs/samples/cfn-intent-webhook.json), [`cfn-compliance-webhook.json`]({{ site.github.repository_url }}/blob/main/docs/samples/cfn-compliance-webhook.json), [`cfn-drift-webhook.json`]({{ site.github.repository_url }}/blob/main/docs/samples/cfn-drift-webhook.json).
 
 ---
 

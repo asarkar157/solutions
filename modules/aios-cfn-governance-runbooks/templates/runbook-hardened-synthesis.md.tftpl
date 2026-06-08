@@ -1,0 +1,17 @@
+# Hardened synthesis — secure compliant IaC
+
+Generate or refine CloudFormation using up-to-date knowledge bases and catalog baselines.
+
+## Steps
+
+1. Read `${knowledge_base_path}` and `${cfn_template_catalog_path}` for approved secure patterns (KMS, S3 block public access, VPC endpoints, IAM boundary patterns).
+2. Apply ${org_baseline_name} tagging, parameter defaults, and resource naming from catalog — do not invent net-new patterns when a catalog module exists.
+3. Ensure template includes: encryption, logging (CloudTrail/config where applicable), least-privilege IAM, no `0.0.0.0/0` on admin ports unless explicitly approved in requirements.
+4. When `requirements_spec` declares high RPS or `workload_class=high-throughput-web`, apply review patterns: edge scale, correct ASG metrics, VPC endpoints, KMS segmentation, parameterized AZs (see `${knowledge_base_path}` and architecture-fit skill).
+5. Write template to WORK_ROOT/generated/template.yaml; `note("template_generated", "true")`, `note("hardened_synthesis_ok", "true"|"false")`.
+6. List `knowledge_base_refs[]` citing which KB snippets were applied.
+
+## Guardrails
+
+- Synthesis only — no stack create/update.
+- Prefer catalog nested stacks over greenfield resource blocks.

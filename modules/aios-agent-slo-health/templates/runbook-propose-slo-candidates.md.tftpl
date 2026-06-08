@@ -1,0 +1,14 @@
+Propose OpenSLO-shaped SLO candidates from Grafana signals.
+
+## Inputs
+
+- `openslo_catalog`, `catalog_gaps`, `grafana_slo_signals`
+
+## Rules
+
+- Skip names already in catalog unless workflow input `allow_slo_overwrite=true`.
+- Cap proposals at **${max_proposals}** per run.
+- Default availability target: **${default_availability_target}**
+- Default latency threshold: **${default_latency_threshold_ms}** ms
+
+Emit **`slo_proposals`** JSON with good/total PromQL, service, signal_type, proposed_path under `openslo/slos/<service>/<name>.yaml`.

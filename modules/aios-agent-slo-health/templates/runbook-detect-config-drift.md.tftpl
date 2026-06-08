@@ -1,0 +1,28 @@
+Compare OpenSLO catalog to Grafana config snapshot and detect drift.
+
+## Inputs
+
+- `openslo_catalog` from fetch-openslo-specs
+- `grafana_config_snapshot` from scan-grafana-config
+
+## Drift types
+
+- `query_drift` — PromQL in Git ≠ closest alert/dashboard expr
+- `target_drift` — objective target ≠ implied alert threshold
+- `coverage_gap` — alert/dashboard signal with no OpenSLO file
+- `orphan_slo` — Git SLO with no linked Grafana signal
+- `burn_window_misalignment` — single-threshold alert vs multi-window SLO
+- `equivalent` — semantic match, no action
+
+## Link keys
+
+Use labels: ${drift_link_labels_json}
+
+## Steps
+
+1. Match catalog entries to alert rules and dashboard panels by service name and label selectors.
+2. For each pair or gap, assign drift_type, recommended_action (`UPDATE_GIT`, `ADD_SLO`, `DEPRECATE_GIT`, `SUGGEST_GRAFANA_CHANGE`, `IGNORE`), severity, and plain-English suggestion.
+3. Emit **`slo_drift_report`** JSON per module contract (summary + items[]).
+4. `note("slo_drift_report", <json>)`.
+
+See `docs/SLO_CONFIG_DRIFT.md` for examples.

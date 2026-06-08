@@ -1,0 +1,21 @@
+package stage_gate
+
+import rego.v1
+
+default allow = true
+
+allow_prod_preview := ${allow_prod_change_set_preview}
+
+environment_is_prod if {
+  lower(input.environment) in {"prod", "production"}
+}
+
+deny[msg] if {
+  not allow_prod_preview
+  environment_is_prod
+  msg := "Prod change-set preview blocked — set allow_prod_change_set_preview=true or use non-prod stack"
+}
+
+allow if {
+  count(deny) == 0
+}

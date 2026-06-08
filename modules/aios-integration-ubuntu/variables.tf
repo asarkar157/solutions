@@ -35,6 +35,15 @@ variable "install_tools" {
   }
 }
 
+variable "pip_packages" {
+  description = <<-EOT
+    Python packages to pip-install at container startup (user-local, via pre_launch.sh INSTALL_PIP_PACKAGES).
+    Pass full pip specs including version pins, e.g. ["cfn-lint>=1.19.0", "checkov==3.2.340"]. Install Ruby gems (e.g. cfn-nag) separately via container image or runtime scripts.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "env_vars" {
   description = <<-EOT
     Optional map of extra environment variables to inject into the Ubuntu

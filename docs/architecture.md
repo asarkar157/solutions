@@ -49,6 +49,7 @@ graph TD
         A_PS["aios-agent-privatesaas-sre"]
         A_PSG["aios-agent-privatesaas-gitops-sre"]
         A_SHI["aios-agent-selfhosted-infra"]
+        A_CFN["aios-agent-cfn-author"]
     end
 
     subgraph "Layer 1 — Integrations"
@@ -216,6 +217,10 @@ The table below is a **snapshot** of several heavily used agent modules (agent /
 | aios-agent-privatesaas-sre | 3 | — | 2 | — | — |
 | aios-agent-privatesaas-gitops-sre | 3 | — | 2 | — | — |
 | aios-agent-selfhosted-infra | 3 | — | 3 | — | — |
+| aios-agent-cfn-author | 2 | 14 | 4 | — | — |
+| aios-cfn-governance-runbooks | — | 5 | — | — | — |
+| aios-cfn-preview-iam | — | — | — | 1 | — |
+| aios-agent-aiden-infra | — | — | — | — | — |
 
 </details>
 

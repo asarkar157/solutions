@@ -1,0 +1,35 @@
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payments-api-availability
+  displayName: Payments API — 30d availability
+  labels:
+    service: payments-api
+    team: payments
+    tier: tier-1
+spec:
+  description: Non-5xx HTTP responses over rolling 30 days
+  service: payments-api
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  indicator:
+    metadata:
+      name: payments-api-availability
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(rate(http_requests_total{service="payments-api",status!~"5.."}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(rate(http_requests_total{service="payments-api"}[5m]))
+  objectives:
+    - displayName: 99.9% availability
+      target: 0.999

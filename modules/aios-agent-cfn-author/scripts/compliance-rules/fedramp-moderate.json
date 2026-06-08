@@ -1,0 +1,27 @@
+{
+  "profile": "moderate",
+  "rules": [
+    {
+      "id": "AC-2-public-unencrypted-data",
+      "severity": "critical",
+      "intent_patterns": ["public.*s3", "public.*bucket", "world.readable", "publicly accessible"],
+      "environment": ["prod", "production"],
+      "message": "Intent suggests public unencrypted data store in production.",
+      "remediation_hint": "Use private buckets with SSE-KMS and block public access."
+    },
+    {
+      "id": "AU-2-missing-audit-logging",
+      "severity": "high",
+      "intent_patterns": ["without.*log", "no.*log", "skip.*log"],
+      "message": "Intent may omit audit logging on boundary resources.",
+      "remediation_hint": "Enable CloudTrail, ALB access logs, and centralized log retention."
+    },
+    {
+      "id": "SC-7-public-exposure",
+      "severity": "critical",
+      "intent_patterns": ["open to internet", "public rds", "public database", "0\\.0\\.0\\.0/0"],
+      "message": "Intent suggests unrestricted public exposure.",
+      "remediation_hint": "Place data tiers in private subnets; restrict security groups."
+    }
+  ]
+}

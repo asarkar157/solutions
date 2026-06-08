@@ -1,0 +1,16 @@
+# Continuous governance — Day-2 drift and compliance
+
+Monitor managed CloudFormation stacks for drift and classify findings against FedRAMP ${fedramp_profile} and **${org_baseline_name}**.
+
+## Steps
+
+1. Consume `drift_findings` from parallel detection stages.
+2. For each drifted resource, assess compliance impact (encryption disabled, public ACL, IAM policy broadening) per FedRAMP ${fedramp_profile}.
+3. Classify: **FIX_DRIFT** (operational/compliance/security risk), **INCORPORATE_VIA_PR** (valid desired state), **IGNORE** (cosmetic).
+4. Prioritise prod/production and FedRAMP-scoped stacks first.
+5. Emit `continuous_governance_report` with compliance-weighted severity scores.
+
+## Guardrails
+
+- Read-only AWS during detection and classification.
+- Reconcile PR only for INCORPORATE_VIA_PR — never silent drift remediation in AWS.

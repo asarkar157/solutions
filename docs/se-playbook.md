@@ -38,6 +38,8 @@ Drop the prompts below in your talk track. Each one points at a single scenario;
 | "Dependabot alert fatigue." | **`cve-reachability-fix`** | CCE f-SBOM prioritization + fix PRs. |
 | "Teams want S3 buckets without `s3:*`." | **`agentic-infra-entitlements`** | CCE on repo-to-iac before developer-request execute. |
 | "We want Claude on AWS Bedrock, not a separate Anthropic key." | **`bedrock-sonnet-demo`** | **`aios-foundation-bedrock`** + AWS SRE agent on `claude-sonnet-bedrock`. IAM role or static AWS keys. [Scenario README]({{ site.github.repository_url }}/tree/main/examples/scenarios/bedrock-sonnet-demo). |
+| "Developers describe infra; we need CloudFormation that matches our catalog and opens a PR." | **`cfn-author`** | **`aios-agent-cfn-author`** intent-to-infrastructure on Bedrock. [Scenario README]({{ site.github.repository_url }}/tree/main/examples/scenarios/cfn-author). |
+| "CloudFormation stacks drift — classify risk and reconcile valid changes via PR." | **`cfn-author`** | Drift management workflow + optional daily cron. Same scenario root. |
 | "I want to clean state between demos." | **`clean-tenant-reset`** | Minimal foundation + policies, used as a known baseline you can re-apply over a previous demo. |
 
 ## Demo runbook (one screen)

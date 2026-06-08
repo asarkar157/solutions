@@ -1,0 +1,19 @@
+Compose the weekly SLO health digest for Slack and webhook consumers.
+
+## Inputs
+
+- `slo_posture`, `slo_drift_report` (when drift enabled)
+
+## Sections (Markdown)
+
+1. **Error budget this week** — table of SLO name, posture, remaining budget %, top note.
+2. **Config drift** — summary counts; top 3 actionable items with plain-English suggestions.
+3. **Next steps** — when `actionable_count > 0` and drift reconcile workflow exists, suggest running `slo-drift-reconcile` to open a fix PR.
+
+Slack channel hint: ${slack_channel_hint}
+
+## Output
+
+- Render human-readable Markdown for Slack stage.
+- Include compact JSON block for webhook stage (slo_posture + slo_drift_report).
+- `note("digest_markdown", ...)` and `digest_ready=true`.

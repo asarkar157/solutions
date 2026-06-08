@@ -1,0 +1,16 @@
+# Governed deployment — organisational PR and deployment mechanism
+
+Adhere to the organisation deployment process: **${deployment_process_doc}**
+
+## Steps
+
+1. Confirm upstream validation passed (`cfn_lint_passed`, `validate_template_passed`, `compliance_summary: PASS|NEEDS_REVIEW`).
+2. Verify PR targets the configured IaC repo and base branch; PR title/body includes compliance summary and change-set preview link when available.
+3. Apply org rules: required reviewers labels, change window tags, `do-not-merge` until preview documented.
+4. `note("governed_deployment_ready", "true")` when PR process requirements are met; `governed_deployment_blocked: "true"` when not.
+5. Never bypass PR review or force-merge.
+
+## Guardrails
+
+- ${deployment_process_doc}
+- No execute-change-set or create-stack without explicit human approval outside this workflow.

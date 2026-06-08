@@ -1,0 +1,35 @@
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payments-api-latency-p99
+  displayName: Payments API — p99 latency
+  labels:
+    service: payments-api
+    team: payments
+    tier: tier-1
+spec:
+  description: 99% of requests complete under 500ms over 30 days
+  service: payments-api
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  indicator:
+    metadata:
+      name: payments-api-latency-p99
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(rate(http_request_duration_seconds_bucket{service="payments-api",le="0.5"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(rate(http_request_duration_seconds_count{service="payments-api"}[5m]))
+  objectives:
+    - displayName: 99% under 500ms
+      target: 0.99

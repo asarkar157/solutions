@@ -1,0 +1,21 @@
+Scan Grafana alert rules and dashboards for PromQL and thresholds.
+
+## Scope
+
+- Dashboard tag hints: ${dashboard_tags_json}
+- Dashboard UID allowlist: ${dashboard_uids_json}
+- Service label keys: ${service_label_keys_json}
+
+## Steps
+
+1. List Grafana dashboards (MCP resource `grafana-dashboard://`) when allowlist empty; else read listed UIDs only.
+2. For each dashboard, extract panel `expr` PromQL via dashboard read resource.
+3. List alert rules (provisioning API / `grafana-alert-rule://` resources) — capture rule UID, name, folder, condition PromQL, thresholds.
+4. Classify each signal: latency | traffic | errors | saturation | unknown.
+5. Emit **`grafana_config_snapshot`** JSON with `dashboards[]`, `alert_rules[]`, `promql_expressions[]`.
+6. `note("grafana_config_snapshot", <json>)`.
+
+## Guardrails
+
+- Read-only — no alert or dashboard edits.
+- Do not run unscoped `gcx alert rules list` during triage unless catalog listing is required; prefer MCP resources.

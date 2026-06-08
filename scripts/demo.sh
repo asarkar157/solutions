@@ -74,6 +74,7 @@ scenario_pitch() {
     cve-reachability-fix) echo "Fix reachable CVEs only. (CCE f-SBOM + supply-chain workflow)";;
     gitops-incident-scope) echo "GitOps rollback scoped by code blast radius. (CCE + Argo CD correlation)";;
     agentic-infra-entitlements) echo "Self-service infra with entitlement-sized IAM. (CCE on repo-to-iac + developer intake)";;
+    cfn-author)         echo "Intent to CloudFormation PR + drift + compliance on Bedrock. (foundation-bedrock, github, aws, agent-cfn-author)";;
     clean-tenant-reset) echo "Wipe to a known baseline between demos. (foundation + policies only)";;
     *)                  return 1;;
   esac
@@ -118,6 +119,7 @@ apply_env_mapping() {
   map_env GRAFANA_SERVER TF_VAR_grafana_server
   map_env GRAFANA_TOKEN TF_VAR_grafana_token
   map_env GITHUB_REPO_URL TF_VAR_github_repo_url
+  map_env TARGET_REPOSITORY_FULL_NAME TF_VAR_target_repository_full_name
 }
 
 # ----- doctor ----------------------------------------------------------------
@@ -149,14 +151,19 @@ doctor() {
   check_var STACKGEN_URL required "STACKGEN_URL" || fail=1
   check_var STACKGEN_TOKEN required "STACKGEN_TOKEN" || fail=1
 
-  info "Checking LLM keys (at least one required)"
-  if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" ]]; then
-    err "no LLM key set; need at least one of OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY"
-    fail=1
+  if [[ "${scenario}" == "cfn-author" ]]; then
+    info "Checking LLM provider (cfn-author uses Bedrock via aios-foundation-bedrock)"
+    ok "LLM API keys not required — Bedrock credentials come from AWS_ROLE_ARN"
   else
-    [[ -n "${OPENAI_API_KEY:-}" ]] && ok "OPENAI_API_KEY is set"
-    [[ -n "${ANTHROPIC_API_KEY:-}" ]] && ok "ANTHROPIC_API_KEY is set"
-    [[ -n "${GEMINI_API_KEY:-}" ]] && ok "GEMINI_API_KEY is set"
+    info "Checking LLM keys (at least one required)"
+    if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" ]]; then
+      err "no LLM key set; need at least one of OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY"
+      fail=1
+    else
+      [[ -n "${OPENAI_API_KEY:-}" ]] && ok "OPENAI_API_KEY is set"
+      [[ -n "${ANTHROPIC_API_KEY:-}" ]] && ok "ANTHROPIC_API_KEY is set"
+      [[ -n "${GEMINI_API_KEY:-}" ]] && ok "GEMINI_API_KEY is set"
+    fi
   fi
 
   case "${scenario}" in
@@ -176,7 +183,7 @@ doctor() {
       ;;
   esac
   case "${scenario}" in
-    pipeline-insights|repo-to-iac|monorepo-services-split|pre-deploy-iam-gate|compliance-evidence-factory|cve-reachability-fix|agentic-infra-entitlements)
+    pipeline-insights|repo-to-iac|monorepo-services-split|pre-deploy-iam-gate|compliance-evidence-factory|cve-reachability-fix|agentic-infra-entitlements|cfn-author)
       info "Checking GitHub"
       check_var GITHUB_TOKEN required "GITHUB_TOKEN" || fail=1
       ;;
@@ -193,6 +200,12 @@ doctor() {
     repo-to-iac|monorepo-services-split)
       info "Checking GitHub repo URL"
       check_var GITHUB_REPO_URL required "GITHUB_REPO_URL" || fail=1
+      ;;
+    cfn-author)
+      info "Checking AWS (Bedrock + CFN)"
+      check_var AWS_ROLE_ARN required "AWS_ROLE_ARN" || fail=1
+      info "Checking GitHub target repo"
+      check_var TARGET_REPOSITORY_FULL_NAME required "TARGET_REPOSITORY_FULL_NAME (maps to target_repository_full_name)" || fail=1
       ;;
   esac
 

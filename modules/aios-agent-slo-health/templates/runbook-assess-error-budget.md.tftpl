@@ -1,0 +1,23 @@
+Assess error budget posture from metric snapshots.
+
+## Inputs
+
+- `slo_metric_snapshots`, `openslo_catalog`
+
+## Windows
+
+Burn-rate windows to interpret: ${burn_rate_windows_json}
+
+At-risk threshold: remaining budget below **${at_risk_threshold_pct}%**.
+
+## Steps
+
+1. For each SLO compute: compliance vs target, remaining_budget_pct, burn_rates per window.
+2. Classify posture: `healthy` | `at_risk` | `critical` | `unknown`.
+3. Emit **`slo_posture`** JSON (summary counts + slos[] with notes).
+4. `note("slo_posture", <json>)`.
+
+## Semantics
+
+- Align with Google SRE error budget and Sloth multi-window burn concepts.
+- Note elevated 1h burn even when 30d budget looks healthy.

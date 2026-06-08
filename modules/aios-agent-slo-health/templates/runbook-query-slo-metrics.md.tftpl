@@ -1,0 +1,23 @@
+Query live SLI and burn metrics for each OpenSLO catalog entry.
+
+## Inputs
+
+- `openslo_catalog`, optional `slo_drift_report`
+
+## PromQL strategy
+
+1. **Prefer Sloth recording rules** when present:
+   - `slo:sli_error:ratio_rate5m{sloth_service="<service>", sloth_slo="<name>"}`
+   - `slo:period_error_budget_remaining:ratio{...}`
+2. **Fallback:** OpenSLO `ratioMetric` good/total queries via `query_metric`.
+
+## Steps
+
+1. For each catalog SLO, run instant queries for SLI ratio and remaining budget (or compute from good/total).
+2. Capture raw values and timestamps in **`slo_metric_snapshots`** JSON.
+3. `note("slo_metric_snapshots", <json>)`.
+
+## Guardrails
+
+- Read-only Grafana `query_metric` only.
+- Scope queries with service/job labels from catalog.

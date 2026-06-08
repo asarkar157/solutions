@@ -1,0 +1,17 @@
+# Contextual compliance — FedRAMP and organisational baseline
+
+Evaluate infrastructure intent against **FedRAMP ${fedramp_profile}** controls and the **${org_baseline_name}** baseline before template synthesis.
+
+## Steps
+
+1. Load `requirements_spec` from upstream parse/normalize stages.
+2. Check intent against FedRAMP ${fedramp_profile} themes: encryption at rest/transit, logging, boundary protection, IAM least privilege, public exposure prohibition.
+3. Cross-check requested resources against organisational baseline patterns in `${cfn_template_catalog_path}` (approved services, tagging, regions, naming).
+4. **Snyk / third-party SCA (future):** when an Snyk Guild integration exists, add read-only scan results to `baseline_findings[]` with `source: "snyk"`. Until then, document SCA gaps in compliance summary only.
+5. Emit `compliance_report` JSON matching the structured schema: `compliance_summary` (PASS|FAIL|NEEDS_REVIEW), `fedramp_findings[]`, `baseline_findings[]` where each finding has `control_id`, `severity`, `message`, optional `resource` and `remediation_hint`.
+6. On hard FAIL (public unencrypted data store in prod, missing audit logging on boundary resource), set `compliance_blocked: "true"`.
+
+## Guardrails
+
+- Read-only during compliance review — no AWS mutations.
+- Plain-English findings for developers and auditors.

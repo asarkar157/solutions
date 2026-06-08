@@ -30,6 +30,8 @@ This site is reorganized around **three jobs solutions engineers actually have**
 | [Module Catalog]({% include doc_url.html path="module-catalog.md" %}) | Interactive module discovery with tag filtering and copy-paste snippets. |
 | [Use-case catalog]({% include doc_url.html path="use-case-catalog.md" %}) | Customer situation → agent + integration modules (SaaS, PrivateSaaS, multi-tenant, self-hosted). |
 | [Monorepo services split]({% include doc_url.html path="monorepo-services-splitter.md" %}) | Two-workflow monolith → microservices guide (analysis → guidance PR → extract). |
+| [CloudFormation Author]({% include doc_url.html path="cfn-author.md" %}) | Intent → CFN PR + compliance preflight + drift management (chat, webhooks, cron). |
+| [TR deployment profile]({% include doc_url.html path="tr-deployment-profile.md" %}) | Module choice, webhooks, skills sync, LLM egress, milestone checklist. |
 | [CCE × AIOS integrations]({% include doc_url.html path="cce-agent-integrations.md" %}) | Code Context Engine usage guides mapped to agent modules. |
 | [CCE enterprise workflows]({% include doc_url.html path="cce-enterprise-workflows.md" %}) | Seven enterprise superpowers (IAM gate, incident scope, compliance factory, GitOps scope, CVE reachability) with demo scenarios. |
 | [Onboarding]({% include doc_url.html path="onboarding/index.md" %}) | Guided steps (start here if you are composing your own root). |

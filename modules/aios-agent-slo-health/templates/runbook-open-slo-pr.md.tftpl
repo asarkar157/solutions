@@ -1,0 +1,14 @@
+Open a GitHub pull request with drafted OpenSLO YAML.
+
+## Prerequisites
+
+- `confirm_pr=true` in workflow input or notes
+- Draft files under `WORK_ROOT/openslo-drafts/`
+- Target repo: `${repository_full_name}`, base `${base_branch}`
+
+## Steps
+
+1. `note()` pr_title, pr_body, branch_prefix=`aiden/slo-bootstrap` when set upstream.
+2. Spawn exactly one **open-slo-pr-runner** with spawn-context Commit OpenSLO PR command.
+3. Mirror `pr_url=`, `pr_blocker=`, `clone_blocker=` from runner stdout.
+4. Never push to base branch directly.

@@ -1,0 +1,5 @@
+version: v1
+slos:
+  - openslo/slos/payments-api/availability.yaml
+  - openslo/slos/payments-api/latency-p99.yaml
+  - openslo/slos/checkout-api/availability.yaml

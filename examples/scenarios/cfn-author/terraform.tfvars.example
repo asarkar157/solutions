@@ -1,0 +1,27 @@
+# Scenario: cfn-author — example tfvars
+#   make demo SCENARIO=cfn-author
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"
+stackgen_project_id = ""
+
+aws_region = "us-east-1"
+
+# Option A — bring your own role (typical production)
+create_cfn_preview_iam_role = false
+aws_role_arn                = "arn:aws:iam::123456789012:role/YourCfnPreviewRole"
+
+# Option B — provision preview IAM (local Vault dev after aws-bastion apply)
+# create_cfn_preview_iam_role = true
+# trusted_assumer_arns = [
+#   "arn:aws:iam::123456789012:role/VaultTestBastionRole",
+# ]
+
+github_token = "ghp_replace_me"
+
+target_repository_full_name = "org/infra-templates"
+
+bedrock_use_iam_role = true
+
+enable_drift_schedule = false
+enable_drift_webhook  = false

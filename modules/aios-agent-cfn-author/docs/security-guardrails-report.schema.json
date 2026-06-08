@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CloudFormation security guardrails report",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "template_path", "scanners", "summary"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "template_path": { "type": "string" },
+    "scanners": {
+      "type": "object",
+      "required": ["checkov", "cfn_nag"],
+      "properties": {
+        "checkov": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "findings", "skipped", "error"] },
+            "failed_critical": { "type": "integer", "minimum": 0 },
+            "failed_high": { "type": "integer", "minimum": 0 },
+            "failed_medium": { "type": "integer", "minimum": 0 },
+            "failed_low": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "array" }
+          }
+        },
+        "cfn_nag": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "findings", "skipped"] },
+            "fail_count": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "array" }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["passed", "critical_count", "high_count", "blockers"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "critical_count": { "type": "integer", "minimum": 0 },
+        "high_count": { "type": "integer", "minimum": 0 },
+        "blockers": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

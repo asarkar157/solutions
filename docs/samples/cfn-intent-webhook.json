@@ -1,0 +1,10 @@
+{
+  "intent": "Generate a hardened staging S3 CloudFormation stack using patterns from aws-cloudformation/aws-cloudformation-templates (especially S3/compliant-bucket.yaml): versioning, SSE-S3, full public access block, SecureTransport deny, dedicated access-log bucket, and org-required tags.",
+  "stack_name": "staging-data",
+  "environment": "staging",
+  "template_file_name": "staging-data-s3.yaml",
+  "catalog_repo": "aws-cloudformation/aws-cloudformation-templates",
+  "github_repo_override": "appcd-dev/solutions",
+  "correlation_id": "cfn-local-demo-001",
+  "confirm_deploy": "false"
+}

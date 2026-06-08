@@ -1,0 +1,29 @@
+# CFN Author orchestration SOP
+
+## Workflow 1 — intent-to-infrastructure (streamlined)
+
+DAG: parse-intent → intent-blocked-gate → compliance-check → compliance-blocked-gate → synthesize-template → quality-check → quality-rework-loop → quality-blocked-gate → architecture-fit-review → architecture-blocked-gate → open-pr → publish-blocked-gate → preview-disabled-gate → preview-skip-gate → preview-safety-gate → preview-changes → final-intent-summary
+
+Cost/latency notes (Tier 1):
+- **HalGuard:** workflow metadata `halguard_skip_subagent_task_types=terminal_calling` skips PreCheck on script runners (paste spawn-context commands verbatim — never load_skill on embedded stages).
+- **parse-intent** uses parse-requirements-runner (jq + catalog-discover.sh) — spawn once, ONE execute_series; parent FORBIDDEN load_skill/read_notes.
+- **compliance-check** uses compliance-check-runner (deterministic rules script).
+- **planner_max_tool_iterations** capped at 10 for the intent workflow.
+- **preview-changes** uses change-set-preview.sh (AWS CLI) when enable_change_set_preview and confirm_deploy are true.
+- **architecture-fit-review** runs deterministic architecture-lint.sh against template YAML + NFR spec (blocks PR on FAIL).
+- **open-pr** PR body is script-rendered — never LLM `PR_BODY` (fixes escaped markdown in gh).
+- **final-intent-summary** uses render-final-intent-summary script when `pr_url.txt` exists.
+- Generate + hardened synthesis merged into **synthesize-template** (runbook embeds best-practices — no load_skill).
+- cfn-lint + Checkov/cfn-nag merged into **quality-check** (one spawn; scanners run in parallel on Ubuntu).
+- Governed deployment folded into **open-pr** (no extra agent stage).
+- Agent stages emit compact key=value handoffs (≤10 lines) — downstream reads `WORK_ROOT/*.json`.
+
+## Workflow 2 — cloudformation-drift-management
+
+DAG: parse-drift-scope → scope-blocked-gate → inventory-stacks → inventory-empty-gate → parallel-detect-drift → parallel-fan-in-gate → drift-retry-loop → synthesize-drift-report → classify-drift-recommendation → no-drift-skip-gate → reconcile-template-diff → reconcile-pr-skip-gate → open-reconcile-pr → final-drift-summary
+
+Parallel rule: one fan-out message for drift batch runners. Retry loop re-runs parallel-detect-drift for drift_retry_stack_ids only.
+
+Target repo: ${target_repository_full_name}
+Catalog: ${cfn_template_catalog_path}
+Template prefix: ${cfn_template_path_prefix}

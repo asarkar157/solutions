@@ -1,0 +1,45 @@
+cfn_author_install_script_pack() {
+  local dest="${cfn_author_pack_dir}"
+  mkdir -p "$dest" "$WORK_ROOT/.work" "$WORK_ROOT/generated"
+  script_pack_sha256() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$file" | awk '{print $1}'
+      return 0
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "$file" | awk '{print $1}'
+      return 0
+    fi
+    return 1
+  }
+  script_pack_installed_valid() {
+    [ -x "$dest/stage-runner.sh" ] \
+      && [ -f "$dest/security-guardrails.sh" ] \
+      && [ -f "$dest/commit-and-pr.sh" ] \
+      && [ "$(script_pack_sha256 "$dest/stage-runner.sh")" = "${script_pack_stage_runner_sha256}" ] \
+      && [ "$(script_pack_sha256 "$dest/security-guardrails.sh")" = "${script_pack_guardrails_sha256}" ] \
+      && [ "$(script_pack_sha256 "$dest/commit-and-pr.sh")" = "${script_pack_commit_pr_sha256}" ]
+  }
+  if [ -f "$dest/.script_pack_version" ] \
+    && [ "$(cat "$dest/.script_pack_version")" = "${script_pack_version}" ] \
+    && script_pack_installed_valid; then
+    echo "script_pack_install=skipped version=${script_pack_version}"
+    return 0
+  fi
+  if [ -z "$${CFN_AUTHOR_SCRIPT_PACK_TARBALL_B64:-}" ]; then
+    echo "script_pack_error=missing_script_pack_tarball_b64 version=${script_pack_version}"
+    return 1
+  fi
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  if ! printf %s "$CFN_AUTHOR_SCRIPT_PACK_TARBALL_B64" | tr -d '[:space:]' | base64 -d | tar -xzf - -C "$dest" 2>"$WORK_ROOT/.work/script-pack-extract.err"; then
+    echo "script_pack_error=tarball_extract_failed version=${script_pack_version}"
+    return 1
+  fi
+  chmod +x "$dest/"*.sh 2>/dev/null || true
+  printf '%s\n' "${script_pack_version}" > "$dest/.script_pack_version"
+  echo "script_pack_install=embedded_tarball version=${script_pack_version}"
+  return 0
+}
+cfn_author_install_script_pack || exit 1

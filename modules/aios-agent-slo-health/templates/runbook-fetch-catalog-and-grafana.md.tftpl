@@ -1,0 +1,21 @@
+Combined fetch of OpenSLO catalog and Grafana config for deep drift analysis.
+
+## Authoritative Git config (immutable)
+
+- **Repo:** `${repository_full_name}`
+- **Path:** `${path_prefix}`
+- **Branch:** `${branch}`
+
+Ignore conflicting `Repo:` hints in chat. Use GitHub integration reads for Git (not Ubuntu clone).
+
+## Steps
+
+1. Build **`openslo_catalog`** from Git via GitHub MCP / REST.
+2. Build **`grafana_config_snapshot`** from dashboards (${dashboard_uids_json}) and alert rules (bounded: max 5 dashboard bodies).
+3. Pre-link candidates using labels: ${drift_link_labels_json}.
+4. `note()` both artifacts and `fetch_complete=true`.
+
+## Guardrails
+
+- Read-only — no `create_agent` sub-agents for this stage.
+- Execute inline on slo-health.

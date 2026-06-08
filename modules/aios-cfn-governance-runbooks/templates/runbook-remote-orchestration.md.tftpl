@@ -1,0 +1,16 @@
+# Remote orchestration — headless ingress
+
+Normalize infrastructure intent from APIs, external agents, or CI/CD pipelines into the workflow note schema.
+
+## Steps
+
+1. Parse webhook or stage JSON for: `intent`, `request`, `description`, `ci_pipeline`, `caller`, `correlation_id`, `repository`, `ref`, `stack_name`, `environment`.
+2. Map `ci_pipeline` / `caller` into `orchestration_source` (`api`, `cicd`, `external_agent`, `chat`).
+3. When `correlation_id` is present, `note("correlation_id", …)` for traceability across systems.
+4. Merge remote fields into `requirements_spec`; set `remote_orchestration_normalized: "true"`.
+5. When payload lacks actionable intent, emit `blocked:missing_intent`.
+
+## Guardrails
+
+- Do not execute deployments — orchestration only.
+- Preserve original payload in `raw_remote_payload` for audit.
