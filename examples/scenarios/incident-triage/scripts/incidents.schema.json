@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stackgen.com/schemas/incident-triage-poc/incident.json",
+  "title": "IncidentTriagePoCRow",
+  "description": "One historical incident for batch eval (JSONL: one object per line).",
+  "type": "object",
+  "required": [
+    "id",
+    "category",
+    "mode",
+    "initial_prompt",
+    "golden_root_cause",
+    "golden_mitigation",
+    "golden_rca_full"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable incident identifier (e.g. INC-001).",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "capacity",
+        "deploy",
+        "dependency",
+        "config",
+        "network",
+        "data",
+        "unknown"
+      ],
+      "description": "Taxonomy bucket for scorecard rollups."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["offline", "live_replay"],
+      "description": "offline = prompt-only replay; live_replay = re-fire in Grafana when possible."
+    },
+    "initial_prompt": {
+      "type": "string",
+      "description": "Single-shot investigation prompt (no back-and-forth). Align with stackgen-sre buildInvestigationPrompt shape."
+    },
+    "golden_root_cause": {
+      "type": "string",
+      "description": "Published RCA root cause — human rubric reference."
+    },
+    "golden_mitigation": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Published actionable next steps."
+    },
+    "golden_rca_full": {
+      "type": "string",
+      "description": "Full published RCA text — used for bootstrap-memory import and human review."
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Optional alert labels (service, namespace, cluster, alertname)."
+    },
+    "integrations_required": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "e.g. grafana, aws, github, k8s."
+    },
+    "ootb_expected": {
+      "type": "string",
+      "enum": ["pass", "weak", "fail"],
+      "description": "SE pre-label before eval — updated after v1 scorecard."
+    },
+    "evaluation_id": {
+      "type": "string",
+      "description": "Optional batch tag stamped into source_metadata.evaluation_id."
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Human who curated golden RCA for bootstrap provenance."
+    },
+    "source": {
+      "type": "string",
+      "description": "Provenance: postmortem link, ticket id, or curated_import."
+    }
+  },
+  "additionalProperties": false
+}

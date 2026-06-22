@@ -1,0 +1,46 @@
+/bin/bash <<'CDKBOT_COMMIT_PR_EXECUTE'
+set -euo pipefail
+export HOME=${shell_work_home}
+export PATH="${shell_work_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+export CDKBOT_EMBEDDED=1
+: "$${WORK_ROOT:?export WORK_ROOT before commit-pr one-liner}"
+REPO_FULL_NAME="$${REPO_FULL_NAME:-}"
+ISSUE_OR_PR="$${ISSUE_OR_PR:-}"
+BASE_BRANCH="$${BASE_BRANCH:-main}"
+WORKING_BRANCH="$${WORKING_BRANCH:-}"
+STAGE_RUNNER="$WORK_ROOT/.pack/stage-runner.sh"
+
+parse_trigger_json() {
+  local raw="$${TRIGGER_JSON:-}"
+  [ -n "$raw" ] || return 1
+  if [ -z "$REPO_FULL_NAME" ]; then
+    REPO_FULL_NAME="$(printf '%s' "$raw" | jq -r '.repository.full_name // empty')"
+  fi
+  if [ -z "$ISSUE_OR_PR" ]; then
+    ISSUE_OR_PR="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+  fi
+  if [ "$BASE_BRANCH" = "main" ]; then
+    BASE_BRANCH="$(printf '%s' "$raw" | jq -r '.repository.default_branch // "main"')"
+  fi
+}
+
+if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
+  parse_trigger_json || true
+fi
+if [ -z "$REPO_FULL_NAME" ] || [ -z "$ISSUE_OR_PR" ]; then
+  echo "error=missing_commit_pr_params"
+  exit 1
+fi
+
+if [ -x "$STAGE_RUNNER" ]; then
+  export WORKING_BRANCH
+  /bin/bash "$STAGE_RUNNER" commit-pr "$WORK_ROOT" "$REPO_FULL_NAME" "$ISSUE_OR_PR" "" "$BASE_BRANCH"
+  echo "script_pack_version=${script_pack_version}"
+  exit 0
+fi
+
+echo "pr_error=missing_stage_runner"
+echo "hint=re-run intake-clone-bootstrap to materialize .pack/stage-runner.sh"
+exit 1
+CDKBOT_COMMIT_PR_EXECUTE

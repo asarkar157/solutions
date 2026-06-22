@@ -1,0 +1,21 @@
+CDKBOT_STAGE_RUNNER_SHA256=${script_pack_runner_sha256}
+CDKBOT_CLONE_PACK_SHA256=${script_pack_clone_sha256}
+script_pack_version=${script_pack_version}
+enable_progress_issue_comment=${enable_progress_issue_comment}
+Budget: ≤2 subagents, ≤$1.00, ≤3 minutes.
+
+**Playbook:** **`${sop_orchestration_name}`** (Runbook Context + `get_runbook` / `load_skill`). Spawn contracts override ad-hoc goals.
+
+**CRITICAL — execute, do not plan (trace `7170bfbf`):** Call `note()` and spawn approved subagents. FORBIDDEN: Phase 1/2/3/4 plans only, `"notes":{}` in `workflow_notes_snapshot`.
+
+**Stage 1 — clone**
+0. Copy `workflow_run_id` from `[Workflow execution]`; `WORK_ROOT={{work_root}}`.
+1. Parse webhook JSON from stage Input (§0b). `note()` each: `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`, `event_type`, `issue_labels`, `pr_head_ref`, `pr_head_clone_url`. Missing repo/issue → §8(a) blocked notify, STOP.
+1b. When progress enabled: ONE `progress-comment-updater` (Template P); `note progress_comment_id`.
+2. Discovery label gate: `${sop_discovery_layout}` §1 when `discovery_repo=true`.
+3. Build `issue_details` from webhook when title present — no `clone-fetch` unless title missing.
+4. Clone into **current** `WORK_ROOT`: run ONE `clone-runner` when **`{{work_root}}/repo/.git` is missing** OR when `read_notes` `repo_clone_path` is set but **not under `{{work_root}}/`** (stale prior `.wf-*` run — trace `9e8afbe42c8d`). **COPY spawn-context Clone command VERBATIM** (traces `0bf8c7ef`, `9d8958e4`): literal `'{{work_root}}' '<url from notes>' '<branch>' '<issue>'` argv to `clone-pack.sh`; never `'$REPO_CLONE_URL'` args; `working_dir=${shell_work_home}` or omit. Never skip clone because an older workflow left `repo_clone_path` populated.
+5. On `clone_blocker=*` or empty `repo_clone_path` under current `{{work_root}}` → blocked (§8). `base64: invalid input` → `wrong_shell_dollar_escape`.
+6. Close: `workflow_notes_snapshot` (§3i) + `stage_summary:clone` + progress comment (§3j).
+
+Forbidden: clone before step 1 notes; `graph_query`; org `gh repo list`; `load_skill` on clone runner; plan-only output.

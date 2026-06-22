@@ -1,0 +1,27 @@
+name: SDD Compliance and Specification Linkage
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  verify-sdd-linkage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR body spec reference
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          if ! echo "$PR_BODY" | grep -Eiq '(specs/|openspec/changes/)'; then
+            echo "Error: PR body must reference specs/ or openspec/changes/"
+            exit 1
+          fi
+
+      - name: Run ci-spec-linkage.sh
+        run: |
+          chmod +x ./scripts/ci-spec-linkage.sh
+          ./scripts/ci-spec-linkage.sh

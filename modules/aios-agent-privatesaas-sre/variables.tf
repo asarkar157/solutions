@@ -1,7 +1,7 @@
 variable "model_names" {
   description = "Ordered list of Guild-registered model names (highest preference first). Register Bifrost in `aios-foundation` as an OpenAI-compatible provider and pass the resulting model name(s) here, or use `bifrost_model_names` to override."
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."

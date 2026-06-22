@@ -1,0 +1,6 @@
+incident_id,eval_run_id,mode,category,started_at,completed_at,duration_s,root_cause,mitigation,confidence,trace_url,investigation_id,session_id,prior_incidents_count,memory_persist_skipped,golden_root_cause,human_correctness,human_completeness,human_actionability,human_latency_pass,reviewer,notes
+SYN-001,synthetic-v1,offline,capacity,,,,,,,,,,,,,,,,,,
+SYN-002,synthetic-v1,offline,deploy,,,,,,,,,,,,,,,,,,
+SYN-003,synthetic-v1,offline,dependency,,,,,,,,,,,,,,,,,,
+SYN-004,synthetic-v1,offline,config,,,,,,,,,,,,,,,,,,
+SYN-005,synthetic-v1,live_replay,network,,,,,,,,,,,,,,,,,,

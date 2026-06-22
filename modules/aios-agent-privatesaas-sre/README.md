@@ -32,9 +32,9 @@ resource "sg_guild_model_provider" "bifrost" {
 }
 
 resource "sg_guild_model" "bifrost_primary" {
-  name          = "bifrost-gpt-4o"
+  name          = "bifrost-gpt-5.4"
   provider_name = sg_guild_model_provider.bifrost.name
-  model_id      = "gpt-4o" # route id exposed by Bifrost
+  model_id      = "gpt-5.4-2026-03-05" # route id exposed by Bifrost
   good_for_task = "tool_calling"
 }
 

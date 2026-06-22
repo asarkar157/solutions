@@ -1,0 +1,20 @@
+stackgen_url   = "https://ai.dev.stackgen.com"
+stackgen_token = "" # TF_VAR_stackgen_token or set here
+
+# At least one LLM key via env: OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY
+github_token = "" # TF_VAR_github_token — needs repo scope
+
+# Fork a small TypeScript or Go app for testing; runner clones this repo
+target_repository_full_name = "your-org/your-app"
+
+# SDD routing
+sdd_framework = "auto"   # spec-kit | openspec | auto
+change_type   = "brownfield"
+
+# Remote runner (Docker required on apply host when true)
+create_remote_runner = true
+build_runner_image   = true
+
+# Optional Linear auth (one of):
+# linear_api_key = ""                    # personal API key (lin_api_…)
+# linear_credential_provider_id = ""   # OAuth credential provider UUID

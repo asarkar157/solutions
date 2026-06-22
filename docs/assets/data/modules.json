@@ -2576,7 +2576,7 @@
         "policy_id",
         "integration_name"
       ],
-      "usage": "module \"stackgen_mcp_agent\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-stackgen-mcp-policy?ref=main\"\n\n  stackgen_mcp_url   = \"https://app.stackgen.com/api/mcp/sse\"\n  stackgen_api_token = var.stackgen_token\n  model_names        = [module.foundation.model_names_by_provider.gpt4o]\n}"
+      "usage": "module \"stackgen_mcp_agent\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-stackgen-mcp-policy?ref=main\"\n\n  stackgen_mcp_url   = \"https://app.stackgen.com/api/mcp/sse\"\n  stackgen_api_token = var.stackgen_token\n  model_names        = [module.foundation.model_names_by_provider.gpt54]\n}"
     },
     {
       "id": "aios-agent-sre-incident-commander",
@@ -2655,6 +2655,56 @@
         "webhook_token"
       ],
       "usage": "module \"terraform_bot\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-terraform-bot?ref=main\"\n\n  model_names = module.foundation.model_names\n  policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  integration_names = {\n    github     = module.github_integration.integration_name\n    ubuntu_cli = module.ubuntu_integration.integration_name\n  }\n}"
+    },
+    {
+      "id": "aios-agent-cdk-bot",
+      "name": "AWS CDK Bot",
+      "desc": "GitHub webhook-driven AWS CDK workflow: six-check validate (lint, typecheck, synth, cfn-lint, tests, cdk-nag) before draft PR; optional catalog repo profile and AWS validation.",
+      "layer": 2,
+      "tags": [
+        "cdk",
+        "aws",
+        "github",
+        "ubuntu",
+        "typescript",
+        "python",
+        "iac"
+      ],
+      "icon": "☁️",
+      "vars": [
+        {
+          "n": "model_names",
+          "t": "list(string)",
+          "r": true
+        },
+        {
+          "n": "policy_ids",
+          "t": "object({dangerous_ops})",
+          "r": true
+        },
+        {
+          "n": "github_secret_id",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "enable_aws_validation",
+          "t": "bool",
+          "r": false
+        },
+        {
+          "n": "discovery_modules_repository_full_names",
+          "t": "list(string)",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "agent_names",
+        "workflow_name",
+        "webhook_id",
+        "webhook_ingress_payload_url"
+      ],
+      "usage": "module \"cdk_bot\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-agent-cdk-bot?ref=main\"\n\n  model_names      = module.foundation.model_names\n  policy_ids       = { dangerous_ops = module.policies.policy_ids.dangerous_ops }\n  github_secret_id = module.github_integration.secret_id\n}"
     },
     {
       "id": "aios-agent-db-state-splitter",

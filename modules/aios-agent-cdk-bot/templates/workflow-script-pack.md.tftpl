@@ -1,0 +1,52 @@
+Skill: Canonical workflow shell protocol for cdk-app-update. **Single-command protocol** — paste spawn-contract script blocks into ONE `${shell_tool_prefix}_execute_series`. Pair with orchestration-sop §3d/§3h.
+
+Keywords: workflow scripts, execute_series, stage-runner, clone, validate, commit, pr, catalog-scaffold.
+
+========================================================================
+0) Single-command protocol (mandatory)
+========================================================================
+
+**Hard rules:**
+0. Guild may wrap `commands[0].command` in `sh -c` — keep the spawn one-liner a single quoted string; do not split across multiple commands.
+1. **`WORK_ROOT={{work_root}}`** — use spawn-context absolute path; do **not** set `working_dir` to WORK_ROOT.
+2. **`working_dir`** — `${shell_work_home}` or **omit**. NEVER `$HOME/.wf-*` or `{{work_root}}`.
+3. **Exactly ONE** element in `execute_series.commands[]`. Copy spawn context one-liners verbatim (single `$` only):
+   - **Clone:** `${cdkbot_pack_dir}/clone-pack.sh clone …`
+   - **Validate:** `${cdkbot_pack_dir}/stage-runner.sh validate '{{work_root}}' '<module_path>'`
+   - **Commit+PR:** `${cdkbot_pack_dir}/stage-runner.sh commit-pr …`
+   - **Catalog scaffold (discovery repos only):** `${cdkbot_pack_dir}/stage-runner.sh catalog-scaffold '{{work_root}}'`
+4. **Never** `_embed_cdkbot_run`, multiple commands, or `load_skill` on embedded runners.
+5. **Clone** copies `stage-runner.sh` into `$WORK_ROOT/.pack/` — stdout includes `stage_runner_path=` for downstream validate/commit commands.
+6. After stdout `key=value` lines, mirror keys to `$WORK_ROOT/notes.json` (orchestration §3b).
+
+========================================================================
+1) Spawn-context commands (authoritative)
+========================================================================
+
+| Subagent | Command | Stdout sentinels |
+|----------|---------|------------------|
+| `clone-runner` | spawn-context Clone (`clone-pack.sh`) | `repo_clone_path=`, `repo_head_sha=`, `script_pack_version=` |
+| `implement-cdk-app-update` | spawn-context Implement-app (2× series + create_files) | `implement_edit_verified=true`, `implement_summary=` |
+| `implement-cdk-catalog-scaffold` | spawn-context Discovery (`catalog-scaffold`) | `module_paths=`, `catalog_greenfield_validated=true`, `module_quality_summary=` |
+| `validate-runner` | spawn-context Validate-only (`stage-runner.sh validate`) | `fmt_exit=`, `module_quality_summary=`, `validate_markers_file=`, `test_summary_tail=` |
+| `create-pr-runner` | spawn-context Commit-pr | `pr_url=`, `working_branch=` |
+
+**FORBIDDEN:** `validate-and-pr` on validate stage (PR opens in edit via `commit-pr`); printf fake PASS; `load_skill` on clone/validate/create-pr runners.
+
+========================================================================
+2) Stage → subagent mapping
+========================================================================
+
+| Stage | Subagent | Action |
+|-------|----------|--------|
+| `clone` | `clone-runner` | Architect notes webhook keys first; spawn with spawn contract |
+| `implement-cdk` | `implement-cdk-resolve-paths` → `implement-cdk-app-update` or `implement-cdk-catalog-scaffold` | Edit + `create-pr-runner` |
+| `validate` | `validate-runner` | Checks only on open PR branch; notify on close |
+
+Planner spawn goals ≤ ~800 chars — host replaces with spawn contract text.
+
+========================================================================
+3) tftpl / goal safety
+========================================================================
+
+Spawn goals and skills rendered via `templatefile` must use **single `$`** in shell examples (`$WORK_ROOT`, `$HOME`). Never `$$` — bash expands `$$` to PID and breaks pack decode. Never paste unescaped `$${...}` after `→` in this skill (breaks Terraform templatefile).

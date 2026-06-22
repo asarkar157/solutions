@@ -1,0 +1,16 @@
+# Scenario: sre-boost — example tfvars
+
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "sg_pat_replace_me"
+stackgen_project_id = ""
+
+agent_name = "aws-sre"
+
+# Customer role already on StackGen bastion allowlist (not the bastion ARN from aws config).
+aws_role_arn = "arn:aws:iam::1234567890:role/VaultTestTargetRole"
+aws_region   = "us-east-1"
+
+github_token = "ghp_replace_me"
+
+create_remote_runner = true
+remote_runner_name   = "sre-boost-runner"

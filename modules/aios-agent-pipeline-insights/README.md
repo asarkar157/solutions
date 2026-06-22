@@ -9,7 +9,7 @@ module "pipeline_insights" {
   source = "github.com/appcd-dev/solutions//modules/aios-agent-pipeline-insights"
 
   # aios-foundation exposes model_names as list(string) — pass it through.
-  # To hand-pick: model_names = [module.foundation.model_names_by_provider.claude_sonnet]
+  # To hand-pick: model_names = [module.foundation.model_names_by_provider.gpt54]
   model_names = module.foundation.model_names
   policy_ids  = { dangerous_ops = module.policies.policy_ids.dangerous_ops }
 

@@ -10,7 +10,9 @@ terraform {
 }
 
 locals {
-  create_secret = trimspace(var.existing_secret_id) == "" && trimspace(var.aws_role_arn) != ""
+  # Count must not depend on aws_role_arn — it may be unknown at plan time when a parent
+  # module creates the IAM role in the same apply (e.g. sre-boost + aios-aws-integration-iam).
+  create_secret = trimspace(var.existing_secret_id) == ""
   secret_id     = local.create_secret ? sg_secret.aws_vault[0].id : var.existing_secret_id
 }
 

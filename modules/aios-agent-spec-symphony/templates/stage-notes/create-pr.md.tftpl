@@ -1,0 +1,7 @@
+When intake/implement blocked: spawn `create-pr-notify` — ONE execute_series with spawn-context **Blocker comment** command (not hand-rolled `gh`). `read_notes` first. No commit when `repo_clone_path` empty.
+
+When upstream input contains `max iterations reached` from `validate-loop-gate`: still run `create-pr-runner` (draft/summary PR if no diff) and note `quality_loop_exhausted=true`.
+
+When `pr_url` unset and clone OK: ONE `create-pr-runner` with spawn-context Commit-pr command. `note pr_url working_branch`.
+
+Close: `stage_summary:create-pr=done` or `=blocked`.

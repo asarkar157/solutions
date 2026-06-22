@@ -1,0 +1,22 @@
+========================================================================
+0c) StackGen discovery-modules repositories
+========================================================================
+
+When `repository_full_name` ∈ {${discovery_repositories_list}}:
+
+  1. Persist note `discovery_repo=true` as soon as the repo matches (`clone` step 1).
+%{ if discovery_issue_label != "" ~}
+  2. **Label gate first** (`clone` step 2 — discovery layout SOP §1): check `issue_labels` from the webhook payload before any other work. On failure, Template E (GitHub path) and STOP.
+  3. Only after `gate_result` is `pass`: load skill `${sop_discovery_layout_name}` before module resolution or greenfield scaffold.
+%{ else ~}
+  2. Load skill `${sop_discovery_layout_name}` BEFORE module resolution or greenfield scaffold. It overrides generic `modules/` layout rules.
+%{ endif ~}
+  4. In `implement-cdk`, use discovery layout SOP §2 for existence checks under `aws/`, `gcp/`, `azurerm/` — never `modules/` or `terraform/modules/`.
+  5. In `implement-cdk`, when `not_found` + greenfield: spawn **`implement-cdk-catalog-scaffold`** per discovery layout SOP §4.
+  8. **Forbidden whenever `discovery_repo=true`:** custom spawn goals with pasted shell/Python/heredoc bodies (use spawn contract + `read_notes` instead).
+
+========================================================================
+2a-discovery) Resolution override (discovery repos only)
+========================================================================
+
+After generic §2a steps (a)–(d), if `discovery_repo=true`, re-run existence per `${sop_discovery_layout_name}` §2 and let that SOP's result supersede `module_paths` / `module_resolution_confidence` when the discovery algorithm is more specific.

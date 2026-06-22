@@ -45,7 +45,7 @@ provider "sg" {
 ```hcl
 resource "sg_secret" "openai_vault" { ... }
 resource "sg_guild_model_provider" "openai" { ... }
-resource "sg_guild_model" "gpt4o" { ... }
+resource "sg_guild_model" "gpt54" { ... }
 ```
 
 **After (modular):**
@@ -120,7 +120,7 @@ module "azure_integration" {
 module "sre" {
   source = "./modules/sre"
   model_names = {
-    gpt4o         = sg_guild_model.gpt4o.name
+    gpt54         = sg_guild_model.gpt54.name
     claude_sonnet = sg_guild_model.claude_sonnet.name
     gemini_flash  = sg_guild_model.gemini_flash.name
   }

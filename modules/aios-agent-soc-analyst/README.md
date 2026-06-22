@@ -47,6 +47,6 @@ module "soc_analyst" {
     splunk = sg_integration_splunk.main.name
   }
 
-  model_names = [sg_model_openai.gpt4o.name]
+  model_names = [sg_model_openai.gpt54.name]
 }
 ```

@@ -1,0 +1,14 @@
+stackgen_url   = "https://your-guild.example.com"
+stackgen_token = "sg_..."
+stackgen_project_id = "your-org-uuid"
+github_token   = "ghp_..."
+
+# Optional catalog repos (Template I)
+# cdk_catalog_repository_full_names = ["your-org/cdk-constructs"]
+# cdk_catalog_issue_label = "cdk-construct-request"
+
+# Optional AWS validation (complete Guild AWS wizard first)
+enable_aws_validation = false
+# existing_aws_integration_name = "cdk-bot-aws"
+# aws_role_arn = "arn:aws:iam::123456789012:role/stackgen-cdk-validate"
+# aws_region = "us-east-1"

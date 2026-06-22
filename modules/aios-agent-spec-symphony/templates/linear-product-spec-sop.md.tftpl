@@ -1,0 +1,35 @@
+# Linear product-spec SOP
+
+Golden template for **linear-product-spec** workflow (`author-product-spec` + `decompose-subgoals`).
+
+## Labels
+
+- Intake gate: `${linear_product_spec_label}` on the Linear issue before webhook fires (or note `needs_spec_present=true` when label present).
+- After review, humans add `${linear_implement_label}` to start **linear-spec-implement**.
+
+## Golden template (fill every section)
+
+${golden_product_spec_body}
+
+## Author-product-spec rules
+
+1. Read Linear issue title + description from workflow notes (`linear_issue_title`, `linear_issue_body`).
+2. Replace `{TITLE}` with the issue title; preserve marker `<!-- spec-symphony-spec-v1 -->` at top.
+3. Expand thin tickets into concrete acceptance criteria (minimum 3 when possible).
+4. Note `spec_markdown=` with the full markdown body (single note or chunked with clear delimiter).
+5. Do **not** write engineering subgoals in this stage — `decompose-subgoals` owns that section.
+
+## Decompose-subgoals rules
+
+1. read_notes `spec_markdown` from prior stage.
+2. Emit 3–8 numbered engineering subgoals (implementation-sized, testable, ordered).
+3. Append `## Engineering subgoals` section to spec markdown in notes as `spec_markdown_final=`.
+4. Note `engineering_subgoals=` as markdown numbered list only.
+
+## Post-linear-spec-comment
+
+Post `spec_markdown_final` via `${linear_tool_save_comment}` with footer:
+
+```
+Reply + add label `${linear_implement_label}` when approved to start implementation.
+```

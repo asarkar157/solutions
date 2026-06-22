@@ -1,0 +1,11 @@
+# Script pack for spec-symphony remote runner.
+
+Pack directory: `${specsym_pack_dir}` on runner host `${shell_work_home}`.
+
+Shell tool prefix: `${shell_tool_prefix}_execute_series`.
+
+Version: ${script_pack_version}.
+
+Subcommands (via stage-runner.sh): clone, spec-bootstrap, validate, commit-pr, archive.
+
+Always set SPECSYM_ALLOW_DIRECT=1 and run pack ensure before stage-runner.

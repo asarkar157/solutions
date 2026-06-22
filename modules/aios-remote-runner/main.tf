@@ -35,7 +35,7 @@ locals {
 }
 
 resource "sg_remote_runner_secrets" "this" {
-  count = var.create_runner && local.bind_secrets ? 1 : 0
+  count = local.bind_secrets ? 1 : 0
 
   # Use stable runner name (plan-time known); API accepts name or server id.
   runner_id                     = local.runner_name

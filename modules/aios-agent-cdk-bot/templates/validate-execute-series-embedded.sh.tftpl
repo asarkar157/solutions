@@ -1,0 +1,41 @@
+/bin/bash <<'CDKBOT_VALIDATE_EXECUTE'
+set -euo pipefail
+export HOME=${shell_work_home}
+export PATH="${shell_work_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+export CDKBOT_EMBEDDED=1
+export CDKBOT_ALLOW_DIRECT=1
+: "$${WORK_ROOT:?export WORK_ROOT before validate one-liner}"
+export MODULE_PATH="$${MODULE_PATH:-}"
+STAGE_RUNNER="$WORK_ROOT/.pack/stage-runner.sh"
+
+materialize_stage_runner() {
+  mkdir -p "$WORK_ROOT/.pack"
+  printf '%s' "${script_pack_runner_b64}" | base64 -d > "$STAGE_RUNNER"
+  chmod +x "$STAGE_RUNNER"
+  local runner_actual
+  runner_actual="$(sha256sum "$STAGE_RUNNER" | awk '{print $1}')"
+  if [ "$runner_actual" != "${script_pack_runner_sha256}" ]; then
+    echo "script_pack_error=runner_sha256_mismatch expected=${script_pack_runner_sha256} actual=$runner_actual"
+    exit 1
+  fi
+  echo "stage_runner_sha256=$runner_actual"
+}
+
+if [ -z "$MODULE_PATH" ]; then
+  MODULE_PATH="$WORK_ROOT/repo"
+  export MODULE_PATH
+fi
+if [ ! -d "$MODULE_PATH" ]; then
+  echo "validation_error=module_path_missing path=$MODULE_PATH"
+  exit 1
+fi
+
+materialize_stage_runner
+
+set +e
+/bin/bash -s validate "$WORK_ROOT" "$MODULE_PATH" < "$STAGE_RUNNER"
+validate_rc=$?
+set -e
+exit "$validate_rc"
+CDKBOT_VALIDATE_EXECUTE

@@ -20,7 +20,8 @@ locals {
   # them via MCP_SECRET_MAP (see stackgen-guild cmd/integrations/ubuntu-cli/entrypoint.sh).
   # Terraform can set the same map so pods work before the image entrypoint ships.
   ubuntu_secret_map_env = length(var.secret_ref_ids) > 0 ? {
-    MCP_SECRET_MAP = "GIT_TOKEN=token,GH_TOKEN=token,GITHUB_TOKEN=token,GIT_HOST=git_host,GIT_USERNAME=git_username"
+    MCP_SECRET_MAP        = "GIT_TOKEN=token,GH_TOKEN=token,GITHUB_TOKEN=token,GIT_HOST=git_host,GIT_USERNAME=git_username"
+    MCP_SHELL_SECRET_CLIS = "gh,git,curl"
   } : {}
   ubuntu_env = merge(local.install_tools_env, local.install_pip_packages_env, local.ubuntu_secret_map_env, var.env_vars)
 }

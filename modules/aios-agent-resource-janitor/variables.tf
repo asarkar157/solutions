@@ -7,7 +7,7 @@ variable "model_names" {
     `[module.foundation.model_names_by_provider.<key>]`.
   EOT
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."

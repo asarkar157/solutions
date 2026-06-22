@@ -1,0 +1,56 @@
+Skill: Install CDK toolchain on the **remote runner** and run the six-check quality pipeline for AWS CDK apps (TypeScript or Python). Pair with `${sop_module_quality}` for PASS / NEEDS_REVISION / BLOCKED sentinels.
+
+Keywords: AWS CDK, TypeScript, Python, cdk synth, cfn-lint, cdk-nag, eslint, prettier, tsc, jest, vitest, pytest, lint, typecheck, validate-cdk, stage-runner, remote runner, quality_check_lint, quality_check_synth, module_quality_summary.
+
+========================================================================
+1) Tool boundary (mandatory)
+========================================================================
+
+- All shell work uses **remote runner** tools only: `${shell_tool_prefix}_execute_command`, `${shell_tool_prefix}_execute_series` (never Ubuntu CLI, never `load_skill` on validate runners).
+- **ONE** `${shell_tool_prefix}_execute_series` per `validate-runner` subagent — copy spawn-context **Validate-only** command verbatim (`${cdkbot_pack_dir}/stage-runner.sh validate '{{work_root}}' '<module_path>'`).
+- `working_dir` = `${shell_work_home}` or omit — never `{{work_root}}` (host chdirs before the command).
+- **CDK apps (`repo_kind=cdk_app` / `cdk.json` present):** never `terraform` / `tofu` / `tf test` / tfsec / checkov — those are legacy Terraform-module paths only.
+
+========================================================================
+2) What the runner executes
+========================================================================
+
+`stage-runner.sh validate` → `validate-cdk.sh` for each `module_paths[]` entry (usually `{{work_root}}/repo`):
+
+1. **Detect language** — `detect-cdk-language.sh` → `cdk_language=typescript|python`, `cdk_app_root=`.
+2. **Toolchain** — TypeScript: `ensure-cdk-toolchain.sh` (user-local Node 22 under `$HOME/.local/node`, no sudo). Python: `bootstrap-deps.sh` (venv + pip install from `requirements.txt` / `pyproject.toml`).
+3. **Deps** — `bootstrap-deps.sh` (`npm ci` / `pip install`) before checks; stdout includes `deps_exit=`, `init_exit=` (alias).
+4. **Lint + typecheck** (parallel) — TS: `npm run lint` or eslint/prettier; `npm run typecheck` or `tsc --noEmit`. Python: ruff/flake8 + mypy/pyright when configured.
+5. **`cdk synth --no-staging`** — hermetic synth to `cdk.out/` (optional AWS creds only when synth needs lookups; default validate is offline).
+6. **Post-synth (parallel)** — `cfn-lint` on `cdk.out/`, unit tests (`npm test` / pytest), **cdk-nag** on the app.
+
+Missing CLI on the runner: install in the **same** execute_series via `sudo apt-get install -y <pkg>` or `${cdkbot_pack_dir}/ensure-shell-tool.sh <tool>` — never stop with a markdown plan (orchestration §1b).
+
+========================================================================
+3) Required stdout (machine-readable)
+========================================================================
+
+Runner stdout MUST include (validate stage copies verbatim into notes):
+
+  lint_exit= typecheck_exit= synth_exit= cfn_lint_exit= test_exit= nag_exit=
+  deps_exit= init_exit= validate_exit= fmt_exit= (legacy aliases)
+  cdk_language= binary=
+  validation_summary=
+  module_quality_summary=PASS|NEEDS_REVISION|BLOCKED
+  validate_markers_file= test_summary_file= test_summary_tail= (when test_exit=1)
+
+Map to human sentinels per `${sop_module_quality}` §2. **PASS** only when all six `quality_check_*` are PASS and stdout includes real exit markers — never prose-only success.
+
+========================================================================
+4) Planner / subagent rules
+========================================================================
+
+- **Validate stage:** spawn ONE `validate-runner` after `pr_url` + `module_paths` exist — FIRST tool = execute_series with spawn-context Validate-only (not validate-and-pr; PR opens in edit).
+- **Implement stage:** `implement-cdk-app-update` runs implement markers only; full six-check runs in validate unless discovery greenfield inline validate already set `catalog_greenfield_validated=true`.
+- **Legacy Terraform-only repos** (no `cdk.json`): rare — use catalog-scaffold inline validate or legacy registry-wrap paths from orchestration SOP; do not apply this skill's CDK synth steps to `*.tf` modules.
+
+========================================================================
+5) Report
+========================================================================
+
+On failure: note `module_quality_gaps` from stdout `test_summary_tail` / first Error lines. On BLOCKED (toolchain/deps/synth infra): `module_quality_summary=BLOCKED` — validate-loop-gate must not GO_BACK. On NEEDS_REVISION: loop to implement-cdk to push fixes to `working_branch`.

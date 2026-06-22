@@ -1,0 +1,111 @@
+Skill: StackGen **discovery-modules** repository layout, existence checks, scaffolding, and validation. Load this SOP whenever `repository_full_name` is one of: ${discovery_repositories_list}.
+
+Keywords for skill discovery: discovery-modules, stackgenhq, aws_s3, google_storage, azurerm, stackgen.yaml, custom-modules, discovery template, data source, resource template, tftest, mock_provider.
+
+========================================================================
+0) Repository shape (authoritative)
+========================================================================
+
+Discovery modules are **one Terraform template per cloud resource**, not generic `modules/<name>/` wrappers.
+
+Top-level provider roots (ONLY these — never scaffold under `modules/`):
+  - `aws/<module_dir>/`
+  - `gcp/<module_dir>/`
+  - `azurerm/<module_dir>/`
+
+A valid module directory MUST contain:
+  - `<resource_type>.tf` — single primary `resource` or `data` block named `this` (match sibling modules).
+  - `versions.tf` — Terraform `>= 1.0.0, < 2.0.0` and provider pins:
+      * AWS: `hashicorp/aws` `~> 5.0`
+      * GCP: `hashicorp/google` `~> 6.0`
+      * Azure RM: `hashicorp/azurerm` `~> 3.9` (add `hashicorp/azuread` `~> 3.1.0` only when the resource is Entra ID)
+  - `variables.tf.json` and `outputs.tf.json` — JSON schema describing inputs/outputs (copy structure from the nearest sibling module under the same provider root).
+  - `provider.tf` — minimal provider block when siblings use it (often just `provider "aws" {}`).
+  - `basic.tftest.hcl` at the **module root** (NOT under `tests/`) — `command = plan`, **`mock_provider "aws" {}`** (or matching provider) so `tofu test` never needs real cloud credentials in the sandbox, `assert` on key attributes.
+  - `.stackgen/stackgen.yaml` — UI + discovery metadata (see §3).
+
+Optional: `README.md` one paragraph citing the originating GitHub issue number.
+
+**Forbidden layout mistakes** (trace `01beb81f` — agent wrote these repeatedly):
+  - ❌ `tests/basic.tftest.hcl` — discovery modules use **`basic.tftest.hcl` at the module root**, not under `tests/`
+  - ❌ `main.tf` as the primary resource file — use **`<resource_type>.tf`** (e.g. `aws_ecs_service.tf`) matching sibling modules
+  - ❌ `modules/<name>/` or `terraform/modules/` — discovery repos use **`<provider>/<module_dir>/` only**
+
+========================================================================
+1) Issue label gate (when configured)
+========================================================================
+
+%{ if discovery_issue_label != "" ~}
+On discovery repos, the **`clone`** stage MUST run this label gate **immediately after** persisting `issue_labels` from the webhook payload (step 1 of the stage binding). Do this **before** `load_skill`, `graph_query`, `clone-fetch`, or any clone.
+
+Pass when `issue_labels` contains `${discovery_issue_label}`.
+
+If the gate fails:
+  - note `gate_result="missing_label"`
+  - note `stage_summary:clone="blocked: missing ${discovery_issue_label} label"`
+  - spawn `create-pr-comment` using orchestration-sop **Template E (GitHub path)** — `cdk-bot-github_execute_*` only; no shell bootstrap.
+  - STOP the workflow (no clone, no discovery layout skill, no graph queries).
+
+If the gate passes, note `gate_result="pass"` and continue.
+%{ else ~}
+No label gate — any issue/PR on a discovery repo may trigger the workflow.
+%{ endif ~}
+
+========================================================================
+2) Module existence check (run inside ONE shell subagent)
+========================================================================
+
+Inputs: `repo_clone_path`, `issue_details`, `target_module_hints`.
+
+Provider inference (first match wins in title/body/hints):
+  - `aws` — ECS, EKS, VPC, RDS, S3, Lambda, IAM, etc.
+  - `gcp` / `google` — GKE, GCS, `google_*`
+  - `azurerm` / `azure` — `azurerm_*`, Azure RM resources
+
+Module directory name:
+  - Prefer Terraform resource type: `aws_s3_bucket`, `google_storage_bucket`, `azurerm_kubernetes_cluster`.
+  - Normalize hints: strip `terraform-`, convert slashes to `_`, lowercase.
+
+Existence algorithm:
+  1. `CANDIDATE="<provider_root>/<module_dir>"` (e.g. `aws/aws_s3_bucket`).
+  2. `test -d "$CANDIDATE" && test -n "$(find "$CANDIDATE" -maxdepth 1 -name '*.tf' -print -quit)"`.
+  3. If exists → `module_paths=["$REPO_CLONE/$CANDIDATE"]`, `module_resolution_confidence=exact`.
+  4. If missing → also scan `find <repo_clone_path>/{aws,gcp,azurerm} -type d -name '<module_dir>'` for typos; if multiple → `ambiguous`; if none → `not_found`.
+
+Persist: `discovery_provider`, `discovery_module_dir`, `discovery_stackgen_provider` (`aws`|`gcp`|`azure` — map `azurerm` → `azure` for StackGen CLI upload).
+
+========================================================================
+3) `.stackgen/stackgen.yaml` (required for new modules)
+========================================================================
+
+Before opening a PR for a **new** module:
+  1. Copy the closest sibling's `.stackgen/stackgen.yaml` under the same provider root and adapt:
+     - `representation.side_panel.label` / `node.label.static` — human label
+     - `discovery.type` — Terraform resource or data source type (e.g. `aws_s3_bucket`)
+     - `discovery.data_source` — matching `data_*` when applicable
+     - `variables` — keys aligned with `variables.tf.json`
+  2. Validate against the repo schema when `tools/stackgen_yaml_schema.json` exists:
+     `python3 -m pip install -q pyyaml jsonschema`
+     `python3 -c 'import json,yaml,sys; from jsonschema import validate; s=json.load(open(sys.argv[1])); d=yaml.safe_load(open(sys.argv[2])); validate(d,s); print("stackgen_yaml_valid=true")' \
+       "<repo_clone_path>/tools/stackgen_yaml_schema.json" "<module>/.stackgen/stackgen.yaml"`
+  3. note `stackgen_yaml_summary` with pass/fail; block PR if validation fails after one fix attempt.
+
+========================================================================
+4) Template I — discovery module scaffold (preferred over Template G/H)
+========================================================================
+
+Subagent name: `implement-cdk-catalog-scaffold`
+
+When `module_resolution_confidence=not_found` AND greenfield intent AND `repository_full_name` is a discovery repo:
+
+  0. `WORK_ROOT` = spawn-context absolute path (from `[Workflow execution]` / clone stdout — not literal `$HOME/.wf-*`). Discovery: `${cdkbot_pack_dir}/stage-runner.sh catalog-scaffold` + `TRIGGER_JSON_B64`.
+  1. ONE execute_series: script-pack §2.5 `discovery-check`, then write **all** scaffold files under `<repo_clone_path>/<provider>/<module_dir>/` via `printf`/heredoc/python **in that same series** (container resets between separate tool calls — trace `157b399eacdc`).
+  2. If confidence is `exact`, run inline validate on existing `module_paths` (emit `scaffold_summary=existing_module_revalidated` and `module_quality_summary` — do not STOP without validate markers; rework loops depend on fresh `init_exit` / `fmt_exit`).
+  3. If `not_found`, mirror sibling `variables.tf.json` / `outputs.tf.json` / `.stackgen/stackgen.yaml` from the **best-matching** module under the same provider root (stage-runner `pick_discovery_sibling_dir` — token overlap with `MODULE_DIR`, then known heuristics e.g. `verifiedaccess` → `aws_ec2_client_vpn_endpoint`; **never** rely on lexicographic `find … -quit` alone — trace 573f84aa9000 copied `aws_iam_role` for `aws_verifiedaccess_trust_provider`).
+  4. Write `basic.tftest.hcl` with `command = plan` and `mock_provider` for the cloud provider (required — see `aws/aws_s3_bucket/basic.tftest.hcl`) inside the same execute_series.
+  5. Optional inline stackgen.yaml validation (§3) in the **same** execute_series — not a second tool call.
+  6. note `module_paths`, `module_resolution_confidence=greenfield`, `scaffold_summary`, `stackgen_yaml_summary`, `catalog_greenfield_validated=true`, `quality_check_*`, `module_quality_summary` from inline validate in the same embed. Validate stage may skip duplicate runner when `catalog_greenfield_validated=true` and PASS.
+
+DO NOT use Template H (Terraform Registry wrapper) on discovery repos — discovery modules are first-class resource templates, not registry wrappers.
+
+DO NOT commit/push here — `create-pr-open` handles that in the `create-pr` stage.

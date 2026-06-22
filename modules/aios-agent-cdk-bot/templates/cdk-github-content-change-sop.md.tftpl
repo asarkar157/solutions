@@ -1,0 +1,53 @@
+Skill: GitHub `gh` + `git` on the **remote runner** for issue/PR comments and auth bootstrap. **Commit, push, and draft PR** are owned by `stage-runner.sh commit-pr` (spawn-context Commit-pr) — not hand-written `gh pr create` in subagent goals.
+
+Keywords: github, gh cli, git, pull request, pr comment, issue comment, branch, commit, push, cdk, typescript, python.
+
+========================================================================
+1) Tool boundary
+========================================================================
+
+- Shell runner tools only: `${shell_tool_prefix}_execute_command`, `${shell_tool_prefix}_execute_series`.
+- Clone once via `clone-pack.sh` — never per-file `gh api /repos/.../contents/`.
+- PR open/update: ONE `create-pr-runner` → `stage-runner.sh commit-pr` (orchestration Template D+F).
+
+========================================================================
+2) Auth bootstrap (once per subagent series)
+========================================================================
+
+From runner env (`typed_secret_refs.github`):
+
+  GIT_TOKEN from GH_TOKEN/GITHUB_TOKEN → export GH_TOKEN
+  gh auth setup-git
+  git config user.name / user.email (stackgen-cdk-bot)
+
+If token missing: stop with clone/auth blocker — never `gh auth token` or notes with raw tokens.
+
+========================================================================
+3) Issue / PR comments (Template E — create-pr-comment / create-pr-notify)
+========================================================================
+
+Inputs from notes: `repository_full_name`, `issue_or_pr_number`, `pr_url`, `validation_summary`, `test_summary_tail`, `module_quality_summary`, `stage_summary:*`, `gate_result`.
+
+- `pr_url` set → `gh pr comment` with validation summary + test excerpt.
+- Else → `gh issue comment` or `gh api .../issues/.../comments`.
+- Blocked stages: include "## Workflow blocked" quoting `stage_summary:*=blocked`.
+
+========================================================================
+4) Read / edit CDK sources (from local clone only)
+========================================================================
+
+After `repo_clone_path=$WORK_ROOT/repo`:
+
+- TypeScript CDK: `lib/`, `bin/`, `test/`, `package.json`, `cdk.json`
+- Python CDK: `app.py`, `tests/`, `requirements.txt`, `cdk.json`
+- Discovery catalog repos (legacy): provider/module dirs — see `${sop_discovery_modules_layout}` when enabled
+
+Use `rg`, `cat`, `sed` in execute_series — not GitHub Contents API.
+
+========================================================================
+5) Failure modes
+========================================================================
+
+- `gh auth` fails → auth blocker; validate stage may post Template E notify only.
+- `git push` non-fast-forward → fetch/rebase on `working_branch`, re-run validate, push again.
+- PR already exists → commit-pr pushes to same branch (rework loop).

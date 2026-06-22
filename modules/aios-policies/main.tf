@@ -108,12 +108,36 @@ resource "sg_policy" "google_tool_governance" {
   rego_source = file("${path.module}/policies/google-tool-governance.rego")
 }
 
+resource "sg_policy" "spec_traceability" {
+  count       = var.create_policies.spec_traceability ? 1 : 0
+  name        = "spec-traceability"
+  description = "Require spec/openspec paths in ad-hoc PR and commit commands on remote runners"
+  type        = "intervention"
+  rego_source = file("${path.module}/policies/spec-traceability.rego")
+}
+
 resource "sg_policy" "langfuse_observability" {
   count       = var.create_policies.langfuse_observability ? 1 : 0
   name        = "langfuse-observability"
   description = "Enforces read-only access for Langfuse observer agents — blocks create/update/delete/archive mutations and shell exec"
   type        = "logic"
   rego_source = file("${path.module}/policies/langfuse-observability.rego")
+}
+
+resource "sg_policy" "sre_investigation_write_gate" {
+  count       = var.create_policies.sre_investigation_write_gate ? 1 : 0
+  name        = "sre-investigation-write-gate"
+  description = "HITL for stackgen-sre-investigator fix-PR, Datadog/Grafana writes, and destructive shell during RCA"
+  type        = "intervention"
+  rego_source = file("${path.module}/policies/sre-investigation-write-gate.rego")
+}
+
+resource "sg_policy" "pagerduty_escalation_gate" {
+  count       = var.create_policies.pagerduty_escalation_gate ? 1 : 0
+  name        = "pagerduty-escalation-gate"
+  description = "PagerDuty escalate, reassign, and snooze require human approval during SRE triage"
+  type        = "intervention"
+  rego_source = file("${path.module}/policies/pagerduty-escalation-gate.rego")
 }
 
 # =============================================================================

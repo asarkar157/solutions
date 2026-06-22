@@ -1,0 +1,145 @@
+Skill: Operating manual for Spec-Symphony orchestrator. Read BEFORE any stage work.
+
+Keywords: spec-kit, openspec, SDD, workflow, orchestration, spawn contract, remote runner, execute_series, note, github webhook, linear.
+
+========================================================================
+0) Reality check — stage orchestrator, not shell executor
+========================================================================
+
+You **do** execute the workflow: each stage is your job — parse the trigger, `note()` handoff keys, spawn **approved** subagents, close with `stage_summary`.
+
+You are **not** the shell executor. You **CANNOT** call `${shell_tool_prefix}_execute_*` yourself. Clone, validate, commit, and `gh` run inside **spawned subagents** on remote runner `${remote_runner_name}`.
+
+When this SOP says "run clone" or "call gh", spawn ONE approved subagent from the stage spawn contracts. Copy spawn-context command lines **verbatim** into `execute_series`.
+
+**FORBIDDEN subagent names:** `retry-*`, `recovery-*`, `*-v2`, `verify-*`, or any name not listed on the stage spawn_contracts. Guild rejects unknown names ("tools not available in tool registry"). On failure, re-spawn the **same** contract name (e.g. `intake-clone-bootstrap-clone`) — never invent `retry-intake-clone-bootstrap-clone`.
+
+========================================================================
+0a) Remote runner must be online BEFORE shell work
+========================================================================
+
+`${shell_tool_prefix}_execute_series` talks to aiden-runner over RPC. If the runner container is not running or not connected:
+- Tool returns instantly with no stdout
+- Subagent sees `context canceled` / `adaptive loop interrupted`
+- Clone never runs; notes stay `{}`
+
+**Operator fix:** `tofu apply` then `./scripts/start-runner.sh --run` (or Helm equivalent) **before** firing the webhook. After script-pack changes, restart the runner for secret sync.
+
+When clone subagent hits `context canceled` or empty tool output:
+1. **Retry** the same spawn-context clone command up to **3 times** with **15s** backoff (`infra_retry=<n>`).
+2. After retries exhausted: `note` `clone_blocker=runner_unavailable`
+3. Echo `stage_summary:intake-clone-bootstrap=blocked: remote runner offline or RPC failed`
+4. STOP — `intake-blocked-gate` routes to `create-pr` for blocker comment.
+
+**Operator:** After `tofu apply` or runner restart, wait ~30s before webhook (`./scripts/start-runner.sh --run` then sleep) so aiden-runner connects.
+
+========================================================================
+0b) Trigger payload is the source of truth
+========================================================================
+
+GitHub/Linear webhooks arrive as prose in stage Input:
+
+```
+opened: {"action":"opened","issue":{"number":64,...},"repository":{"full_name":"org/repo","clone_url":"https://github.com/org/repo.git",...}}
+```
+
+**Also read `[Workflow execution]` header** for `workflow_run_id` → `note workflow_run_id`. For shell commands use spawn-header **`WORK_ROOT='{{work_root}}'`** verbatim — **FORBIDDEN:** `$HOME/.wf-*`, `$HOME}/`, or manual path concatenation.
+
+**In `intake-clone-bootstrap` (mandatory before clone subagent):**
+1. Copy `workflow_run_id` → `note workflow_run_id`
+2. Parse JSON from Input (text after first `": "`). Do not rely only on `trigger_event.payload.*` (often empty).
+3. `note()` exact keys:
+   - `repository.full_name` → `repository_full_name`
+   - `repository.clone_url` → `repository_clone_url`
+   - `repository.default_branch` → `repository_default_branch`
+   - `issue.number` or `pull_request.number` → `issue_or_pr_number` (e.g. `64` — never leave empty when issue exists)
+   - `issue.title`, `issue.body` → compact `issue_details` JSON
+   - `issue.labels[].name` → `issue_labels`
+   - webhook `action` → `event_type`
+   - `sdd_framework=${sdd_framework}`, `change_type=${change_type}`
+4. If parsing fails, `note stage_summary:intake-clone-bootstrap=blocked: unparseable webhook` and STOP.
+
+========================================================================
+0c) GitHub auth on runner
+========================================================================
+
+PAT syncs to runner via `typed_secret_refs.github` (`GIT_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`). Shell subagents use pack `${specsym_pack_dir}/clone-pack.sh` — do not hand-roll `git clone` URLs.
+
+**FORBIDDEN:** `gh auth token`, persisting tokens in notes. If `gh_env_present=false` and clone fails for private repo → `clone_blocker=auth`, blocked intake.
+
+========================================================================
+1) Workflow shape — spec-driven-feature
+========================================================================
+
+```
+intake-clone-bootstrap → intake-blocked-gate → repo-sdd-bootstrap → implement → implement-blocked-gate → validate-and-test → validate-loop-gate → create-pr → update-tracker
+```
+
+**Intake fast-path (`intake-blocked-gate`):** clone/runner failure → skip to **`create-pr`** (blocker comment).
+
+**Implement fast-path (`implement-blocked-gate`):** plan-only / `implement_blocker=*` → skip to **`create-pr`**.
+
+**Quality loop (`validate-loop-gate` only):** `output_matches_regex` exits on `module_quality_summary=PASS|BLOCKED`; GO_BACK to `implement` on `NEEDS_REVISION` (max ${quality_max_iterations}). **`validate-and-test` is agent-only** — never `loop_stage` (trace `e22cc371`).
+
+**Post-PR (`update-tracker`):** optional OpenSpec archive, then GitHub issue comment / Linear notify.
+
+========================================================================
+2) Stage-boundary spawn rules (hard)
+========================================================================
+
+| Stage | Allowed subagents | Forbidden |
+|-------|-------------------|-----------|
+| `intake-clone-bootstrap` | `intake-clone-bootstrap-clone` | `implement-*`, `validate-*`, `create-pr-*`, `load_skill`, ad-hoc names |
+| `repo-sdd-bootstrap` | `repo-sdd-bootstrap-runner` | others |
+| `implement` | `implement-spec-feature` | `validate-*`, `create-pr-*` |
+| `validate-and-test` | `validate-and-test-runner` | `implement-*`, `create-pr-*` |
+| `create-pr` | `create-pr-runner`, `create-pr-notify` | `validate-*`, `implement-*` |
+| `update-tracker` | `archive-specs-runner`, `update-tracker-notify` | intake/clone/validate |
+
+Each shell subagent: `task_type=terminal_calling`, ONE `${shell_tool_prefix}_execute_series` per spawn, `working_dir=${shell_work_home}` or omit.
+
+**Shell `$` rule:** single `$` for `$PD`, `$WORK_ROOT`. Never `$$` before variable names (breaks pack base64 decode).
+
+========================================================================
+3) Stage note ownership
+========================================================================
+
+| Stage | Writes |
+|-------|--------|
+| `intake-clone-bootstrap` | `repository_*`, `issue_or_pr_number`, `issue_details`, `repo_clone_path`, `repo_head_sha`, `gate_result` |
+| `repo-sdd-bootstrap` | `sdd_framework_used`, `spec_bootstrap_summary` |
+| `implement` | `implement_summary` |
+| `validate-and-test` | `module_quality_summary`, `ci_status`, `validation_summary` |
+| `create-pr` | `pr_url`, `working_branch`, `stage_summary:create-pr` |
+| `update-tracker` | tracker comment evidence |
+
+Close every stage with `stage_summary:<stage_id>=done` or `=blocked: <reason>`.
+
+========================================================================
+4) SDD frameworks (module default: ${sdd_framework})
+========================================================================
+
+- **spec-kit** (greenfield): `.specify/`, `specs/NNN-feature/`, plan.md, tasks.md
+- **openspec** (brownfield): `openspec/changes/<id>/` with proposal.md, tasks.md, delta specs
+
+`repo-sdd-bootstrap` runs `stage-runner.sh spec-bootstrap` when framework dirs missing.
+
+========================================================================
+5) Markers gates depend on (stdout or stage close)
+========================================================================
+
+- `clone_blocker=(auth|auth_or_network|network|branch|placeholder_url|runner_unavailable)`
+- `stage_summary:intake-clone-bootstrap=blocked`
+- `specsym_pack_error=`, `script_pack_error=`
+- `context canceled`, `adaptive loop interrupted`
+- `module_quality_summary=(PASS|NEEDS_REVISION|BLOCKED)`
+- `ci_status=(PASS|FAILED|TIMEOUT|PENDING)`
+- `pr_url=`, `implement_blocker=`
+
+========================================================================
+6) Failure handling
+========================================================================
+
+Blocked clone/auth/runner → intake-blocked-gate → `create-pr` spawns `create-pr-notify` with gh issue comment (no code changes).
+
+At most ONE `ask_clarifying_question` per stage. Never declare workflow success without `repo_clone_path` (unless blocked path taken).

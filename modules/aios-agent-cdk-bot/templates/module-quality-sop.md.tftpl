@@ -1,0 +1,157 @@
+Skill: Senior DevOps quality bar for AWS CDK apps produced by the CDK Module Manager. Used by `validate` (primary) and rework via `validate-loop-gate` → `implement-cdk`.
+
+Keywords: CDK, module quality, lint, typecheck, cdk synth, cfn-lint, cdk-nag, jest, vitest, pytest, module_quality_summary, quality_check_lint, quality_check_typecheck, quality_check_synth, quality_check_cfn_lint, quality_check_test, quality_check_nag, PASS, NEEDS_REVISION.
+
+========================================================================
+1) Required sentinels (machine-readable)
+========================================================================
+
+Every assess/iterate stage MUST end its stage output with these lines (each on its own line, exact tokens):
+
+  quality_check_lint: PASS|FAIL|BLOCKED
+  quality_check_typecheck: PASS|FAIL|BLOCKED
+  quality_check_synth: PASS|FAIL|BLOCKED
+  quality_check_cfn_lint: PASS|FAIL|BLOCKED
+  quality_check_test: PASS|FAIL|BLOCKED
+  quality_check_nag: PASS|FAIL|BLOCKED
+  module_quality_summary: PASS|NEEDS_REVISION|BLOCKED
+
+Optional when not PASS:
+
+  module_quality_gaps:
+  - <specific gap 1>
+  - <specific gap 2>
+
+Also include the same keys in `workflow_notes_snapshot` (`quality_check_*`, `module_quality_summary`). When NEEDS_REVISION (code quality only), set `module_quality_rework=true` in the snapshot. When **BLOCKED** (integration infra), do **NOT** set `module_quality_rework=true` — `validate-infra-gate` skips the rework loop.
+
+**Test failure handoff (mandatory — trace 573f84aa9000):** When `validate-runner` or discovery inline validate stdout includes `test_exit=1`, the architect MUST copy into `workflow_notes_snapshot` and the stage closing message:
+  - `validate_markers_file` (absolute path under WORK_ROOT)
+  - `test_summary_file` and `test_summary_tail` (last ~40 lines of unit test stderr from stage-runner)
+  - `module_quality_gaps` when present on stdout (first Error lines)
+Never summarize test failures without quoting `test_summary_tail` — subagent output truncation caused three blind rework loops in production.
+
+**Iteration budget:** Only `validate-loop-gate` (`loop_stage`) counts rework cycles (max ${module_quality_max_iterations}) for `NEEDS_REVISION` only — never for `BLOCKED`. Do NOT maintain a separate `module_quality_iteration` counter or emit `GIVE_UP` from agent stages — loop exhaustion is detected from loop gate JSON (`Reason` contains `max iterations reached`).
+
+========================================================================
+2) Deterministic shell checks (mandatory before PASS)
+========================================================================
+
+`validate` MUST spawn ONE **remote runner** subagent `validate-runner` that runs `stage-runner.sh validate` (via `validate-cdk.sh`) for every path in `module_paths`:
+
+  - lint + typecheck (parallel)
+  - `cdk synth --no-staging`
+  - cfn-lint on `cdk.out/` + unit tests + cdk-nag (parallel post-synth)
+
+Map exit codes to sentinels (never guess from prose):
+
+  - lint_exit 0  → `quality_check_lint: PASS` else FAIL
+  - typecheck_exit 0 → `quality_check_typecheck: PASS` else FAIL
+  - synth_exit 0 → `quality_check_synth: PASS` else FAIL
+  - cfn_lint_exit 0 → `quality_check_cfn_lint: PASS` else FAIL
+  - test_exit 0 → `quality_check_test: PASS` else FAIL
+  - nag_exit 0 → `quality_check_nag: PASS` else FAIL
+
+`stage-runner.sh validate` also prints machine-readable exit markers on stdout (required for infra detection):
+
+  lint_exit=<0|1>
+  typecheck_exit=<0|1>
+  synth_exit=<0|1>
+  cfn_lint_exit=<0|1>
+  test_exit=<0|1>
+  nag_exit=<0|1>
+  fmt_exit=<0|1> (alias of lint for legacy gates)
+  init_exit=<0|1> (deps install)
+  validate_exit=<0|1> (alias of synth)
+  binary=<node -v / python version>
+  validation_summary=<one-line six-check summary>
+  test_summary_file=<absolute path when test ran>
+  test_summary_tail="<escaped last lines when test_exit≠0>"
+  module_quality_gaps=test: <first Error line> (when test_exit≠0)
+
+`module_quality_summary: PASS` is allowed ONLY when all six `quality_check_*` lines are `PASS` AND §3 criteria hold AND runner stdout included `lint_exit=` / `synth_exit=` / `binary=` lines.
+
+========================================================================
+2b) Infra BLOCKED vs code FAIL (mandatory — trace 01beb81f, 131775ed)
+========================================================================
+
+Use **BLOCKED** (not FAIL or NEEDS_REVISION) when the remote runner never ran real shell:
+
+  - Subagent output mentions "workspace unavailable" or synthesizes results without tool execution
+  - `${shell_tool_prefix}_execute_series` returned empty/canned text with no fmt/init/validate stdout
+  - Repeated lazy-init / sidecar errors after §8(e) retries (max 3)
+
+========================================================================
+2c) Synthesized validate output (mandatory — trace 131775ed)
+========================================================================
+
+Treat as **infra BLOCKED** (§2b) when `validate-runner` output or notes contain **any** of:
+
+  - Forbidden sentinel keys: `quality_check_terraform`, `quality_check_module_layout` (not part of this SOP)
+  - `validation_summary=PASS` / `quality_check_*: PASS` without runner stdout showing `fmt_exit=` and `binary=`
+  - An `execute_series` whose command is only `printf`/`echo` of PASS lines (no `_embed_cdkbot_run validate`)
+
+When detected, the planner MUST rewrite all four canonical sentinels to `BLOCKED` — never accept PASS from prose alone.
+
+When BLOCKED:
+
+  - Set all three `quality_check_*: BLOCKED` and `module_quality_summary: BLOCKED`
+  - Do **NOT** set `module_quality_rework=true`
+  - `validate-infra-gate` skips the loop to `create-pr` for a GitHub-only blocked comment
+  - Do **NOT** loop back to `implement-cdk` — re-scaffolding cannot fix a dead sidecar
+
+Use **FAIL** / **NEEDS_REVISION** only when shell commands ran and reported non-zero exit codes or test assertion failures.
+
+========================================================================
+3) PASS criteria (all must hold)
+========================================================================
+
+- All six `quality_check_*` notes are exactly `PASS` (`lint`, `typecheck`, `synth`, `cfn_lint`, `test`, `nag`).
+- `module_paths` is non-empty and points at a CDK app root (`cdk.json` + `lib/` or `app.py`) OR a documented blocker was emitted.
+- `quality_check_nag` has no unresolved **critical** cdk-nag findings; medium/low may PASS if documented in `module_quality_gaps` as accepted risk.
+- If `discovery_repo=true`: `stackgen_yaml_summary` contains `stackgen_yaml_valid=true` and `.stackgen/stackgen.yaml` exists under each new catalog module path (legacy discovery-modules layout).
+- `working_branch` is set OR `pr_url` is set (PR opened in implement-cdk via `commit-pr`).
+
+========================================================================
+4) NEEDS_REVISION triggers (non-exhaustive)
+========================================================================
+
+- Any `quality_check_*: FAIL` (after real shell execution on the remote runner)
+- `module_quality_summary: BLOCKED` — runner or GitHub auth failure; not a rework target for CDK edits
+- Missing `basic.tftest.hcl` at module root (discovery) or `tests/*.tftest.hcl` (generic) for a greenfield module
+- Missing or invalid `.stackgen/stackgen.yaml` on discovery repos
+- Empty `module_paths` after merge when greenfield was requested
+- Critical security findings without remediation plan
+
+========================================================================
+5) Iterate stage rules (single remediation pass per visit)
+========================================================================
+
+1. `read_notes` once for `module_quality_gaps`, `test_summary_tail`, `validate_markers_file`, `module_paths`, `repo_clone_path`, `working_branch`, `pr_url`, `pr_deferred`, `discovery_repo`.
+2. When `module_paths` is empty after validate: the loop returns to `implement-cdk` (Templates H/G/I) — do NOT open a PR until paths exist and validate PASS.
+   When `module_paths` is non-empty: planner spawns **Template J** (orchestration §7) — **one** approved implement subagent, not a custom goal:
+     - `discovery_repo=true` → `implement-cdk-catalog-scaffold` only (gap fixes under existing `module_paths[0]`).
+     - `discovery_repo=false` → `implement-cdk-app-update` only.
+     - Subagent: fix ONLY `module_quality_gaps` / `test_summary_tail` under existing `module_paths[0]`; then spawn-context **Validate** in the **same** `execute_series` (forbidden: `validate-runner` from `implement-cdk` except catalog rework).
+     - Planner goal ≤800 chars; quote gaps in `context`, not as pasted fix scripts.
+3. Re-emit sentinels from runner stdout (`fmt_exit=`, `module_quality_summary=`, `test_summary_tail` when `test_exit=1`) in `workflow_notes_snapshot` and the stage closing message.
+
+========================================================================
+6) Merge stage rework (when loop returns)
+========================================================================
+
+When `module_quality_rework=true` or `module_quality_gaps` is non-empty in notes, `implement-cdk` MUST:
+- Follow orchestration **Template J** and §5i — one subagent, short spawn goal (spawn contract replaces goal text).
+- Treat `module_quality_gaps` + `test_summary_tail` as the authoritative fix list (do not re-scaffold from scratch when `module_paths` is non-empty).
+- On discovery repos: use `implement-cdk-catalog-scaffold` with gap fixes + inline validate only.
+- Clear stale `test_summary`, `validation_summary`, and all `quality_check_*` in the **new** `workflow_notes_snapshot` after rework stdout — do not trust pre-loop PASS lines.
+- Append to `stage_summary:implement-cdk` that this is a quality-loop rework (budget enforced by `validate-loop-gate`).
+
+========================================================================
+7) PR timing vs validate failures (CDK three-stage flow)
+========================================================================
+
+**Default:** Draft PR opens in `implement-cdk` (`create-pr-runner` → `commit-pr`) once edits are committed — validate runs afterward on the PR branch.
+
+**NEEDS_REVISION:** `validate-loop-gate` returns to `implement-cdk` (Template J) when any of the six checks fail, bounded by `module_quality_max_iterations`.
+
+Do **not** defer PR solely because unit tests failed if synth + lint + typecheck passed — document failures in `test_summary_tail` on the PR via Template E. Defer only when `module_quality_summary: BLOCKED` (auth, missing clone, runner failure).

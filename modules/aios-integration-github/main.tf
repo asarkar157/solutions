@@ -8,6 +8,7 @@ terraform {
 locals {
   create_secret = trimspace(var.existing_secret_id) == "" && trimspace(var.github_token) != ""
   secret_id     = local.create_secret ? sg_secret.github_vault[0].id : var.existing_secret_id
+  github_env    = var.env
 }
 
 # Exactly-one validation: either an inline `github_token` (we create the secret)
@@ -51,5 +52,5 @@ resource "sg_guild_integration" "github" {
     name = var.integration_image
   }
 
-  env = length(var.env) > 0 ? var.env : null
+  env = local.github_env
 }

@@ -1,0 +1,7 @@
+apiVersion: stackgen/v1
+kind: CustomModule
+metadata:
+  name: aws_s3_basic_bucket
+  provider: aws
+spec:
+  construct: BasicBucket

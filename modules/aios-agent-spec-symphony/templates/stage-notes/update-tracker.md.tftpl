@@ -1,0 +1,7 @@
+When `pr_url` set and OpenSpec (`sdd_framework_used=openspec`): spawn `archive-specs-runner` first (ONE execute_series). Skip archive when `clone_blocker=` or `stage_summary:create-pr=blocked`.
+
+Then spawn `update-tracker-notify` when `issue_or_pr_number` is a real GitHub issue. `note notify_comment_id` or `notify_skipped=issue_not_found`.
+
+FORBIDDEN: intake/clone/validate subagents here.
+
+Close: `stage_summary:update-tracker=done`.

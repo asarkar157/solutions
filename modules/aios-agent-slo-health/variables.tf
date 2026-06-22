@@ -3,7 +3,7 @@ variable "model_names" {
     Ordered list of registered model names for the slo-health agent (highest preference first).
   EOT
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."

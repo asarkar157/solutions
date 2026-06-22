@@ -21,10 +21,12 @@
 #   AWS_ROLE_ARN          → TF_VAR_aws_role_arn            (per-scenario; aws-sre-demo + finops-weekly)
 #   AWS_REGION            → TF_VAR_aws_region              (optional)
 #   SLACK_BOT_TOKEN       → TF_VAR_slack_bot_token         (per-scenario)
-#   GITHUB_TOKEN          → TF_VAR_github_token            (pipeline-insights + repo-to-iac)
+#   GITHUB_TOKEN          → TF_VAR_github_token            (pipeline-insights + repo-to-iac + datadog-aws-rca)
 #   GRAFANA_SERVER        → TF_VAR_grafana_server          (incident-triage)
 #   GRAFANA_TOKEN         → TF_VAR_grafana_token           (incident-triage)
+#   DATADOG_SITE          → TF_VAR_datadog_site            (datadog-aws-rca monitor guidance, optional)
 #   GITHUB_REPO_URL       → TF_VAR_github_repo_url         (repo-to-iac)
+#   AGENT_NAME            → TF_VAR_agent_name              (sre-boost)
 #
 # The script will not auto-export anything that is already set as TF_VAR_*.
 # =============================================================================
@@ -64,6 +66,8 @@ pick_tf() {
 scenario_pitch() {
   case "${1:-}" in
     aws-sre-demo)       echo "Can your thing actually fix an AWS incident? (foundation + policies + AWS + Slack + agent-aws-sre)";;
+    datadog-aws-rca)    echo "A Datadog monitor fires at 2am — what does your thing do? (Datadog + AWS + GitHub + policies + FinOps; pairs with stackgen-sre-app)";;
+    grafana-github-rca) echo "A Grafana alert fires — can you tie it to a bad deploy? (Grafana + GitHub + policies; pairs with stackgen-sre-app)";;
     finops-weekly)      echo "We are drowning in cloud spend. (cost optimizer + resource janitor + weekly Slack summary)";;
     pipeline-insights)  echo "Our CI is a mess; what do you actually see? (read-only GitHub pipeline + release intelligence)";;
     incident-triage)    echo "We get 200 Grafana alerts a day. (Grafana -> cloud-routed RCA -> Slack)";;
@@ -75,6 +79,8 @@ scenario_pitch() {
     gitops-incident-scope) echo "GitOps rollback scoped by code blast radius. (CCE + Argo CD correlation)";;
     agentic-infra-entitlements) echo "Self-service infra with entitlement-sized IAM. (CCE on repo-to-iac + developer intake)";;
     cfn-author)         echo "Intent to CloudFormation PR + drift + compliance on Bedrock. (foundation-bedrock, github, aws, agent-cfn-author)";;
+    spec-symphony)      echo "Spec Kit / OpenSpec factory on remote runner. (GitHub + Linear webhooks → SDD pipeline → PR)";;
+    sre-boost)          echo "Boost an existing SRE agent with GitHub + AWS + on-prem runner. (no new models or agents; agent_name required)";;
     clean-tenant-reset) echo "Wipe to a known baseline between demos. (foundation + policies only)";;
     *)                  return 1;;
   esac
@@ -118,8 +124,13 @@ apply_env_mapping() {
   map_env GITHUB_TOKEN TF_VAR_github_token
   map_env GRAFANA_SERVER TF_VAR_grafana_server
   map_env GRAFANA_TOKEN TF_VAR_grafana_token
+  map_env DATADOG_API_KEY TF_VAR_datadog_api_key
+  map_env DATADOG_APP_KEY TF_VAR_datadog_app_key
+  map_env DATADOG_SITE TF_VAR_datadog_site
   map_env GITHUB_REPO_URL TF_VAR_github_repo_url
   map_env TARGET_REPOSITORY_FULL_NAME TF_VAR_target_repository_full_name
+  map_env LINEAR_CREDENTIAL_PROVIDER_ID TF_VAR_linear_credential_provider_id
+  map_env AGENT_NAME TF_VAR_agent_name
 }
 
 # ----- doctor ----------------------------------------------------------------
@@ -154,6 +165,21 @@ doctor() {
   if [[ "${scenario}" == "cfn-author" ]]; then
     info "Checking LLM provider (cfn-author uses Bedrock via aios-foundation-bedrock)"
     ok "LLM API keys not required — Bedrock credentials come from AWS_ROLE_ARN"
+  elif [[ "${scenario}" == "sre-boost" ]]; then
+    info "Checking target agent (sre-boost adopts an existing agent — no new models)"
+    if [[ -n "${AGENT_NAME:-}" || -n "${TF_VAR_agent_name:-}" ]]; then
+      ok "agent_name is set"
+    else
+      err "AGENT_NAME (or TF_VAR_agent_name / agent_name in tfvars) is NOT set"
+      fail=1
+    fi
+  elif [[ "${scenario}" == "grafana-github-rca" || "${scenario}" == "datadog-aws-rca" ]]; then
+    info "Checking LLM keys (not required — SRE app install owns investigator models)"
+    ok "LLM API keys not required for ${scenario}"
+    if [[ "${scenario}" == "datadog-aws-rca" ]]; then
+      info "Checking Datadog (existing integration from SRE app onboarding — not created here)"
+      ok "Datadog integration expected via SRE app setup (default name: datadog)"
+    fi
   else
     info "Checking LLM keys (at least one required)"
     if [[ -z "${OPENAI_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" ]]; then
@@ -167,7 +193,7 @@ doctor() {
   fi
 
   case "${scenario}" in
-    aws-sre-demo|finops-weekly)
+    aws-sre-demo|finops-weekly|sre-boost)
       info "Checking AWS connection"
       check_var AWS_ROLE_ARN required "AWS_ROLE_ARN" || fail=1
       ;;
@@ -177,13 +203,13 @@ doctor() {
       info "Checking Slack (required for ${scenario})"
       check_var SLACK_BOT_TOKEN required "SLACK_BOT_TOKEN" || fail=1
       ;;
-    aws-sre-demo|pipeline-insights|incident-triage)
+    aws-sre-demo|pipeline-insights|incident-triage|datadog-aws-rca|grafana-github-rca)
       info "Checking Slack (optional for ${scenario})"
       check_var SLACK_BOT_TOKEN optional "SLACK_BOT_TOKEN" || true
       ;;
   esac
   case "${scenario}" in
-    pipeline-insights|repo-to-iac|monorepo-services-split|pre-deploy-iam-gate|compliance-evidence-factory|cve-reachability-fix|agentic-infra-entitlements|cfn-author)
+    pipeline-insights|repo-to-iac|monorepo-services-split|pre-deploy-iam-gate|compliance-evidence-factory|cve-reachability-fix|agentic-infra-entitlements|cfn-author|spec-symphony|sre-boost|datadog-aws-rca|grafana-github-rca)
       info "Checking GitHub"
       check_var GITHUB_TOKEN required "GITHUB_TOKEN" || fail=1
       ;;
@@ -197,6 +223,14 @@ doctor() {
       check_var GRAFANA_SERVER required "GRAFANA_SERVER" || fail=1
       check_var GRAFANA_TOKEN required "GRAFANA_TOKEN" || fail=1
       ;;
+    datadog-aws-rca)
+      info "Checking GitHub (required — attaches GitHub to SRE app)"
+      ;;
+    grafana-github-rca)
+      info "Checking Grafana"
+      check_var GRAFANA_SERVER required "GRAFANA_SERVER" || fail=1
+      check_var GRAFANA_TOKEN required "GRAFANA_TOKEN" || fail=1
+      ;;
     repo-to-iac|monorepo-services-split)
       info "Checking GitHub repo URL"
       check_var GITHUB_REPO_URL required "GITHUB_REPO_URL" || fail=1
@@ -206,6 +240,16 @@ doctor() {
       check_var AWS_ROLE_ARN required "AWS_ROLE_ARN" || fail=1
       info "Checking GitHub target repo"
       check_var TARGET_REPOSITORY_FULL_NAME required "TARGET_REPOSITORY_FULL_NAME (maps to target_repository_full_name)" || fail=1
+      ;;
+    spec-symphony)
+      info "Checking spec-symphony target repo"
+      check_var TARGET_REPOSITORY_FULL_NAME required "TARGET_REPOSITORY_FULL_NAME (fork to push PRs)" || fail=1
+      info "Checking Docker (recommended for build_runner_image=true)"
+      if command -v docker >/dev/null 2>&1; then
+        ok "docker: $(docker --version)"
+      else
+        warn "docker not on PATH — set build_runner_image=false in tfvars if image pre-built"
+      fi
       ;;
   esac
 

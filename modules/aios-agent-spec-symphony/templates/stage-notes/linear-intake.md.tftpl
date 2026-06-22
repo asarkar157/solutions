@@ -1,0 +1,7 @@
+Parse Linear webhook payload from stage Input. Note `linear_issue_id`, `linear_issue_title`, `linear_issue_body`, `linear_issue_url`, `linear_labels` (comma-separated).
+
+If label `${linear_product_spec_label}` present in labels, note `needs_spec_present=true`; else `needs_spec_present=false`.
+
+Optional: parse `repo: owner/name` from body → `repository_full_name`, `repository_clone_url`.
+
+Close: `stage_summary:linear-intake=done`.

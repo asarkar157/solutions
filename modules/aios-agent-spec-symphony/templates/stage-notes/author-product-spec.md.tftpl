@@ -1,0 +1,5 @@
+Spawn `author-product-spec-writer` by agent_name only. Load runbook `${sop_linear_product_spec_name}`.
+
+read_notes linear_issue_title linear_issue_body. Produce golden-template spec per SOP. note `spec_markdown=` (include `<!-- spec-symphony-spec-v1 -->`).
+
+FORBIDDEN: engineering subgoals in this stage; runner execute_series; clone.

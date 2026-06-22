@@ -1,0 +1,511 @@
+Skill: Operating manual for the CDK Module Manager. Read this BEFORE doing anything else in any stage. It encodes the stage-orchestrator vs runner-subagent split, integration boundaries, subagent budget rules, and context hygiene that every other skill depends on.
+
+Keywords for skill discovery: cdk, aws cdk, workflow, orchestration, planner, subagent, spawn contract, remote runner, github cli, gh api, jq, note, validate, lint, synth, cdk-nag, typescript, python, infrastructure-as-code.
+
+========================================================================
+0) Reality check — stage orchestrator, not shell executor
+========================================================================
+
+You **do** execute the workflow: each stage (`clone`, `implement-cdk`, `validate`) is your job — parse the trigger, `note()` handoff keys, spawn approved subagents, and close with `stage_summary`.
+
+You are **not** the shell executor. You CANNOT call `${shell_tool_prefix}_execute_*` yourself. Clone, `gh api`, validate, and PR push run inside **spawned subagents** on the remote runner, using the stage's spawn contracts (budgets, one `execute_series` per runner, approved tool names).
+
+When this SOP says "run `git clone ...`" or "call `gh api ...`", that ALWAYS means: spawn ONE approved subagent (see spawn contracts on the stage binding) with the matching tools and goal. The templates in §7 show exactly how.
+
+========================================================================
+0a) GitHub auth — synced to the shell runner (read this BEFORE Template A)
+========================================================================
+
+This module binds a GitHub PAT to the remote runner (`${remote_runner_name}`) via
+`typed_secret_refs.github`. Mothership sync exposes flat env keys `GIT_TOKEN`,
+`GH_TOKEN`, `GITHUB_TOKEN`, `GIT_HOST`, and `GIT_USERNAME` inside the aiden-runner
+container — `git clone`, `gh api`, `gh issue comment`, and `gh pr create` all run
+through `${shell_tool_prefix}_execute_*` subagents.
+
+Hard rules for the LLM (a trace violated these by running `gh auth token` and noting `gh_token`):
+  - **FORBIDDEN commands in any subagent** (planner must never put these in goals):
+    `gh auth token`, `gh auth login`, `gh auth refresh`, and any command whose purpose is
+    to "get", "capture", "verify", or "surface" a PAT for later use.
+  - **Shell subagents** (`${shell_tool_prefix}_execute_*`): the runner is already
+    authenticated via synced env. Run `gh api`, `gh issue comment`, `git clone`, and
+    PR flows here. Never prefix a series with `gh auth token` or `gh auth status` — that
+    leaks credentials into tool output and tempts the planner to `note` them.
+  - NEVER persist `gh_token`, `gh_token_source`, or any raw token in notes.
+  - If runner env auth fails, STOP per §8(a) — fix the runner `typed_secret_refs.github`
+    binding (or pass `github_token` / a flat-env `github_secret_id` via `tofu apply`);
+    do NOT recover via `gh auth token`.
+
+Every shell subagent that needs git/gh SHOULD run this bootstrap at the top of its first
+`execute_series` when `gh` reports unauthenticated (never log token values):
+
+  GIT_TOKEN="$${GIT_TOKEN:-$${GITHUB_TOKEN:-$${GH_TOKEN:-}}}}"
+  export GH_TOKEN="$$GIT_TOKEN" GITHUB_TOKEN="$$GIT_TOKEN"
+  if [ -z "$$GIT_TOKEN" ]; then echo gh_env_present=false; exit 1; fi
+  echo gh_env_present=true
+  gh auth setup-git 2>/dev/null || true
+  gh auth status >/dev/null 2>&1 || echo "$$GIT_TOKEN" | gh auth login --with-token 2>/dev/null
+  git config --global user.name "stackgen-cdk-bot"
+  git config --global user.email "cdk-bot@stackgen.local"
+
+Production clone runs MUST use spawn-context inline pack ensure + **`${cdkbot_pack_dir}/clone-pack.sh clone`** only (after script changes: `tofu apply` refreshes the runner script-pack vault secret — restart aiden-runner for mothership sync; Docker rebuild only for toolchain/image changes). `clone-pack.sh` uses `GIT_TOKEN`/`GH_TOKEN` internally — do **not** reconstruct HTTPS/`x-access-token`/`git clone` logic in subagent goals.
+
+**FORBIDDEN when pack ensure fails** (`cdkbot_pack_error=`, `clone-pack.sh: not found`): ad-hoc `git clone`, `git clone https://x-access-token:…`, `gh repo clone`, or "retry with direct HTTPS clone". That is **not** §8(e) and **not** a PAT workaround — operator must `tofu apply` to refresh the runner script-pack vault secret and restart aiden-runner for mothership sync (see §8(g); Docker rebuild only for toolchain/image changes).
+
+**`base64: invalid input` on pack ensure:** if env has non-empty `CDKBOT_CLONE_PACK_B64` / `CDKBOT_STAGE_RUNNER_B64`, the usual cause is **`$$` in execute_series** (bash expands `$$` to PID — e.g. `$$CDKBOT_CLONE_PACK_B64` → garbage). Copy spawn-context commands with **single `$`** only (trace `c72004698186`). note `clone_blocker=wrong_shell_dollar_escape`. Only when env is empty → §8(g) missing pack.
+
+Hard rule: do NOT attempt anonymous `git clone https://github.com/...` for private repos.
+If `gh_env_present=false`, STOP, note `stage_summary:<stage>="blocked: no GitHub token in runner env"`,
+and `ask_clarifying_question` asking the operator to confirm `github_token` or
+`github_secret_id` is wired to the remote runner `typed_secret_refs.github`.
+
+========================================================================
+0b) Trigger payload is the source of truth (NEVER search the org)
+========================================================================
+
+This workflow is triggered by a GitHub webhook (`issue.created` or `pull_request.opened`). Guild **stagerunner** delivers the payload as **prose in the stage Input**, not as a reliable typed `trigger_event` object:
+
+```
+<action>: {"repository":{...},"issue":{...}, ...}
+```
+
+Example: `opened: {"action":"opened","issue":{"number":9,"labels":[...],...},"repository":{"full_name":"stackgenhq/discovery-modules",...}}`
+
+**Also read the `[Workflow execution]` header** (prepended by stagerunner):
+```
+workflow_run_id: wf-cdk-app-update-<suffix>
+Use workflow_run_id verbatim in $HOME/.<workflow_run_id>/ ...
+```
+
+**In `clone` (mandatory before any subagent):**
+1. Copy `workflow_run_id` from `[Workflow execution]` for `WORK_ROOT=$HOME/.<workflow_run_id>`.
+2. Parse webhook JSON from stage Input (text after the first `": "` following the action prefix). Do **not** rely solely on `trigger_event.payload.*` — those paths are often empty or redacted in distributed runs (`84d21f0e4923`).
+3. Map fields into note keys (exact names):
+   - `repository.full_name` → `repository_full_name`
+   - `repository.clone_url` → `repository_clone_url`
+   - `repository.default_branch` → `repository_default_branch`
+   - `issue.number` or `pull_request.number` → `issue_or_pr_number`
+   - `issue.title`, `issue.body`, `issue.user.login` → compact JSON under `issue_details`
+   - `issue.labels[].name` → comma-separated `issue_labels`
+   - `pull_request.head.ref` → `pr_head_ref`
+   - `pull_request.head.repo.clone_url` → `pr_head_clone_url`
+   - `pull_request.head.repo.full_name` → `pr_head_repo_full_name`
+   - webhook `action` → `event_type`
+4. If JSON parsing fails, try fenced ```json in Input or spawn ONE `clone-fetch` (Template B) — **never** `gh repo list` to guess the repo.
+
+When `trigger_event.payload.*` **is** populated (cron / test harness), you may use those paths as an alternate source — but stage Input JSON takes precedence when both exist.
+
+**Build `issue_details` in the planner (no fetch subagent)** when the parsed webhook JSON includes `issue.number` + `issue.title` or `pull_request.number` + `pull_request.title`:
+
+```json
+{"number":9,"title":"...","body":"...","state":"open","author":"<user.login>","labels":["discovery-module-request"]}
+```
+
+Map `issue.user.login` → `author`, `issue.labels[].name` → `labels` array. Empty `body` is valid — do **NOT** spawn `clone-fetch` just because the body is empty. Fetch ONLY when **title is missing** after JSON parse (malformed/redacted payload).
+
+The `clone` stage MUST persist ALL trigger keys as its first action, BEFORE any subagent that needs the repo. If a field is empty (e.g. `pr_head_ref` on an `issue.created` event), record it as `""` — downstream stages branch on that.
+
+**Never** search the org with `gh repo list`, `gh api /user/repos`, or keyword-grep issues to "find the repo that probably has the module". The webhook names the exact repository.
+
+========================================================================
+0b-clone — Fast path: discovery label gate (MANDATORY order)
+========================================================================
+
+When `repository_full_name` matches a discovery-modules repo (§0c) and a label gate is configured:
+  1. After step 1 notes include `issue_labels`, evaluate the gate from the **webhook payload only** — do NOT wait for `clone-fetch`.
+  2. Pass if `issue_labels` contains `${discovery_modules_issue_label}`.
+  3. On pass: note `gate_result="pass"`.
+  4. On fail: note `gate_result="missing_label"`, spawn **only** `create-pr-comment` per Template E (GitHub path), note `stage_summary:clone`, then **STOP**.
+  5. Until the gate passes, `clone` MUST NOT call: `graph_query`, `load_skill` (including `${sop_discovery_modules_layout}`), or spawn `clone-fetch` when the webhook already carried `issue.labels` and `issue.title`.
+
+Repo identification rule: the `repo_clone_path` MUST be derived from `repository_full_name` (or `pr_head_repo_full_name` for cross-fork PRs). NEVER guess the repo from substrings of the issue body, NEVER list any org via `gh repo list`, and NEVER pick a repo because its name "sounds related" to a module name mentioned in the issue body.
+
+========================================================================
+0c-clone-runner — Clone runner discipline (trace `9d8958e4`)
+========================================================================
+
+**Planner order (mandatory):** `note()` all trigger keys from §0b **before** spawning `clone-runner`. A clone subagent spawned while `read_notes` is still empty will invent placeholder URLs.
+
+**Spawn contract:** subagent **goal** MUST match the spawn contract verbatim — never `load_skill cdk-bot-workflow-script-pack` or `_embed_cdkbot_run`.
+
+**Runner execute_series (ONE command):**
+1. `read_notes` for `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`.
+2. **Preferred:** spawn-context clone line — inline pack ensure from mothership script-pack sync, then `${cdkbot_pack_dir}/clone-pack.sh clone …`.
+3. Architect MUST note `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number` before spawn — clone runner does not parse webhook JSON inline. **Never** `TRIGGER_JSON='{"…"}'` (nested quotes/backticks break `sh -c`).
+4. `working_dir=${shell_work_home}` or omit.
+
+**working_dir trap (trace `3710113955ff`):** Setting `working_dir` to WORK_ROOT / `$HOME/.wf-*` before clone fails with `chdir …: no such file or directory` because the directory does not exist yet. Always use `${shell_work_home}` or omit.
+
+**FORBIDDEN clone URLs:** `https://github.com/example/example.git`, any `example.com` / `example/example` placeholder, or invented repo names. The embedded script emits `clone_blocker=placeholder_url` — that is **not** a PAT/`secret_ref_ids` problem.
+
+**Blocked-path messaging:** When stdout contains `clone_blocker=placeholder_url` or `missing_clone_params`, tell the operator the **agent skipped webhook parsing** — do not ask them to rotate the GitHub PAT unless `clone_blocker=auth_or_network` on a **real** `repository_clone_url`.
+
+========================================================================
+1) Integration boundaries (shell runner only)
+========================================================================
+
+All git, `gh`, CDK toolchain, and file operations run on ONE shell surface:
+`${shell_tool_prefix}_execute_command|series|parallel|create_files` on the remote runner.
+
+  - Full Linux shell: `git clone`, `gh api`, `gh issue comment`, `gh pr create`,
+    `cdk`, `npm`, `python`, `find`, `cat`, `rg`, `sed`, and `validate-cdk.sh`.
+  - Do NOT use `tofu`/`terraform`/`registry.terraform.io` in this module — CDK apps and optional discovery catalog only.
+  - Do NOT split `gh api` onto a separate GitHub Guild integration — this module
+    does not attach one. Every `gh` call uses `${shell_tool_prefix}_execute_*`.
+
+Decision rule: if the command needs a shell, spawn a `${shell_tool_prefix}_*` subagent.
+Issue-only comments (label gate, blocked notify) still use the runner — no separate
+GitHub integration sandbox.
+
+========================================================================
+1b) Runner tool self-heal (install missing CLIs in the same execute_series)
+========================================================================
+
+The CDK runner image pre-installs Node, `cdk`, `gh`, `git`, `jq`, `rg`, and validate
+scripts. Older runner containers or minimal sandboxes may still lack a binary a subagent
+needs (trace `7fa777808d5b`: `rg: not found` during `implement-cdk-app-update`).
+
+**Rule:** shell subagents MUST NOT stop with prose like "install rg" — install or recover
+inside the **same** `execute_series` before the main edit/validate command.
+
+Pattern (prefix every implement/validate series that needs search tools):
+
+```bash
+command -v rg >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ripgrep
+command -v rg >/dev/null || ${cdkbot_pack_dir}/ensure-shell-tool.sh rg
+command -v rg >/dev/null || { echo implement_blocker=rg_missing; exit 1; }
+```
+
+`${cdkbot_pack_dir}/ensure-shell-tool.sh` tries `sudo apt-get install` first, then a user-local
+binary download if apt is unavailable. After install, continue with `rg` — use `grep -r` only as
+last resort when both paths fail.
+
+**FORBIDDEN:** ending a stage with "Phase N" markdown plans or "Would you like to proceed?"
+instead of spawning the approved subagent; asking the operator to rebuild the runner when
+`ensure-shell-tool.sh` can fix the gap in-shell.
+
+========================================================================
+2) Repo materialization — clone once, reuse everywhere
+========================================================================
+
+The first non-trivial repo read in any stage MUST be a single `git clone` via `clone-runner` into `$HOME/.<workflow_run_id>/repo` (see §3b). Persist `repo_clone_path`. No per-file `gh api /contents/...` fetches.
+
+`<workflow_run_id>` is copied verbatim from the stagerunner `[Workflow execution]` header (e.g. `wf-cdk-app-update-157b399eacdc402c`). Use it in every `$HOME/.<workflow_run_id>/…` path so parallel runs do not collide. **Do not** use trace_id, Temporal workflow id, or `$HOME/.cdk-bot/…` — stagerunner and production traces align on `$HOME/.<workflow_run_id>/`.
+
+A prior trace spawned 7 separate subagents (`discover-repo-structure`, `full-aws-directory-scan`, `raw-aws-directory-list`, `list-exact-filenames`, `find-sagemaker-modules`, `get-exact-sagemaker-paths`, `print-sagemaker-dirs`) each calling `gh api git/trees/HEAD?recursive=1` to list the same directory. A single `git clone` + one `find` would have replaced all of them. Don't repeat this.
+
+========================================================================
+2a) Target repo resolution (after the clone exists)
+========================================================================
+
+**CDK application repos (default):** Spawn ONE `implement-cdk-resolve-paths` with spawn-context `stage-runner.sh resolve-paths`. When stdout has `repo_kind=cdk_app`, use **`implement-cdk-app-update`** only.
+
+**Discovery catalog repos** (when `${sop_discovery_modules_layout}` is enabled): after resolve-paths, greenfield or rework uses **`implement-cdk-catalog-scaffold`** only.
+
+**Unsupported:** repos without `cdk.json` that are not configured discovery catalog repos → `stage_summary:implement-cdk=blocked: unsupported repo kind`.
+
+Persist `module_paths`, `module_resolution_confidence`, and `cdk_language` from resolve-paths stdout. **FORBIDDEN on CDK apps:** `find *.tf`, `registry.terraform.io`, invented subagent names like `resolve-module-path`.
+
+========================================================================
+3) Note discipline (persist once, read many)
+========================================================================
+
+Canonical note keys (use these exact names — do not invent new ones per subagent):
+- `issue_details` — title/body/author of the triggering issue or PR.
+- `repo_clone_path` — absolute path of the local clone.
+- `module_paths` — CDK app root or catalog module directory.
+- `validation_summary` — pass/fail of six CDK checks.
+- `test_summary_file` — absolute path to stage-runner `tf-test.out`.
+- `test_summary_tail` — last ~40 lines of test stderr/stdout (quoted when `test_exit=1`).
+- `working_branch` — the `cdk-bot/<slug>-<ts>` branch.
+- `pr_url` — output of `gh pr view --json url -q .url` after PR creation.
+- `stage_summary:<stage_id>` — one-paragraph summary at the end of each stage.
+
+Always follow **§3a Stage entry protocol** before fetching or spawning work. If a key is already populated (from `read_notes`, disk-mirror, or the prior stage's final message), do NOT refetch.
+
+========================================================================
+3a) Stage entry protocol — `read_notes` → prior message → disk mirror
+========================================================================
+
+Production traces (`157b399eacdc`, `84d21f0e4923`, `60326743b602468785de1545f7226c44`) showed the Guild workflow **notes store is scoped per stage** in practice: `read_notes` returned `count: 0` at every stage entry even though `clone` had written trigger keys. Until that platform behavior is fixed, use **layered redundancy** (same pattern as `aios-agent-db-state-splitter`):
+
+**Planner (every stage start):**
+1. **`read_notes` once** — use any keys returned; do **not** call `read_notes` again after subagents unless the prior call returned new keys you must merge.
+2. **`[Workflow execution]` header** — copy `workflow_run_id` for `WORK_ROOT=$HOME/.<workflow_run_id>`.
+3. **Prior stage final message** — Guild prepends the previous stage's closing assistant message. Parse `repository_full_name`, `repo_clone_path`, `module_paths`, `gate_result`, and other canonical keys from that text when `read_notes` is empty. Also parse fenced ```json blocks labeled `workflow_notes_snapshot` when present.
+4. **`[SubagentFailure]`** — when the prior message includes a `[SubagentFailure]` block, treat it as authoritative: do not re-spawn the failed subagent with the same goal; fix the root cause (usually split `execute_series`, wrong `WORK_ROOT`, or missing webhook JSON).
+5. **Do not** spawn subagents whose only job is "verify notes" or re-fetch trigger metadata you already have from (1)–(4).
+6. **`check_budget` once per stage** before the first subagent spawn — do not call it before every subagent.
+
+**First shell-runner subagent in the stage** (clone, validate, PR, etc.):
+1. `WORK_ROOT=$HOME/.<workflow_run_id>`; `mkdir -p "$WORK_ROOT"`.
+2. `cat "$WORK_ROOT/notes.json"` when the file exists; merge JSON keys into your working context (disk-mirror — **only reliable within the same execute_series or when the container was not reset**).
+3. If the planner inlined note values in your `goal`, `jq`-merge them into `$WORK_ROOT/notes.json` before mutating the repo.
+4. After every `note` call, append the same key to the disk mirror (§3b) **inside the same execute_series** when possible.
+
+**Cold-start fast-fail:** If `read_notes` is empty, the prior message has no canonical keys (including no parseable webhook JSON in `clone` Input), `cat $WORK_ROOT/notes.json` is empty/missing, AND `$WORK_ROOT/repo` does not exist — call `notify` once with `{stage:'<stage_id>', error:'cold_start_no_upstream'}` and **return**. **Exception:** in `clone`, parse webhook JSON from stage Input **before** declaring cold start — the payload is often in prose, not notes. Do not re-derive the repo from issue-body grepping or `gh repo list`. Do not use `ask_clarifying_question` to ask the operator to re-type prior-stage outputs.
+
+| Stage | Required keys after entry (from any layer) |
+|-------|---------------------------------------------|
+| `clone` | `repository_full_name`, `issue_or_pr_number`, `event_type`, `issue_labels` (discovery), `gate_result` (discovery) |
+| `implement-cdk` | above + `issue_details`, `repo_clone_path` (or recoverable `$WORK_ROOT/repo`) |
+| `validate` | `module_paths`, `repo_clone_path` |
+| `validate-loop-gate` | `module_quality_summary` or loop-gate JSON |
+| `validate` (close) | evidence checklist + `module_quality_summary: PASS` or explicit blocker |
+
+========================================================================
+3i) Batched note handoff (`workflow_notes_snapshot`) — planner cost control
+========================================================================
+
+Production trace `328f7adc495a` spent **~45%** of planner tool iterations on atomic `note` / `read_notes` calls. **Hard rules for the planner:**
+
+1. **During a stage:** do **not** call `note` per canonical key. Subagents mirror `key=value` stdout to `$WORK_ROOT/notes.json` inside their **one** `execute_series` (script-pack §0). Never `note` with empty `content` — omit the key or set a real value (trace `910c35875165`).
+2. **End of stage:** call `note` **twice maximum**:
+   - `note` key=`workflow_notes_snapshot` value=<compact single-line JSON of all canonical keys for this stage>
+   - `note` key=`stage_summary:<stage_id>` value=<one paragraph>
+3. **Final assistant message:** echo the same keys as prose **and** include a fenced block:
+   ```json workflow_notes_snapshot
+   {"repository_full_name":"...","repo_clone_path":"...",...}
+   ```
+4. **Subagents** may still use `note` for partial recovery when about to hit budget — prefer mirroring in-shell via `jq` on `$WORK_ROOT/notes.json` first.
+
+========================================================================
+3b) Stage notes disk mirror (`$HOME/.<workflow_run_id>/notes.json`)
+========================================================================
+
+**Container ephemerality:** The remote runner sandbox may reset between **separate** tool calls. The disk mirror helps **within one execute_series** and when the container is warm; it is **not** a cross-tool-call substitute for planner `note` + echoing keys in the stage closing message.
+
+1. **Initialize** in the first shell subagent of the run (typically `clone-runner`): `echo '{}' > "$WORK_ROOT/notes.json"` if missing.
+2. **After every `note` (planner or subagent)**, the shell writer must mirror inside the **same execute_series** when possible:
+   ```bash
+   jq --arg k "<K>" --arg v "<V>" '. + {($k): $v}' "$WORK_ROOT/notes.json" > "$WORK_ROOT/.notes.json.tmp" \
+     && mv "$WORK_ROOT/.notes.json.tmp" "$WORK_ROOT/notes.json"
+   ```
+   (`<V>` must be a single-line string; for JSON blobs, pass compact JSON as the value.)
+3. **Planner `note` calls in `clone`** are not on disk until a later shell subagent seeds the mirror — therefore **`clone` MUST echo** all trigger-payload keys and `gate_result` in the final assistant message (layer 2 above).
+4. **End of every stage:** `note` `stage_summary:<stage_id>` and mirror it; echo `repository_full_name`, `repo_clone_path`, `module_paths`, and blockers again in the closing message.
+
+========================================================================
+4) Context budget for `gh api` calls
+========================================================================
+
+- Always append `--jq '<filter>'` to keep the response under ~10 KB.
+- Always paginate with `?per_page=30` or smaller when listing.
+- Never run `gh api /repos/<o>/<r>/git/trees/HEAD?recursive=1` without a `--jq` selector — the raw response is megabytes and triggers auto-summarization.
+- Never fetch `gh api /repos/<o>/<r>/contents/<file>` for bulk source reads. Clone and `cat` instead.
+- If a response was auto-summarized, persist the summary and STOP re-calling the same endpoint hoping for a different result. Re-shape the query (smaller scope, different `--jq`).
+
+========================================================================
+5) Subagent rules (the most-violated section)
+========================================================================
+
+a0) **`clone` stage:** no `graph_query` — deployment impact is out of scope for this linear workflow. A trace spent ~$0.35 running graph queries before a label-gate block; that is forbidden.
+
+a) Hard cap: at most ONE subagent per logical task per stage. A prior trace spawned 22 unique subagent names — `fetch-all-module-contents`, `fetch-current-module-files`, `fetch-module-contents-v2`, `fetch-with-base64-cmd`, `deep-content-fetcher`, `repo-content-fetcher`, `deep-discovery`, etc. — all doing the same fetch. Each subagent costs ~$0.50 and 30-90s. Don't fan out.
+
+b) Subagent naming convention: `<stage_id>-<phase>` ONLY. Approved names:
+   - `clone-fetch`, `clone-runner`
+   - `implement-cdk-resolve-paths`, `implement-cdk-app-update`, `implement-cdk-catalog-scaffold`
+   - `validate-runner`
+   - `create-pr-runner`, `create-pr-notify`, `create-pr-comment`, `progress-comment-updater`
+   If you find yourself wanting a name not in this list, you're fanning out — STOP and consolidate into one of the approved names.
+
+c) `tool_names` rules:
+   - Script-runner subagents (clone / validate / PR / discovery-check): include `${shell_tool_prefix}_execute_command`, `${shell_tool_prefix}_execute_series`, `load_skill`, `note`, `read_notes`.
+   - Discovery / greenfield HCL: write module files via `printf`/heredoc/python **inside the same execute_series** as discovery-check or resolve-paths — do **not** `${shell_tool_prefix}_create_files` in a separate tool call before validate.
+   - Issue/PR metadata fetcher subagents: include `${shell_tool_prefix}_execute_command`, `${shell_tool_prefix}_execute_series`, `note`, `read_notes`.
+   - PR-author subagents: include `${shell_tool_prefix}_*` (for `gh pr create`, `gh pr comment`, `git push`), PLUS `note`, `read_notes`.
+   - Always include `note` and `read_notes` so the subagent can persist partial results before hitting its budget limit.
+
+d) Subagent goals (subagents cannot see your skills):
+   1. **Spawn contract wins:** When the subagent name matches the stage spawn contract, Guild **replaces** the spawn `goal` with the contract text. Planner-supplied goals longer than ~4000 runes may be truncated **before** patch — never paste multi-step shell/Python/heredoc scripts into the spawn goal (trace `910c35875165`). Keep planner spawn `goal` **≤ ~800 chars**; put gap lists in `context` or `read_notes` (`module_quality_gaps`, `test_summary_tail`).
+   2. Script runners: ONE `execute_series` using spawn-context **Clone / Validate / Discovery** command lines (copy verbatim, single `$`). Do **not** `load_skill` on embedded stages. Do **not** paste `---BEGIN …_EXECUTE_SERIES---` bodies into the goal.
+   3. Paste only note key **names** the subagent must `read_notes` (repository fields, `module_paths`, `workflow_run_id`) — not full file contents.
+   4. GitHub-only fetchers (Template B): one `gh api` command in the goal — no script pack.
+   5. HCL edits belong **inside** the subagent's `execute_series` (printf/heredoc/python), not in the planner goal text.
+
+e) Subagent budgets (**declared in spawn contracts** — host applies `max_llm_calls`; omitted values default to ~15 and fail on script materialize + notes + file edits):
+
+| Archetype | task_type | max_llm_calls | max_tool_iterations | timeout_seconds |
+|-----------|-----------|---------------|---------------------|-----------------|
+| Shell runner (clone / resolve-paths / commit-pr) | `terminal_calling` | **${subagent_budgets.runner_max_llm_calls}** | 45 | ${subagent_budgets.runner_timeout_seconds} |
+| GitHub fetch / comment (Template B, E, notify) | `efficiency` | **${subagent_budgets.github_max_llm_calls}** | 42 | ${subagent_budgets.github_timeout_seconds} |
+| Validate runner (Template C) | `terminal_calling` | **${subagent_budgets.validate_max_llm_calls}** | 45 | ${subagent_budgets.validate_timeout_seconds} |
+| Implement (`implement-cdk-app-update`) | `terminal_calling` | **${subagent_budgets.implement_max_llm_calls}** | 48 | ${subagent_budgets.implement_timeout_seconds} |
+
+Guild clamps `max_llm_calls` to [8, 60]. If a subagent returns `[stop_agent_error] max LLM calls (N) exceeded`, re-spawn **once** with the same approved name, `max_llm_calls` +10 (cap 60), and a **smaller goal** — do NOT spawn a second runner (e.g. two `validate-runner` calls).
+
+f) Call `check_budget` **once** at stage start before the first subagent spawn. If remaining budget < $2, skip non-critical subagents and post a blocked summary with whatever evidence exists.
+
+g) If a subagent fails or partially succeeds: merge useful output into `workflow_notes_snapshot`; DO NOT spawn a retry with a slightly different name. After 2 failures on the same logical task, accept partial results and continue.
+
+h) **`validate` stage:** exactly **one** `validate-runner` — ONE `${shell_tool_prefix}_execute_series` with spawn-context **Validate-only** (`${cdkbot_pack_dir}/stage-runner.sh validate` after pack ensure). **Never** `validate-and-pr` (PR opens in edit). PASS requires stdout `fmt_exit=` and `module_quality_summary=`.
+
+i) **Planner stay-on-track** (routing, rework, notes — traces `910c35875165`, `c72004698186`, `573f84aa9000`):
+
+| Situation | Do | Do NOT |
+|-----------|-----|--------|
+| `discovery_repo=true` + implement work | `implement-cdk-catalog-scaffold` | custom scaffold goals |
+| `repo_kind=cdk_app` | `implement-cdk-app-update` | `find *.tf`, registry search |
+| `module_quality_rework=true` + `module_paths` set | Template J — fix `module_quality_gaps` only; inline validate in same series | Re-scaffold, greenfield `catalog-scaffold`, 7k-char custom goals |
+| `module_quality_summary: BLOCKED` | §8(e)/(g); infra gate → `create-pr-notify` | Rework loop, `implement-cdk` edits |
+| Pack / clone errors | Spawn-context command, single `$` | `$$CDKBOT_*`, manual `git clone`, "recycle sidecar" when env is set but `base64: invalid input` |
+
+**Quality-loop rework entry (after `validate-loop-gate` → `implement-cdk`):**
+1. `read_notes` **once**: `module_paths`, `module_quality_gaps`, `test_summary_tail`, `validate_markers_file`, `discovery_repo`, `workflow_notes_snapshot`.
+2. Spawn **one** subagent per Template J. In `context` only: bullet the gaps quoted from `test_summary_tail` (max ~500 chars) — never embed fix scripts in `goal`.
+3. Do **not** spawn `validate-runner` from `implement-cdk` except inline validate inside catalog-scaffold rework series.
+4. Clear stale `quality_check_*` in the new `workflow_notes_snapshot` after rework stdout is known.
+
+**Note discipline:** Never `note` with empty `content` (trace `910c35875165` cleared `pr_head_ref`). Use §3i batched snapshot at stage end. Ignore `subagent:*` / foreign `workflow_notes_snapshot` blobs whose `WORK_ROOT` or `workflow_run_id` does not match `[Workflow execution]` for **this** run.
+
+**Parallel workflows:** Another trace's failed scaffold / `base64: invalid input` in guild logs is not this run's state — stay on **your** `workflow_run_id` and prior stage message.
+
+========================================================================
+6) End-state of every stage
+========================================================================
+
+Before declaring a stage done you MUST follow **§3i**: one `workflow_notes_snapshot` JSON note, one `stage_summary:<stage_id>` note, and **repeat the critical handoff keys** in the stage's final assistant message (plus the fenced JSON block) so the next stage can recover even when `read_notes` returns `count: 0`.
+
+========================================================================
+7) Subagent goal templates (copy-paste these)
+========================================================================
+
+Template A — "clone the repo" (`clone-runner`):
+  agent_name: "clone-runner"
+  tool_names: ["${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 45, max_llm_calls: ${subagent_budgets.runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.runner_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    ABS_WORK_ROOT={{work_root}}. Clone ONLY — read_notes then ONE ${shell_tool_prefix}_execute_series with spawn-context Clone command. note repo_clone_path from stdout. Stop.
+
+Template B — "fetch issue/PR" (`clone-fetch`):
+  agent_name: "clone-fetch"
+  tool_names: ["${shell_tool_prefix}_execute_command","${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 42, max_llm_calls: ${subagent_budgets.github_max_llm_calls}, timeout_seconds: ${subagent_budgets.github_timeout_seconds}
+  task_type: "efficiency"
+  goal: |
+    Fetch the triggering issue/PR metadata via `gh api` on the shell runner (GIT_TOKEN synced from Vault).
+    FORBIDDEN: `gh auth token`, `gh auth status`, `gh auth login`, noting `gh_token` / `gh_token_source`.
+    The execute_series must contain ONLY the `gh api` call(s) below — no auth preamble.
+    Inputs (paste verbatim from the trigger event):
+      - repository_full_name, issue_or_pr_number, event_type ("issue.created"|"pull_request.opened")
+    Steps (run as a single execute_series with exactly one or two commands):
+      1. If event_type starts with "issue":
+           `gh api /repos/<repository_full_name>/issues/<issue_or_pr_number> --jq '{number,title,body,state,author:.user.login,labels:[.labels[].name]}'`
+         Else (pull_request.*):
+           `gh api /repos/<repository_full_name>/pulls/<issue_or_pr_number> --jq '{number,title,body,state,author:.user.login,labels:[.labels[].name],head:{ref:.head.ref,sha:.head.sha,clone_url:.head.repo.clone_url,full_name:.head.repo.full_name},base:{ref:.base.ref}}'`
+      2. note key="issue_details", value=<the JSON from step 1, verbatim>
+      3. If pull_request, also note key="pr_head_ref" / "pr_head_clone_url" / "pr_head_repo_full_name" extracted from step 1.
+    Do NOT fetch comments, tree, or `/contents/` here — that work is forbidden in `clone` (see §0b). Stop after step 3.
+
+Template C — "validate CDK" (`validate-runner`):
+  agent_name: "validate-runner"
+  tool_names: ["${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 45, max_llm_calls: ${subagent_budgets.validate_max_llm_calls}, timeout_seconds: ${subagent_budgets.validate_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    ONE execute_series with spawn-context Validate-only (`stage-runner.sh validate`). FORBIDDEN: validate-and-pr, load_skill, printf fake PASS. Real stdout MUST include fmt_exit= and module_quality_summary=. Stop.
+
+Template D — "PR + comment" (`create-pr-runner`):
+  agent_name: "create-pr-runner"
+  tool_names: ["${shell_tool_prefix}_execute_command","${shell_tool_prefix}_execute_series","note"]
+  max_tool_iterations: 45, max_llm_calls: ${create_pr_runner_max_llm_calls}, timeout_seconds: ${subagent_budgets.runner_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    FIRST TOOL MUST be ${shell_tool_prefix}_execute_series with spawn-context Commit-pr (trace 2c708b834ca1 — never read_notes/note before commit-pr).
+    Substitute repository_full_name, issue_or_pr_number, repository_default_branch from planner context (architect passes them after read_notes).
+    Rework: when context has working_branch=, prefix WORKING_BRANCH before stage-runner — push only, never second gh pr create.
+    AFTER stdout: note working_branch, pr_url, pr_title, pr_error. Optional Template E issue comment when progress_comment_id empty.
+    Stop after one commit-pr series (+ optional comment).
+
+Template E — "comment on the PR/issue" (create-pr-comment):
+  agent_name: "create-pr-comment"
+  tool_names: ["${shell_tool_prefix}_execute_command","${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 42, max_llm_calls: ${subagent_budgets.github_max_llm_calls}, timeout_seconds: ${subagent_budgets.github_timeout_seconds}
+  task_type: "efficiency"
+  goal: |
+    Inputs from notes: `repository_full_name`, `issue_or_pr_number`, `pr_url` (optional), `validation_summary`, `test_summary_tail`, `stage_summary:*`, `gate_result`.
+    **Shell runner path:** use `${shell_tool_prefix}_execute_command` / `_execute_series` only — `gh` reads synced `GIT_TOKEN`/`GH_TOKEN` env. No clone required for issue-only comments.
+    Steps:
+      1. If `pr_url` is non-empty: post on the PR via `gh pr comment` with `--body-file -`.
+      2. Else post on the issue via ONE call:
+           `gh api -X POST /repos/<repository_full_name>/issues/<issue_or_pr_number>/comments -f body="$(cat <<'EOF'
+    <summary>
+    EOF
+    )"`
+         or `gh issue comment <issue_or_pr_number> --repo <repository_full_name> --body-file -` on the shell runner.
+      3. For `gate_result=missing_label`, body MUST name the required label `${discovery_modules_issue_label}` and ask the author to add it to the issue.
+      4. If any `stage_summary:*` note begins with "blocked:", include a "## Workflow blocked" section quoting that blocker.
+    Stop after the comment.
+
+Template P — "live progress issue comment" (progress-comment-updater):
+  agent_name: "progress-comment-updater"
+  tool_names: ["${shell_tool_prefix}_execute_command","${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 42, max_llm_calls: 8, timeout_seconds: ${subagent_budgets.github_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    Maintain **one** GitHub issue comment per workflow run (POST once, then PATCH).
+    Inputs from notes: `repository_full_name`, `issue_or_pr_number`, `progress_comment_id` (empty on first POST),
+    `stage_summary:*`, `module_quality_summary`, `pr_url`, `clone_blocker`, `gate_result`, `test_summary_tail`.
+    Steps:
+      1. `read_notes` once; derive PROGRESS_intake / PROGRESS_implement / PROGRESS_validate / PROGRESS_pr per orchestration §3j.
+      2. ONE `${shell_tool_prefix}_execute_series` with spawn-context **PROGRESS_COMMENT_EXECUTE_SERIES** block (export REPO_FULL_NAME, ISSUE_OR_PR, PROGRESS_COMMENT_ID, PROGRESS_* marks, PROGRESS_DETAIL).
+      3. `note progress_comment_id` and `progress_comment_url` from stdout (`progress_comment_id=` line).
+    When `progress_comment_id` is already set: PATCH only — never `gh issue comment` POST.
+    `create-pr-notify` / `create-pr-comment` MUST NOT run when `progress_comment_id` is set (architect uses Template P at `create-pr` instead).
+    Stop after one successful POST or PATCH.
+
+Template I — "discovery catalog scaffold" (`implement-cdk-catalog-scaffold`):
+  agent_name: "implement-cdk-catalog-scaffold"
+  tool_names: ["${shell_tool_prefix}_execute_series","note","read_notes"]
+  max_tool_iterations: 48, max_llm_calls: ${subagent_budgets.runner_max_llm_calls}, timeout_seconds: ${discovery_scaffold_timeout_seconds}
+  task_type: "terminal_calling"
+  goal: |
+    Greenfield or rework on discovery repos. ONE execute_series — spawn-context Discovery command. NEVER load_skill. note module_paths module_quality_summary from stdout. Stop.
+
+Template J — "quality-loop rework":
+  agent_name: `implement-cdk-catalog-scaffold` (discovery) or `implement-cdk-app-update` (cdk_app)
+  goal: |
+    Fix ONLY `module_quality_gaps` under existing `module_paths[0]`; inline validate in same series when catalog; then `create-pr-runner` pushes to same branch.
+
+========================================================================
+8) Failure & fallback paths
+========================================================================
+
+Past traces failed because the agent kept spawning "discover-repo-structure" / "find-modules" subagents after the first failure. That is the wrong response. When a stage cannot proceed, pick exactly one of the bounded responses in (a)–(f) below — do not improvise a seventh discovery loop.
+
+a) BLOCKER: "no GitHub token for push" (`push_requires_token=true`, `pr_blocker=auth`, or `clone_auth_mode=anonymous` after validate PASS).
+     → Module may be scaffolded and validated locally; push/PR requires PAT.
+     → note key="stage_summary:<current_stage>" value="blocked: module ready but runner env lacks GIT_TOKEN for push/PR; bind Provider/github PAT to remote runner secrets"
+     → Run Template E (`create-pr-comment`) with validation summary + module_paths.
+     → STOP. Do NOT re-run implement/validate.
+
+b) BLOCKER: "no GitHub token in runner env" (all of `GIT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` empty **and** clone failed — not the same as anonymous read of a public repo).
+     → note key="stage_summary:<current_stage>" value="blocked: cannot clone; verify PAT on remote runner or repo visibility"
+     → `clone-blocked-gate` → `create-pr-notify` posts Template E once. Do NOT spawn `create-pr-comment` during `clone`.
+     → STOP. Do NOT run `gh auth token`.
+
+c) BLOCKER: "repo clone failed" (Template A reported `clone_blocker=auth_or_network|network|404|branch`).
+     → note key="stage_summary:<current_stage>" value="blocked: cannot clone <repository_full_name>; verify PAT, network egress, or branch name"
+     → `clone-blocked-gate` → `create-pr-notify` posts Template E. Do NOT spawn comment during clone.
+     → STOP.
+
+d) BLOCKER: "module path ambiguous" (`module_resolution_confidence` = "ambiguous").
+     → call `ask_clarifying_question` listing up to 5 candidate paths from `module_paths` and asking the operator to pick one.
+     → On answer, persist the chosen path back to `module_paths` and continue. NO new discovery subagents.
+
+e) TRANSIENT INFRA: Remote runner / MCP tool errors (`lazy init failed`, `tool … not found after recovery`, `context deadline exceeded`, runner offline) during **clone** or **implement-cdk** — especially right after `docker run` or cluster rollout.
+     → Retry the **same spawn-context command** (clone-pack / stage-runner) up to **3 times** with **15s** backoff (note `infra_retry=<n>` each time).
+     → **NOT §8(e):** `cdkbot_pack_error=`, missing `CDKBOT_*_B64` env, `clone-pack.sh: not found` — use §8(g); never substitute ad-hoc `git clone`. `base64: invalid input` with TFBOT env set → wrong `$$` in command (single `$` only), not infra retry.
+     → Do **NOT** post Template E for pure MCP transport errors until retries are exhausted.
+     → If the tool succeeds on retry, continue the stage normally.
+     → If still failing after 3 retries, note `stage_summary:<current_stage>` value="blocked: CDK remote runner unavailable after retries; operator should check ${remote_runner_name} container/process" and run Template E once.
+
+g) BLOCKER: cdk-bot script pack not materialized (`cdkbot_pack_error=missing_pack`, scripts missing under `${cdkbot_pack_dir}`, `clone-pack.sh: not found`).
+     → **Operator config** — run `tofu apply` to refresh `${module_prefix}-runner-script-pack-env` (generic mothership sync) and restart `${remote_runner_name}` (`remote_runner_cli_start_command_with_secrets`). Rebuild `runner_docker_image` only when Node/CDK toolchain or Dockerfile changes (`build_runner_image`). This is **not** PAT/auth failure and **not** §8(e).
+     → **`base64: invalid input` with TFBOT env present:** agent used `$$` in execute_series (PID expansion) — note `clone_blocker=wrong_shell_dollar_escape`; re-run with spawn-context command (single `$`). Do not rebuild runner image for this case.
+     → note `stage_summary:clone` (or current stage) `blocked: CDK runner script pack missing; tofu apply docker build + restart ${remote_runner_name}`
+     → STOP. Do **NOT** spawn a second clone subagent with manual `git clone` / HTTPS token URL / `gh repo clone`.
+     → `clone-blocked-gate` routes to `create-pr-notify` for Template E.
+
+f) FALLBACK: unsupported repo or `not_found` without discovery profile → `stage_summary:implement-cdk=blocked: unsupported repo kind` and Template E.

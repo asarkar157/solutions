@@ -79,11 +79,11 @@ resource "sg_guild_model_provider" "gemini" {
 # Named Model Instances
 # =============================================================================
 
-resource "sg_guild_model" "gpt4o" {
+resource "sg_guild_model" "gpt54" {
   count         = var.llm_api_keys.openai != "" ? 1 : 0
-  name          = "gpt-4o"
+  name          = "gpt-5.4-2026-03-05"
   provider_name = sg_guild_model_provider.openai[0].name
-  model_id      = "gpt-4o"
+  model_id      = "gpt-5.4-2026-03-05"
   good_for_task = "tool_calling"
 }
 

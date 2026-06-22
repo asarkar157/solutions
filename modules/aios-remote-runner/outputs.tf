@@ -8,6 +8,12 @@ output "runner_id" {
   value       = local.runner_id
 }
 
+output "runner_token" {
+  description = "One-time plaintext registration token for aiden-runner (--runner-token / STACKGEN_RUNNER_TOKEN). Only set when create_runner is true; retained in Terraform state after first create."
+  value       = var.create_runner ? sg_remote_runner.this[0].token : null
+  sensitive   = true
+}
+
 output "runner_status" {
   description = "Runner lifecycle status from Guild (online, offline, etc.)."
   value       = local.status
@@ -37,7 +43,7 @@ output "helm_install_command" {
 
 output "runner_secrets_bound" {
   description = "True when this apply configured sg_remote_runner_secrets on the runner."
-  value       = var.create_runner && local.bind_secrets
+  value       = local.bind_secrets
 }
 
 output "typed_secret_refs" {
@@ -48,7 +54,7 @@ output "typed_secret_refs" {
 output "sync_cli_args" {
   description = "Optional aiden-runner flags from sg_remote_runner_secrets (append to cli_start_command when non-empty)."
   value = (
-    var.create_runner && local.bind_secrets
+    local.bind_secrets
     ? sg_remote_runner_secrets.this[0].sync_cli_args
     : ""
   )

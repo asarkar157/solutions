@@ -1,0 +1,18 @@
+Spawn `post-linear-spec-comment` by agent_name only. read_notes `linear_issue_id`, `spec_markdown_final` (fallback `spec_markdown` + `engineering_subgoals`).
+
+Use Linear MCP `${linear_tool_save_comment}` to post:
+
+```
+## Spec (draft)
+<!-- spec-symphony-spec-v1 -->
+…spec body…
+
+## Engineering subgoals
+…numbered list…
+
+_Add label \`${linear_implement_label}\` when approved to start implementation._
+```
+
+note `linear_comment_posted=true` and comment id if returned.
+
+FORBIDDEN: gh api; runner shell.

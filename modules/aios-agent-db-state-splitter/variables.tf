@@ -23,7 +23,7 @@ variable "stackgen_mcp_integration_name" {
 variable "model_names" {
   description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Efficiency/mini models (names matching mini|flash|nano|haiku) are filtered out before sg_agent.model_names unless non_trivial_model_names is set."
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."

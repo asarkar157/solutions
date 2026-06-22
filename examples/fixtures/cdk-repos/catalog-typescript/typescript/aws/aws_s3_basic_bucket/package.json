@@ -1,0 +1,12 @@
+name: aws-s3-basic-bucket
+version: 0.1.0
+private: true
+scripts: { test: jest, typecheck: tsc --noEmit }
+dependencies:
+  aws-cdk-lib: ^2.175.0
+  constructs: ^10.4.2
+devDependencies:
+  '@types/jest': ^29.5.14
+  jest: ^29.7.0
+  ts-jest: ^29.2.5
+  typescript: ^5.7.2

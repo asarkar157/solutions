@@ -31,8 +31,8 @@ resource "sg_secret" "grafana_vault" {
   category    = "Observability"
   subcategory = "grafana"
   metadata = {
-    server = var.grafana_server
-    token  = var.grafana_token
+    base_url  = var.grafana_server
+    api_token = var.grafana_token
   }
 }
 

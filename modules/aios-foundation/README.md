@@ -25,7 +25,7 @@ module "foundation" {
 |---|---|---|
 | `sg_secret` | 3 | Vault secrets for OpenAI, Anthropic, Gemini API keys |
 | `sg_guild_model_provider` | 3 | LLM provider registrations |
-| `sg_guild_model` | 3 | Named model instances (gpt-4o, claude-sonnet, gemini-flash) |
+| `sg_guild_model` | 3 | Named model instances (gpt-5.4-2026-03-05, claude-sonnet, gemini-flash) |
 
 ## Inputs
 
@@ -43,7 +43,7 @@ module "foundation" {
 
 | Name | Description |
 |------|-------------|
-| `model_names` | **`list(string)`** of registered model names in stable order (`claude_sonnet`, `gpt4o`, `gemini_flash`); unconfigured providers are omitted. Wire directly to any agent module's `model_names` input. |
-| `model_names_by_provider` | Map of provider key → registered model name (empty string for unconfigured providers). Use for hand-picking a specific provider, e.g. `model_names = [module.foundation.model_names_by_provider.gpt4o]`. |
+| `model_names` | **`list(string)`** of registered model names in stable order (`gpt54`, `claude_sonnet`, `gemini_flash`); unconfigured providers are omitted. Wire directly to any agent module's `model_names` input. |
+| `model_names_by_provider` | Map of provider key → registered model name (empty string for unconfigured providers). Use for hand-picking a specific provider, e.g. `model_names = [module.foundation.model_names_by_provider.gpt54]`. |
 | `model_provider_names` | Map of provider name references |
 | `secret_names` | Map of vault secret names |

@@ -49,6 +49,12 @@ variable "slack_bot_token" {
   sensitive   = true
 }
 
+variable "gateway_base_url" {
+  description = "Public Omnichannel Gateway origin (no trailing slash). When set, outputs include gateway_slack_event_url for Slack App Event Subscriptions (/slack/events → aiden-router)."
+  type        = string
+  default     = ""
+}
+
 variable "github_token" {
   description = "GitHub PAT for CCE incident scoping (optional but recommended for evidence-first demo)."
   type        = string

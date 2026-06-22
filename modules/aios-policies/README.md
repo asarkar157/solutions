@@ -32,6 +32,8 @@ module "policies" {
 | `data-risk-pii` | logic | PII/PCI/PHI data requires redaction pipeline |
 | `azure-tool-governance` | logic | Azure CLI read-only, blocks destructive ops |
 | `google-tool-governance` | logic | Google workspace tools, blocks shell ops |
+| `sre-investigation-write-gate` | intervention | HITL for stackgen-sre-investigator GitHub PR, Datadog/Grafana writes, destructive shell |
+| `pagerduty-escalation-gate` | intervention | HITL for PagerDuty escalate/reassign/snooze during SRE triage |
 
 ## Outputs
 

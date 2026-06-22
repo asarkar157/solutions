@@ -1,7 +1,7 @@
 variable "model_names" {
   description = "Ordered list of registered model names (highest preference first)."
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."
@@ -285,9 +285,9 @@ variable "private_saas_environment_label" {
 # =============================================================================
 
 variable "enable_slack_webhook" {
-  description = "When true, creates sg_webhook slack-gitops-sre targeting gitops-sre-incident-response."
+  description = "Deprecated. When true, creates legacy sg_webhook slack-gitops-sre (source=slack). Prefer Gateway /slack/events → aiden-router for Slack intake."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "webhook_allowed_cidrs" {

@@ -1,0 +1,11 @@
+Budget: ≤1 clone subagent, ≤3 minutes. Playbook: `${sop_orchestration_name}`.
+
+**CRITICAL — execute, do not plan:** `note()` webhook fields THEN spawn `intake-clone-bootstrap-clone` **by agent_name only** (Guild injects spawn contract — FORBIDDEN: custom `goal`/`context` on spawn JSON; trace `4c720966`). FORBIDDEN: Phase 1/2/3 plans only, `"notes":{}`, ad-hoc agent names (`retry-*`).
+
+**Step 0:** `ABS_WORK_ROOT={{work_root}}` from spawn header — never `$HOME/.wf-*`.
+
+**Step 1 — clone params (before clone):** **`read_notes` first** for `repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number`. If any are missing, parse stage Input webhook JSON and `note()` them. Also `note()` `event_type`, `issue_details`, `sdd_framework=${sdd_framework}` when absent from notes.
+
+**Step 2 — clone:** ONE `intake-clone-bootstrap-clone` — subagent copies spawn-context Clone command **verbatim** (`WORK_ROOT='{{work_root}}'` + repo fields from notes + `clone-pack.sh clone` env-only). If `execute_series` returns empty instantly, **retry up to 3× (15s)** before `clone_blocker=runner_unavailable`. FORBIDDEN: `$HOME/.wf-*`, positional path on clone-pack.
+
+**Close:** `stage_summary:intake-clone-bootstrap=done` only when `repo_clone_path` ends with `/repo`. On blocker: `stage_summary:intake-clone-bootstrap=blocked`.

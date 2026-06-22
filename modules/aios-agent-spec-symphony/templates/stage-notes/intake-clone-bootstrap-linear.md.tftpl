@@ -1,0 +1,16 @@
+Budget: ≤1 clone subagent, ≤3 minutes. Playbook: `${sop_orchestration_name}`.
+
+**CRITICAL — execute, do not plan:** spawn `intake-clone-bootstrap-clone` **by agent_name only** (Guild injects spawn contract). FORBIDDEN: Phase plans only, `"notes":{}`, ad-hoc agent names.
+
+**Step 0:** `ABS_WORK_ROOT={{work_root}}` from spawn header — never `$HOME/.wf-*`.
+
+**Step 1 — clone params (linear-spec-implement):** Stage Input is usually **gate output**, not the webhook. **`read_notes` FIRST** for:
+`repository_full_name`, `repository_clone_url`, `repository_default_branch`, `issue_or_pr_number` (written by `linear-intake`).
+
+Only if still missing, parse the original webhook prose from stage Input or earliest notes. Do **NOT** emit `blocked: missing clone params` when `read_notes` already has `repository_clone_url`.
+
+Ensure `sdd_framework=${sdd_framework}` is noted when absent.
+
+**Step 2 — clone:** ONE `intake-clone-bootstrap-clone` — subagent copies spawn-context Clone command **verbatim**. Retry empty `execute_series` up to 3× (15s) before `clone_blocker=runner_unavailable`.
+
+**Close:** `stage_summary:intake-clone-bootstrap=done` only when `repo_clone_path` ends with `/repo`. On real blocker: `stage_summary:intake-clone-bootstrap=blocked: <reason>`.

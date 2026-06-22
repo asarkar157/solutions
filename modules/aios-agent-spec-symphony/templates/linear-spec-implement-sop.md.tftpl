@@ -1,0 +1,32 @@
+# Linear spec-implement SOP
+
+**linear-spec-implement** — blessed spec → clone → materialize → Cursor implement → PR → Linear comment.
+
+## Trigger
+
+Linear issue update webhook; issue must have label `${linear_implement_label}`.
+
+## Repo contract
+
+Issue body or custom field must include GitHub repo:
+
+- Line `repo: owner/name`, or
+- `repository_url: https://github.com/owner/name`
+
+Intake notes `repository_full_name` and `repository_clone_url`.
+
+## Fetch spec from Linear
+
+1. Use `${linear_tool_list_comments}` on `linear_issue_id`.
+2. Find latest comment containing `<!-- spec-symphony-spec-v1 -->` and `## Spec (draft)`.
+3. Note `spec_markdown`, `engineering_subgoals`, `linear_issue_id`.
+
+## Materialize in repo
+
+Runner: `stage-runner.sh linear-materialize '{{work_root}}/repo' '<feature_id>'` with env `SPEC_MARKDOWN` / `ENGINEERING_SUBGOALS` from notes (or write notes files under WORK_ROOT).
+
+Creates `specs/<LINEAR-ID>/spec.md`, `plan.md`, `tasks.md`.
+
+## Implement
+
+Default engine: `${linear_implement_engine}`. Cursor prompt must read `tasks.md` + constitution + `engineering_subgoals`.

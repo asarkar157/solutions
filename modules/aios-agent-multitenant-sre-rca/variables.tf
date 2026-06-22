@@ -1,7 +1,7 @@
 variable "model_names" {
   description = "Ordered list of registered model names exposed to this module's agents (highest preference first). Forwarded straight to sg_agent.model_names after compact()."
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."
@@ -244,9 +244,9 @@ variable "enable_datadog_webhook" {
 }
 
 variable "enable_slack_collaboration_webhook" {
-  description = "When true, creates sg_webhook `slack-rca-thread` targeting datadog-rca-collaboration for Slack thread follow-up ingress."
+  description = "Deprecated. When true, creates legacy sg_webhook slack-rca-thread (source=slack). Prefer Gateway /slack/events → aiden-router for thread follow-up."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "webhook_allowed_cidrs" {

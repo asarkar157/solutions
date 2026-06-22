@@ -1,0 +1,319 @@
+/bin/bash <<'CDKBOT_DISCOVERY_SCAFFOLD'
+set -euo pipefail
+export HOME=${shell_work_home}
+export PATH="${shell_work_home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export GIT_TERMINAL_PROMPT=0
+export CDKBOT_EMBEDDED=1
+: "$${WORK_ROOT:?export WORK_ROOT before discovery scaffold one-liner}"
+repo_dir="$WORK_ROOT/repo"
+
+if [ ! -d "$repo_dir/.git" ] && [ ! -e "$repo_dir/.git" ]; then
+  echo "scaffold_error=no_repo_clone"
+  exit 1
+fi
+
+if [ -z "$${TRIGGER_JSON:-}" ] && [ -n "$${ISSUE_TITLE:-}" ]; then
+  if [ -n "$${ISSUE_OR_PR:-}" ]; then
+    TRIGGER_JSON="$(jq -n --arg t "$${ISSUE_TITLE}" --arg b "$${ISSUE_BODY:-}" --argjson n "$${ISSUE_OR_PR}" '{issue:{title:$t,body:$b,number:$n}}' 2>/dev/null)" || true
+  fi
+  if [ -z "$${TRIGGER_JSON:-}" ]; then
+    TRIGGER_JSON="$(jq -n --arg t "$${ISSUE_TITLE}" --arg b "$${ISSUE_BODY:-}" '{issue:{title:$t,body:$b}}')"
+  fi
+fi
+
+infer_module_from_trigger() {
+  local raw="$${TRIGGER_JSON:-}"
+  local title body combined
+  title="$(printf '%s' "$raw" | jq -r '.issue.title // .pull_request.title // empty' | tr '[:upper:]' '[:lower:]')"
+  body="$(printf '%s' "$raw" | jq -r '.issue.body // .pull_request.body // empty' | tr '[:upper:]' '[:lower:]')"
+  combined="$title $body"
+
+  PROVIDER_ROOT="aws"
+  if printf '%s' "$combined" | grep -Eq 'azure|azurerm'; then
+    PROVIDER_ROOT="azurerm"
+  elif printf '%s' "$combined" | grep -Eq 'gcp|google|gke'; then
+    PROVIDER_ROOT="gcp"
+  fi
+
+  MODULE_DIR=""
+  SIBLING_DIR=""
+
+  if printf '%s' "$combined" | grep -Eq 'blue.?green|blue/green'; then
+    if printf '%s' "$combined" | grep -Eq 'ecs|fargate|container|microservice'; then
+      MODULE_DIR="aws_ecs_service_blue_green"
+      SIBLING_DIR="aws_ecs_service"
+      PROVIDER_ROOT="aws"
+    fi
+  fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'scheduler|schedule'; then
+    MODULE_DIR="aws_scheduler_schedule"
+    SIBLING_DIR="aws_cloudwatch_event_rule"
+    PROVIDER_ROOT="aws"
+  fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'event.?bridge.?pipe|pipes'; then
+    MODULE_DIR="aws_pipes_pipe"
+    SIBLING_DIR="aws_sqs_queue"
+    PROVIDER_ROOT="aws"
+  fi
+  if [ -z "$MODULE_DIR" ] && printf '%s' "$combined" | grep -Eq 'verified.?access|verifiedaccess'; then
+    MODULE_DIR="aws_verifiedaccess_trust_provider"
+    SIBLING_DIR="aws_ec2_client_vpn_endpoint"
+    PROVIDER_ROOT="aws"
+  fi
+  if [ -z "$MODULE_DIR" ]; then
+    MODULE_DIR="$(printf '%s' "$combined" | grep -Eo '(aws|google|azurerm)_[a-z0-9_]{3,}' | head -1 || true)"
+  fi
+}
+
+pick_discovery_sibling_dir() {
+  local provider_dir="$${1:?provider_dir}"
+  local module_dir="$${2:?module_dir}"
+  local suggested="$${3:-}"
+  if [ -n "$suggested" ] && [ -d "$provider_dir/$suggested" ]; then
+    printf '%s' "$suggested"
+    return 0
+  fi
+  local best="" best_score=0 d base score token
+  token="$${module_dir#aws_}"
+  token="$${token#google_}"
+  token="$${token#azurerm_}"
+  for d in "$provider_dir"/*; do
+    [ -d "$d" ] || continue
+    base="$(basename "$d")"
+    [ "$base" = "$module_dir" ] && continue
+    score=0
+    if printf '%s' "$base" | grep -Fq "$token"; then
+      score=100
+    elif [ $${#token} -ge 10 ] && printf '%s' "$base" | grep -Fq "$${token:0:10}"; then
+      score=80
+    else
+      local seg
+      for seg in $(printf '%s' "$token" | tr '_' ' '); do
+        [ $${#seg} -lt 5 ] && continue
+        if printf '%s' "$base" | grep -Fq "$seg"; then
+          score=$((score + 10))
+        fi
+      done
+    fi
+    if [ "$score" -gt "$best_score" ]; then
+      best_score=$score
+      best=$base
+    fi
+  done
+  if [ -n "$best" ] && [ "$best_score" -gt 0 ]; then
+    printf '%s' "$best"
+    return 0
+  fi
+  first_subdir_under "$provider_dir"
+}
+
+infer_module_from_trigger
+
+if [ -n "$${MODULE_DIR:-}" ]; then
+  MODULE_DIR="$${MODULE_DIR}"
+fi
+if [ -n "$${PROVIDER_ROOT:-}" ]; then
+  PROVIDER_ROOT="$${PROVIDER_ROOT}"
+fi
+if [ -n "$${SIBLING_DIR:-}" ]; then
+  SIBLING_DIR="$${SIBLING_DIR}"
+fi
+
+if [ -z "$MODULE_DIR" ]; then
+  echo "scaffold_error=unable_to_infer_module_dir"
+  echo "hint=export MODULE_DIR and PROVIDER_ROOT from issue title/body hints"
+  exit 1
+fi
+
+check_out="$WORK_ROOT/.work/discovery-check.out"
+mkdir -p "$WORK_ROOT/.work"
+STAGE_RUNNER="$WORK_ROOT/.pack/stage-runner.sh"
+mkdir -p "$WORK_ROOT/.pack"
+printf '%s' "${script_pack_runner_b64}" | base64 -d > "$STAGE_RUNNER"
+chmod +x "$STAGE_RUNNER"
+runner_actual="$(sha256sum "$STAGE_RUNNER" | awk '{print $1}')"
+if [ "$runner_actual" != "${script_pack_runner_sha256}" ]; then
+  echo "scaffold_error=runner_sha256_mismatch expected=${script_pack_runner_sha256} actual=$runner_actual"
+  exit 1
+fi
+/bin/bash -s discovery-check "$WORK_ROOT" "$repo_dir" "$PROVIDER_ROOT" "$MODULE_DIR" < "$STAGE_RUNNER" | tee "$check_out"
+
+confidence="$(grep -E '^module_resolution_confidence=' "$check_out" | tail -1 | cut -d= -f2- || true)"
+if [ "$confidence" = "exact" ]; then
+  module_path="$(grep -E '^module_paths=' "$check_out" | tail -1 | cut -d= -f2- || true)"
+  if [ -z "$module_path" ] || [ ! -d "$module_path" ]; then
+    echo "scaffold_error=existing_module_path_missing"
+    exit 1
+  fi
+  echo "module_paths=$module_path"
+  echo "module_resolution_confidence=exact"
+  echo "scaffold_summary=existing_module_revalidated"
+  validate_out="$WORK_ROOT/.work/discovery-validate.out"
+  if ! command -v tofu >/dev/null 2>&1 && ! command -v terraform >/dev/null 2>&1; then
+    echo "validation_error=no_iac_binary"
+    echo "fmt_exit=1"
+    echo "module_quality_summary=BLOCKED"
+    echo "catalog_greenfield_validated=true"
+    echo "script_pack_version=${script_pack_version}"
+    exit 1
+  fi
+  set +e
+  /bin/bash -s validate "$WORK_ROOT" "$module_path" < "$STAGE_RUNNER" | tee "$validate_out"
+  validate_rc=$?
+  set -e
+  if [ ! -s "$validate_out" ]; then
+    echo "validation_error=empty_validate_stdout"
+    echo "validate_exit=$validate_rc"
+    echo "module_quality_summary=BLOCKED"
+    echo "catalog_greenfield_validated=true"
+    echo "script_pack_version=${script_pack_version}"
+    exit 1
+  fi
+  if ! grep -qE '^fmt_exit=' "$validate_out"; then
+    echo "validation_error=missing_fmt_exit_marker"
+    echo "validate_exit=$validate_rc"
+    echo "module_quality_summary=BLOCKED"
+    echo "catalog_greenfield_validated=true"
+    echo "script_pack_version=${script_pack_version}"
+    exit 1
+  fi
+  grep -E '^(fmt_exit|init_exit|validate_exit|test_exit|module_quality_summary|validation_summary|test_summary_file|test_summary_tail|module_quality_gaps)=' "$validate_out" || true
+  grep -E '^module_quality_summary=' "$validate_out" | tail -1 || true
+  echo "validate_markers_file=$validate_out"
+  echo "catalog_greenfield_validated=true"
+  echo "script_pack_version=${script_pack_version}"
+  exit 0
+fi
+
+target="$repo_dir/$PROVIDER_ROOT/$MODULE_DIR"
+first_subdir_path_under() {
+  local parent="$${1:?parent_dir}"
+  if [ ! -d "$parent" ]; then
+    return 0
+  fi
+  find "$parent" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true
+}
+first_subdir_under() {
+  local first
+  first="$(first_subdir_path_under "$${1:?parent_dir}")"
+  if [ -n "$first" ]; then
+    basename "$first"
+  fi
+}
+SIBLING_DIR="$(pick_discovery_sibling_dir "$repo_dir/$PROVIDER_ROOT" "$MODULE_DIR" "$${SIBLING_DIR:-}")"
+sibling="$repo_dir/$PROVIDER_ROOT/$SIBLING_DIR"
+if [ ! -d "$sibling" ]; then
+  sibling="$(first_subdir_path_under "$repo_dir/$PROVIDER_ROOT")"
+  [ -n "$sibling" ] && SIBLING_DIR="$(basename "$sibling")"
+fi
+if [ -z "$sibling" ] || [ ! -d "$sibling" ]; then
+  echo "scaffold_error=no_sibling_module provider=$PROVIDER_ROOT"
+  exit 1
+fi
+
+issue_num=""
+raw="$${TRIGGER_JSON:-}"
+if [ -n "$raw" ]; then
+  issue_num="$(printf '%s' "$raw" | jq -r '.issue.number // .pull_request.number // empty')"
+fi
+
+mkdir -p "$(dirname "$target")"
+cp -a "$sibling" "$target"
+
+readme="$target/README.md"
+{
+  printf '%s\n' "# $MODULE_DIR" "" "Discovery module scaffold for issue #$${issue_num:-unknown}." "" "Copied from sibling $(basename "$sibling") and adapted for workflow validation."
+} >"$readme"
+
+if [ -f "$target/.stackgen/stackgen.yaml" ]; then
+  sed -i.bak "s/$(basename "$sibling")/$MODULE_DIR/g" "$target/.stackgen/stackgen.yaml" 2>/dev/null || true
+  rm -f "$target/.stackgen/stackgen.yaml.bak"
+fi
+
+for _json in variables.tf.json outputs.tf.json; do
+  if [ -f "$target/$_json" ]; then
+    if ! jq empty "$target/$_json" 2>/dev/null; then
+      echo "scaffold_error=invalid_json file=$_json"
+      exit 1
+    fi
+    if [ -n "$SIBLING_DIR" ] && [ "$SIBLING_DIR" != "$MODULE_DIR" ]; then
+      sed -i.bak "s/$SIBLING_DIR/$MODULE_DIR/g" "$target/$_json" 2>/dev/null || true
+      rm -f "$target/$_json.bak"
+      if ! jq empty "$target/$_json" 2>/dev/null; then
+        echo "scaffold_error=invalid_json_after_rename file=$_json"
+        exit 1
+      fi
+    fi
+  fi
+done
+
+primary_tf=""
+for _f in "$target"/*.tf; do
+  _base="$(basename "$_f")"
+  if [ "$_base" = "provider.tf" ] || [ "$_base" = "versions.tf" ]; then
+    continue
+  fi
+  primary_tf="$_f"
+  break
+done
+if [ -n "$primary_tf" ] && [ "$(basename "$primary_tf")" = "$${SIBLING_DIR}.tf" ]; then
+  mv "$primary_tf" "$target/$${MODULE_DIR}.tf"
+fi
+
+mock_provider="aws"
+[ "$PROVIDER_ROOT" = "gcp" ] && mock_provider="google"
+[ "$PROVIDER_ROOT" = "azurerm" ] && mock_provider="azurerm"
+
+cat >"$target/basic.tftest.hcl" <<EOF
+mock_provider "$mock_provider" {}
+
+run "basic_plan" {
+  command = plan
+}
+EOF
+
+echo "module_paths=$target"
+echo "module_resolution_confidence=greenfield"
+echo "scaffold_summary=copied_sibling=$(basename "$sibling")"
+echo "discovery_provider=$PROVIDER_ROOT"
+echo "discovery_module_dir=$MODULE_DIR"
+
+validate_out="$WORK_ROOT/.work/discovery-validate.out"
+if ! command -v tofu >/dev/null 2>&1 && ! command -v terraform >/dev/null 2>&1; then
+  echo "validation_error=no_iac_binary"
+  echo "fmt_exit=1"
+  echo "module_quality_summary=BLOCKED"
+  echo "catalog_greenfield_validated=true"
+  echo "script_pack_version=${script_pack_version}"
+  exit 1
+fi
+set +e
+/bin/bash -s validate "$WORK_ROOT" "$target" < "$STAGE_RUNNER" | tee "$validate_out"
+validate_rc=$?
+set -e
+
+if [ ! -s "$validate_out" ]; then
+  echo "validation_error=empty_validate_stdout"
+  echo "validate_exit=$validate_rc"
+  echo "module_quality_summary=BLOCKED"
+  echo "catalog_greenfield_validated=true"
+  echo "script_pack_version=${script_pack_version}"
+  exit 1
+fi
+
+if ! grep -qE '^fmt_exit=' "$validate_out"; then
+  echo "validation_error=missing_fmt_exit_marker"
+  echo "validate_exit=$validate_rc"
+  echo "module_quality_summary=BLOCKED"
+  echo "catalog_greenfield_validated=true"
+  echo "script_pack_version=${script_pack_version}"
+  exit 1
+fi
+
+grep -E '^(fmt_exit|init_exit|validate_exit|test_exit|module_quality_summary|validation_summary|test_summary_file|test_summary_tail|module_quality_gaps)=' "$validate_out" || true
+grep -E '^module_quality_summary=' "$validate_out" | tail -1 || true
+echo "validate_markers_file=$validate_out"
+
+echo "catalog_greenfield_validated=true"
+echo "script_pack_version=${script_pack_version}"
+CDKBOT_DISCOVERY_SCAFFOLD

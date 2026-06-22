@@ -387,9 +387,6 @@ module "terraform_bot" {
   # StackGen discovery-modules (https://github.com/stackgenhq/discovery-modules):
   # discovery_modules_repository_full_names = ["stackgenhq/discovery-modules"]
   # discovery_modules_issue_label defaults to "discovery-module-request" (only GitHub label required)
-  # stackgen_upload_url                   = "https://main.dev.stackgen.com"
-  # stackgen_upload_project_id            = "<stackgen-project-id>"
-  # stackgen_token_secret_id              = "<sg_secret id with STACKGEN_TOKEN metadata>"
   # defer_pr_until_quality_pass           = true
   # draft_pr_on_max_iterations_exhausted  = true  # default; set false for notify-only when loop exhausts
   # module_quality_max_iterations       = 3

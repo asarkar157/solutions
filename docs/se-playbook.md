@@ -23,9 +23,13 @@ A short, prospect-driven map: what the prospect just asked → which scenario yo
 
 Drop the prompts below in your talk track. Each one points at a single scenario; resist composing on the fly during the call.
 
+**Slack / Teams chat wiring:** one Event Subscription URL per tenant — `{gateway}/slack/events` → `aiden-router`. Set `gateway_base_url` in scenario `terraform.tfvars` to print checklist outputs. See [Omnichannel triage]({% include doc_url.html path="omnichannel-triage.md" %}).
+
 | The prospect said… | Run | Why it lands |
 |--------------------|-----|--------------|
 | "Can your thing actually fix an AWS incident?" | **`aws-sre-demo`** | Connects AWS, registers the SRE agents, hands you a chat to type "EC2 i-… is unhealthy" into. ~5 min to first reply. |
+| "A Datadog monitor fires at 2am — what does your thing do?" | **`datadog-aws-rca`** | Datadog alert → investigate on AWS → RCA written back to Datadog → policy-gated GitHub fix PR, plus a weekly FinOps review. Pairs with **stackgen-sre-app** for ingest + investigation UI. **aiden-demo PoC:** [POC-DEMO-RUNBOOK.md]({{ site.github.repository_url }}/blob/main/examples/scenarios/datadog-aws-rca/POC-DEMO-RUNBOOK.md) + [stackgen-demo/order-service](https://github.com/stackgen-demo/order-service) `run-incident-triage-demo.sh`. |
+| "A Grafana alert fires — can you tie it to a bad deploy?" | **`grafana-github-rca`** | Grafana alert → correlate telemetry with GitHub commits → RCA written back to Grafana → policy-gated GitHub fix PR. Pairs with **stackgen-sre-app** for ingest + investigation UI. No cloud creds required — Grafana + GitHub only. |
 | "We are drowning in cloud spend." | **`finops-weekly`** | Cost optimizer + resource janitor + weekly Slack summary. The pitch the team flagged as "comes way later" — now it is a 5-min demo. |
 | "Our CI is a mess, what do you actually see?" | **`pipeline-insights`** | Read-only — no prod creds needed. Lowest-friction first demo; safe even mid-call when you do not have the prospect's AWS yet. |
 | "We get 200 Grafana alerts a day." | **`incident-triage`** | Grafana ingest filter → prior-incident search → PromQL probe → ReAcTree hypothesis RCA → Slack narrative. Demonstrates the "alert fatigue → triaged narrative" pitch. |
@@ -41,6 +45,8 @@ Drop the prompts below in your talk track. Each one points at a single scenario;
 | "Developers describe infra; we need CloudFormation that matches our catalog and opens a PR." | **`cfn-author`** | **`aios-agent-cfn-author`** intent-to-infrastructure on Bedrock. [Scenario README]({{ site.github.repository_url }}/tree/main/examples/scenarios/cfn-author). |
 | "CloudFormation stacks drift — classify risk and reconcile valid changes via PR." | **`cfn-author`** | Drift management workflow + optional daily cron. Same scenario root. |
 | "I want to clean state between demos." | **`clean-tenant-reset`** | Minimal foundation + policies, used as a known baseline you can re-apply over a previous demo. |
+| "We use Spec Kit / OpenSpec — can Guild run the full SDD pipeline?" | **`spec-symphony`** | Stage 5 factory: GitHub + Linear webhooks → remote runner → spec bootstrap → implement → validate → PR. [Docs]({% include doc_url.html path="spec-driven-orchestration.md" %}). |
+| "We have an SRE agent — can you add GitHub, AWS, and on-prem shell?" | **`sre-boost`** | **New** GitHub + AWS integrations from `github_token` / `aws_role_arn` + aiden-runner; merged onto an **existing** agent (no new models). [Scenario README]({{ site.github.repository_url }}/tree/main/examples/scenarios/sre-boost). |
 
 ## Demo runbook (one screen)
 

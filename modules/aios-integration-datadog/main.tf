@@ -31,11 +31,11 @@ resource "sg_secret" "datadog_vault" {
   category    = "Observability"
   subcategory = "datadog"
   metadata = {
-    transport          = "streamable_http"
-    url                = "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp"
-    dd_api_key         = var.datadog_api_key
-    dd_application_key = var.datadog_app_key
-    dd_site            = var.datadog_site
+    transport       = "streamable_http"
+    url             = "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp"
+    datadog_api_key = var.datadog_api_key
+    datadog_app_key = var.datadog_app_key
+    datadog_site    = var.datadog_site
   }
 }
 

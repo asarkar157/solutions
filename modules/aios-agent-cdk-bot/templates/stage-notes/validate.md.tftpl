@@ -1,0 +1,25 @@
+Budget: ≤3 subagents, ≤$4.00, ≤10 minutes.
+enable_progress_issue_comment=${enable_progress_issue_comment}
+draft_pr_on_max_iterations_exhausted=${draft_pr_on_max_iterations_exhausted}
+
+**Playbook:** **`${sop_orchestration_name}`**, **`${sop_install_validate_test}`**, **`${sop_module_quality}`**, **`${sop_github_content_change}`**.
+
+**Stage 3 — validate open PR (loop on failure)**
+PR is already open from **edit** (`pr_url`, `working_branch`). Checks only — like CI on the branch.
+
+**Entry checks:**
+- Clone/edit blocked without `pr_url`: ONE `create-pr-notify` — STOP. **Edit blocked** (`implement_blocker` set, no `pr_url`): notify with blocker — do not spawn validate-runner.
+- `catalog_greenfield_validated=true` AND `module_quality_summary: PASS` → skip validate runner; notify only.
+
+**Validate runner (default):**
+1. Require `module_paths` and `pr_url`.
+2. ONE `validate-runner` — FIRST TOOL = `execute_series` with spawn-context **Validate-only** (`stage-runner.sh validate`).
+3. Map exits → `quality_check_*` + `module_quality_summary: PASS|NEEDS_REVISION|BLOCKED`.
+
+**Follow-up:** PASS → comment; NEEDS_REVISION → comment + loop to edit; BLOCKED → notify.
+When `push_requires_token=true` or `pr_blocker=auth` after PASS: module is validated but push needs PAT — `create-pr-notify` with validation summary.
+
+**Loop:** `validate-loop-gate` → **`implement-cdk`** on `NEEDS_REVISION` (max `${module_quality_max_iterations}`). **Loop exhaust / max iterations:** when iteration cap reached, honor `draft_pr_on_max_iterations_exhausted` — notify with gaps, do not infinite-loop.
+
+Approved: `validate-runner`, `create-pr-notify`, `create-pr-comment`, `progress-comment-updater`.
+Forbidden: `create-pr-runner`, `implement-cdk-*`, `load_skill`.

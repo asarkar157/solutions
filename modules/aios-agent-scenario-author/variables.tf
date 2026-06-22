@@ -1,7 +1,7 @@
 variable "model_names" {
   description = "Ordered list of registered model names exposed to the scenario-author agent (highest preference first). Forwarded to sg_agent.model_names after compact()."
   type        = list(string)
-
+  default     = ["gpt-5.4-2026-03-05"]
   validation {
     condition     = length(compact(var.model_names)) > 0
     error_message = "model_names must contain at least one non-empty model name."

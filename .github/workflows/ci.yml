@@ -112,6 +112,17 @@ jobs:
           bash "${MOD}/tests/decode_command_validate_test.sh"
           bash "${MOD}/tests/stage_runner_install_test.sh"
 
+  cdk-bot-workflow-scripts:
+    name: CDK bot workflow scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow structure, stage runner, clone guards, pack ensure
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/verify-cdk-bot-workflow-scripts.sh
+          ./scripts/verify-cdk-bot-workflow-scripts.sh
+
   opentofu-validate:
     name: OpenTofu validate
     runs-on: ubuntu-latest

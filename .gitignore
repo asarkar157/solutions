@@ -6,3 +6,4 @@
 
 # Module-generated artifacts (created by OpenTofu providers / tests)
 **/.generated/
+.terraform.tfstate.lock.info
