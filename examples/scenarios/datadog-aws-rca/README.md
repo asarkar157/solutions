@@ -38,7 +38,7 @@ flowchart LR
 
 | Module | Purpose |
 |--------|---------|
-| `aios-policies` | Optional guardrails (toggle with `enable_policies`; default **false** when SRE app already set up) |
+| `aios-policies` | Guardrails (default **true** — includes `sre-investigation-write-gate` for HITL on writeback + fix PR) |
 | `data.sg_app` + `data.sg_guild_integration` | Lookup existing SRE app + Datadog integration from onboarding |
 | `aios-integration-github` | GitHub SCM integration (repo context + RCA fix PR) — **created by this root** |
 | `aios-integration-aws` | Optional AWS MCP integration (when `aws_role_arn` is set) |
@@ -103,6 +103,12 @@ and control-plane/metadata egress from aiden-demo. Requires EKS VPC CNI
 `enableNetworkPolicy: "true"` — applied automatically by
 `deploy-aiden-demo-stack.sh`.
 
+**Monitor scope (critical):** Only fire **`[aiden-demo]`** monitors from
+`stackgen-demo/order-service/scripts/apply-datadog-monitors.sh`. **Mute or retag**
+unrelated production monitors (e.g. `api-gateway` in `env:production`) that share
+the same Datadog webhook — otherwise ingest picks up the wrong service and
+closed-loop remediation targets the wrong repo.
+
 Create (or tag) a Datadog monitor so **query scope** and **monitor tags** both
 point at the same APM service. SRE discovery reads **`service:` tags on
 monitors** and **`service:` filters inside monitor queries** (for example
@@ -118,10 +124,9 @@ monitors** and **`service:` filters inside monitor queries** (for example
 | Monitor tags (for discovery) | `service:order-service`, `env:demo` |
 
 **Smoke / manual webhook:** if you POST a synthetic Datadog payload (Guild webhook
-trigger or SRE ingest), set `tags` to the **same service the monitor evaluates**
-— e.g. `service:order-service` for the order-service 5xx demo, or
-`service:api-gateway` when firing the API Error Rate monitor. A mismatch scopes
-the investigation to the wrong service and log counts will look empty.
+trigger or SRE ingest), set `tags` to **`service:order-service env:demo`** for
+this scenario. Do **not** use production services (`api-gateway`) — investigations
+will scope to the wrong repo and skip closed-loop remediation.
 
 Example 5xx monitor (matches the repo README):
 
@@ -151,6 +156,44 @@ Re-run the script after changing thresholds; it upserts by monitor name prefix
 3. In the SRE app, confirm Datadog alert ingest is configured (skip Terraform webhook unless `enable_datadog_alert_webhook = true`).
 4. In Datadog, ensure monitor webhooks point at the SRE app ingest URL if not already set.
 
+**Optional — Datadog playbook → Guild runbooks:** Run SRE discovery once and note notebook/workflow IDs under **Available playbooks**. Set `runbook_sync_*` keys on the existing `datadog` Guild integration `env` (Terraform `sg_guild_integration` or Guild API). See [stackgen-sre-app `docs/runbook-sync.md`](https://github.com/appcd-dev/guild-apps/stackgen-sre-app/blob/main/docs/runbook-sync.md). Source markdown for an **aiden-demo service reference** notebook: [playbooks/aiden-demo-datadog-playbook.md](./playbooks/aiden-demo-datadog-playbook.md).
+
+### Remote runner — in-cluster Helm (`aiden-demo`)
+
+Install **aiden-runner** in the same cluster as the demo workloads. Chart **0.1.54+**
+sets **`podLabels.app: aiden-runner`**; the **aiden-demo stack** must include a
+matching egress NetworkPolicy (same pattern as `datadog-agent-us3-egress`) so the
+runner can reach mothership over HTTPS when **`aiden-demo-egress-isolation`** is
+applied. Without that policy, handshake fails with `dial tcp …:443: i/o timeout`
+even though Dev Tunnel URLs are internet-reachable.
+
+```bash
+helm upgrade --install aiden-runner \
+  --repo https://appcd-public-releases.s3.us-east-2.amazonaws.com/charts/ \
+  aiden-runner \
+  --version 0.1.54 \
+  --set runner.mothershipUrl=https://<your-mothership-host> \
+  --set runner.token=<from tofu output> \
+  --set rbac.namespaced.enabled=true \
+  --set rbac.namespaced.createReadRole=true \
+  -n aiden-demo
+```
+
+Re-apply the order-service stack so `k8s/network-policy.yaml` includes
+`aiden-runner-mothership-egress` and `aiden-runner-kube-api-egress` (selector
+`app.kubernetes.io/name: aiden-runner`). Confirm `Runner registered` in logs,
+then attach `datadog-aws-rca-runner` to `stackgen-sre-investigator` in Guild.
+
+**Alternative:** run aiden-runner locally (`remote_runner_cli_start_command` from
+`tofu output`) with kubeconfig pointed at EKS.
+
+| Log message | Action |
+|-------------|--------|
+| `missing feature flag key` | Safe to ignore in local dev |
+| `dial tcp …:443: i/o timeout` (mothership handshake) | Re-apply `k8s/network-policy.yaml` (`aiden-runner-mothership-egress`) |
+| `dial tcp 172.20.0.1:443: i/o timeout` (kubectl) | Re-apply `k8s/network-policy.yaml` (`aiden-runner-kube-api-egress`) |
+| `listen tcp :9090: bind: address already in use` (local CLI) | Pass `--metrics-addr 9091` |
+
 ### Already-installed SRE app (recommended)
 
 This scenario **does not** recreate Datadog, models, or alert webhooks by default. A typical `tofu plan` adds only GitHub + optional remote runner, then **merges** GitHub onto existing `sg_app` bindings.
@@ -164,16 +207,34 @@ tofu import 'module.sre_app_bindings[0].sg_app.sre' sre
 > If the SRE app is not installed yet, set `enable_sre_app_bindings = false`,
 > apply the integrations first, install the app, then re-apply with bindings
 > enabled. In Guild, attach remote runner `datadog-aws-rca-runner` to agent
-> `stackgen-sre-investigator` (Agents tab) after starting aiden-runner.
+> `stackgen-sre-investigator` (Agents tab) after starting aiden-runner — see
+> [Remote runner — in-cluster Helm](#remote-runner--in-cluster-helm-aiden-demo).
 
 ### 4. Trigger and narrate
 
 Fire the monitor, then in the SRE app walk the panel: **ingest → investigation →
-substantive RCA**. Then show:
+substantive RCA → closed-loop remediation**. Then show:
 
-- **RCA in Datadog** — the root cause appears as an event on the monitor.
-- **Fix PR** — the investigator proposes a GitHub PR; Guild shows the **HITL
-  approval** prompt (policy guardrail). Approve to open the PR.
+- **RCA in Datadog** — the root cause appears as an event on the monitor (first HITL approval).
+- **Fix PR** — the investigator opens a GitHub PR on `stackgen-demo/order-service`
+  (second HITL approval). Golden path: `cmd/initdb/main.go` schema alignment.
+
+**Closed-loop demo script** (order-service repo):
+
+```bash
+./scripts/run-incident-triage-demo.sh fire-pr-demo
+# or: fire-schema (same schema fault, without quiet profile)
+# SRE app → Investigate → Guild Approve (Datadog writeback) → Approve (GitHub PR)
+# Verify PR: https://github.com/stackgen-demo/order-service/pulls
+```
+
+**Payment logic_bug PR demo** (payment-service image must include `logic_bug`):
+
+```bash
+# payment-service repo: PUSH=true ./scripts/deploy-aiden-demo.sh
+# order-service repo:
+./scripts/run-incident-triage-demo.sh fire-payment-bug
+```
 
 ### 5. Platform wow factors (Guild UI)
 
@@ -186,7 +247,10 @@ substantive RCA**. Then show:
 ## Variables
 
 See [`variables.tf`](variables.tf) and [`terraform.tfvars.example`](terraform.tfvars.example).
-Notable toggles: `enable_policies` (default **false**) — set true only for greenfield orgs;
+Notable toggles: `enable_policies` (default **true**) — attaches `sre-investigation-write-gate`
+for the HITL demo; set false when equivalent policies already exist;
+`service_repository_map` — passed to `sg_app.config` as `service_repo_*` keys for
+GitHub change correlation and fix PR targeting;
 `enable_datadog_alert_webhook` (default **false**) — leave off when Datadog ingest is already wired in the SRE app;
 `existing_datadog_integration_name` (default `datadog`) — lookup only, not created; `enable_sre_app_bindings` (default
 `true`) — set `false` until stackgen-sre-app is installed in the org;
@@ -242,6 +306,8 @@ All random fault injection reads **`configmap/aiden-demo-fault-profile`** in
 | **quiet** | `./scripts/set-fault-level.sh quiet` | Chaos off; leaf random failures disabled |
 | **normal** | `./scripts/set-fault-level.sh normal` | Default demo (45–480s chaos, moderate fractions) |
 | **noisy** | `./scripts/set-fault-level.sh noisy` | Short chaos intervals, high leaf failure rates |
+| **demo** | `./scripts/set-fault-level.sh demo` | Fast intervals (10–30s) for live audience demos |
+| **alerting** | `./scripts/set-fault-level.sh alerting` | **Datadog monitor soak** — 8–25s chaos, burst=5, catalog rank + ad CPU faults |
 
 Run from the [order-service](https://github.com/stackgen-demo/order-service) repo.
 After editing the ConfigMap manually, run `./scripts/reload-fault-profile.sh` to

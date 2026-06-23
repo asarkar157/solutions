@@ -83,6 +83,11 @@ locals {
     local.enable_aws ? module.aws_integration[0].integration_name : "",
     length(module.slack_integration) > 0 ? module.slack_integration[0].integration_name : "",
   ])
+
+  sre_app_service_repo_config = {
+    for svc, repo in var.service_repository_map :
+    "service_repo_${svc}" => repo
+  }
 }
 
 # Layer 0 — optional guardrails (skip when org already has policies).
@@ -144,6 +149,7 @@ module "sre_app_bindings" {
   enable_discovery_bootstrap      = false
 
   integration_names = local.sre_app_new_integration_names
+  config            = local.sre_app_service_repo_config
 
   alert_webhooks = var.enable_datadog_alert_webhook ? [{
     source           = "datadog"

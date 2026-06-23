@@ -24,6 +24,22 @@ module "datadog_integration" {
 }
 ```
 
+### Optional: sync Datadog playbooks into Guild runbooks
+
+After SRE discovery lists notebooks/workflows, enable per-integration sync via `env` (see [stackgen-sre-app `docs/runbook-sync.md`](https://github.com/appcd-dev/guild-apps/stackgen-sre-app/blob/main/docs/runbook-sync.md)):
+
+```hcl
+module "datadog_integration" {
+  source = "github.com/appcd-dev/solutions//modules/aios-integration-datadog?ref=main"
+
+  datadog_api_key = var.datadog_api_key
+  datadog_app_key = var.datadog_app_key
+
+  runbook_sync_enabled      = true
+  runbook_sync_notebook_ids = "12345,67890"
+}
+```
+
 ## Outputs
 
 | Name | Description |

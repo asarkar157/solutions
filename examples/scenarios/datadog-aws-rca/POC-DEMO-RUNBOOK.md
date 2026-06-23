@@ -92,7 +92,7 @@ tofu init && tofu apply   # GitHub + SRE app bindings
 | **2. Workload** | 3 min | aiden-demo mesh: order → payment / catalog / ad. NetworkPolicy isolates namespace. |
 | **3. Fire incident** | 2 min | `./scripts/run-incident-triage-demo.sh fire-schema` or wait for monitor. |
 | **4. SRE app investigate** | 8 min | Ingest → Investigate → RCA (`DatabaseSchemaMismatch` → `cmd/initdb/main.go`). |
-| **5. Closed loop** | 5 min | Datadog event writeback, Guild HITL approval, GitHub fix PR. |
+| **5. Closed loop** | 5 min | `./scripts/run-incident-triage-demo.sh fire-schema` → Investigate → **two** Guild HITL approvals (Datadog writeback, then GitHub PR on `stackgen-demo/order-service`). |
 | **6. Platform depth** | 5 min | Workflows, policies, Discovery/KG, optional prior incidents. |
 | **7. PoC honesty** | 3 min | Batch eval + human scorecard for procurement (see PDF mapping). |
 
@@ -108,12 +108,30 @@ tofu init && tofu apply   # GitHub + SRE app bindings
 
 ---
 
+## Closed-loop demo script (schema fault)
+
+Use this sequence for a reproducible PoC — **same** `stackgen-sre--investigate-alert` run ends with Datadog writeback + GitHub PR:
+
+1. **Preflight:** aiden-demo stack up, `[aiden-demo]` monitors only (mute unrelated `api-gateway` webhooks), Discovery run once, `enable_policies = true` after `tofu apply`.
+2. **Fire:** `./scripts/run-incident-triage-demo.sh fire-schema` (order-service repo).
+3. **Investigate:** SRE app → alert → **Investigate** (or auto-investigate if enabled).
+4. **Trace checks:** `signals-change` probes `stackgen-demo/order-service` commits; RCA names `DatabaseSchemaMismatch` / `cmd/initdb/main.go`.
+5. **HITL 1:** Guild → approve Datadog writeback (`sre-copilot--investigation-write-gate`).
+6. **HITL 2:** Guild → approve GitHub PR (`gh pr create` gated).
+7. **Verify:** Datadog monitor comment/event + open PR on `stackgen-demo/order-service`.
+
+**Dependency / timeout faults** (`fire-dependency`, payment-service gRPC): closed-loop still runs — Datadog writeback is attempted and `remediation_plan.skipped_pr=true` with a dependency reason; **no** GitHub PR on `order-service` when the synced playbook classifies the scenario as downstream infra, not order-service code.
+
+Outputs: `demo_golden_fix_url`, `service_repository_map` from this scenario's Terraform apply.
+
+---
+
 ## PoC PDF requirement mapping
 
 | PDF success criterion | Status | Mitigation |
 |----------------------|--------|------------|
 | RCA in ~2 min | **Partial** | Measure with [poc-eval](https://github.com/appcd-dev/guild-apps/stackgen-sre-app/blob/main/scripts/poc-eval/README.md); internal synthetic p50 ~140–178s |
-| Single prompt | **Have** | Investigation is one prompt; fix PR / writeback needs one HITL click |
+| Single prompt | **Have** | Investigation is one prompt; writeback + fix PR need two HITL clicks in the same run |
 | Accuracy measurement | **Partial** | `stackgen-sre-app/scripts/poc-eval` + human scorecard — aiden-demo JSONL is new; wire into eval v2 |
 | Prior incidents | **Partial** | Requires `shared:incidents` + [bootstrap](#seed-past-incidents) |
 | Knowledge graph | **Partial** | Discovery → graph ingest (manual run before demo) |
@@ -129,7 +147,7 @@ tofu init && tofu apply   # GitHub + SRE app bindings
 - Broken Datadog webhook URL (`_DELETE_THIS` suffix).
 - `enable_datadog_alert_webhook = false` in tfvars — webhook must exist manually.
 - Discovery not run — investigations lack topology context.
-- `enable_policies = false` in tfvars — enable for Terraform HITL demo.
+- `enable_policies = false` in tfvars — scenario default is **true**; only disable when policies already attached.
 - No AWS role — cloud signals limited to Datadog + GitHub.
 - Remote runner not running — only matters if workflow stages require it.
 - Chaos monkey timing unpredictable — use `fire-schema` for live demos.
@@ -184,6 +202,7 @@ Curated rows: [`scripts/data/aiden-demo-incidents.jsonl`](scripts/data/aiden-dem
 | AIDEN-004 | dependency | ad-service `AdServiceUnavailable` |
 | AIDEN-005 | config | order-service HTTP 5xx from schema path |
 | AIDEN-006 | dependency | `DownstreamPaymentTimeout` (timeout fault) |
+| AIDEN-007 | config | payment-service `PaymentLogicBug` — valid card rejected (`charge.js` logic_bug) |
 
 ### Bootstrap commands
 
@@ -223,8 +242,15 @@ After bootstrap, fire a real incident and complete an investigation so `persist-
 ### Fault levels
 
 ```bash
-./scripts/set-fault-level.sh quiet|normal|noisy
+./scripts/set-fault-level.sh quiet|normal|noisy|demo|pr-demo|pr-payment-bug
 ./scripts/reload-fault-profile.sh
+```
+
+**Closed-loop PR demos:**
+
+```bash
+./scripts/run-incident-triage-demo.sh fire-pr-demo      # order-service schema → GitHub PR
+./scripts/run-incident-triage-demo.sh fire-payment-bug  # payment logic_bug → GitHub PR
 ```
 
 ### Pause / resume stack
@@ -246,6 +272,7 @@ service:ad-service env:demo AdServiceUnavailable
 
 ### Related docs
 
+- [aiden-demo Datadog playbook (agent service reference)](./playbooks/aiden-demo-datadog-playbook.md)
 - [incident-triage-poc-limits.md](../../docs/incident-triage-poc-limits.md)
 - [incident-triage-poc-taxonomy.md](../../docs/incident-triage-poc-taxonomy.md)
 - [poc-eval README](https://github.com/appcd-dev/guild-apps/stackgen-sre-app/blob/main/scripts/poc-eval/README.md)

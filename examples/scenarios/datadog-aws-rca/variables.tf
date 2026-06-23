@@ -106,9 +106,9 @@ variable "finops_model_names" {
 }
 
 variable "enable_policies" {
-  description = "Create aios-policies guardrails. Leave false when the org already has policies (typical when the SRE app is already installed)."
+  description = "Create aios-policies guardrails including sre-investigation-write-gate for HITL on Datadog writeback and GitHub fix PRs. Set false only when the org already attached equivalent policies."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_sre_app_bindings" {
@@ -158,4 +158,19 @@ variable "runner_docker_image" {
   description = "aiden-runner image for the Docker start command output."
   type        = string
   default     = "ghcr.io/appcd-dev/stackgen-guild-aiden-runner:main"
+}
+
+variable "service_repository_map" {
+  description = <<-EOT
+    Maps Datadog APM service names to GitHub repos for change correlation and closed-loop fix PRs.
+    Values use "org/repo" or "org/repo:branch:path1,path2". Serialized into sg_app.config as
+    service_repo_<service> keys for the stackgen-sre-app investigation context.
+  EOT
+  type        = map(string)
+  default = {
+    "order-service"           = "stackgen-demo/order-service:main:cmd/initdb/main.go,internal/handlers/orders.go"
+    "payment-service"         = "stackgen-demo/payment-service:main:charge.js,k8s/stack.yaml"
+    "product-catalog-service" = "stackgen-demo/product-catalog-service:main:main.go"
+    "ad-service"              = "stackgen-demo/ad-service:main:src/main/java,k8s/deployment.yaml"
+  }
 }

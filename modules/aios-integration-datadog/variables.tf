@@ -44,3 +44,39 @@ variable "enabled" {
   type    = bool
   default = true
 }
+
+variable "runbook_sync_enabled" {
+  description = "When true, discovery ingests selected Datadog notebooks/workflows into Guild runbooks (requires at least one selector below)."
+  type        = bool
+  default     = false
+}
+
+variable "runbook_sync_notebook_ids" {
+  description = "Comma-separated Datadog notebook IDs to sync (from SRE discovery report 'Available playbooks')."
+  type        = string
+  default     = ""
+}
+
+variable "runbook_sync_notebook_query" {
+  description = "Substring match against notebook names when syncing runbooks."
+  type        = string
+  default     = ""
+}
+
+variable "runbook_sync_workflow_ids" {
+  description = "Comma-separated Datadog workflow IDs to sync."
+  type        = string
+  default     = ""
+}
+
+variable "runbook_sync_workflow_query" {
+  description = "Substring match against workflow names when syncing runbooks."
+  type        = string
+  default     = ""
+}
+
+variable "runbook_sync_knowledge_base_name" {
+  description = "Guild knowledge base for ingested runbooks. Defaults to {integration_name}-playbooks when empty."
+  type        = string
+  default     = ""
+}

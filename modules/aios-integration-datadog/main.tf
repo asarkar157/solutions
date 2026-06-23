@@ -8,6 +8,15 @@ terraform {
 locals {
   create_secret = trimspace(var.existing_secret_id) == "" && trimspace(var.datadog_api_key) != ""
   secret_id     = local.create_secret ? sg_secret.datadog_vault[0].id : var.existing_secret_id
+
+  runbook_sync_env = merge(
+    var.runbook_sync_enabled ? { runbook_sync_enabled = "true" } : {},
+    trimspace(var.runbook_sync_notebook_ids) != "" ? { runbook_sync_notebook_ids = trimspace(var.runbook_sync_notebook_ids) } : {},
+    trimspace(var.runbook_sync_notebook_query) != "" ? { runbook_sync_notebook_query = trimspace(var.runbook_sync_notebook_query) } : {},
+    trimspace(var.runbook_sync_workflow_ids) != "" ? { runbook_sync_workflow_ids = trimspace(var.runbook_sync_workflow_ids) } : {},
+    trimspace(var.runbook_sync_workflow_query) != "" ? { runbook_sync_workflow_query = trimspace(var.runbook_sync_workflow_query) } : {},
+    trimspace(var.runbook_sync_knowledge_base_name) != "" ? { runbook_sync_knowledge_base_name = trimspace(var.runbook_sync_knowledge_base_name) } : {},
+  )
 }
 
 resource "terraform_data" "validate_secret_input" {
@@ -46,4 +55,5 @@ resource "sg_guild_integration" "datadog" {
   scope          = var.scope
   secret_ref_ids = [local.secret_id]
   enabled        = var.enabled
+  env            = local.runbook_sync_env
 }

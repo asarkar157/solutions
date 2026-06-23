@@ -79,6 +79,16 @@ output "tracked_target" {
   }
 }
 
+output "service_repository_map" {
+  description = "Service→GitHub repo hints passed to sg_app.config for closed-loop remediation."
+  value       = var.service_repository_map
+}
+
+output "demo_golden_fix_url" {
+  description = "Golden schema-mismatch fix path for the order-service aiden-demo fault."
+  value       = "https://github.com/stackgen-demo/order-service/blob/main/cmd/initdb/main.go"
+}
+
 output "investigator_policies_attached" {
   description = "Policy keys attached to the SRE investigator via aios-sre-app-bindings (empty when enable_policies or enable_sre_app_bindings is false)."
   value       = var.enable_sre_app_bindings && var.enable_policies ? module.sre_app_bindings[0].investigator_policies_attached : []
