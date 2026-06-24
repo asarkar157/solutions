@@ -1,3 +1,11 @@
+---
+layout: page
+title: Spec-driven orchestration
+permalink: spec-driven-orchestration/
+nav_order: 8
+parent: Topic guides
+---
+
 # Spec-Driven Orchestration
 
 Guild **Stage 5 factory** (`aios-agent-spec-symphony`) bridges manual Stage 4 SDD tools (Spec Kit, OpenSpec, Kiro) to autonomous pipelines.

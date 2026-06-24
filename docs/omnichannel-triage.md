@@ -1,6 +1,9 @@
 ---
+layout: page
 title: Omnichannel triage
 permalink: omnichannel-triage/
+parent: Topic guides
+nav_order: 9
 ---
 
 # Omnichannel triage — Gateway → aiden-router

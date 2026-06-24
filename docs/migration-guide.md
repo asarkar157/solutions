@@ -9,6 +9,10 @@ nav_order: 30
 
 This guide walks you through moving from a monolithic `terraform/guild/main.tf` to **composable StackGen modules** in this repository. Module folders use the **`aios-*`** naming where the library targets **AIOS-ready** bundles; the migration is about **structure and provider resources**, not AIOS-only deployments.
 
+> **Related guides (different starting points):**
+> - **[aios-export]({% include doc_url.html path="aios-export.md" %})** — capture a tenant configured in the Guild UI as HCL (PoC handoff). Use when the customer clicked through the UI, not when you already have monolithic Terraform.
+> - **[Adopt the repo]({% include doc_url.html path="adopt.md" %})** — pick the right path before you start.
+
 > **OpenTofu vs Terraform:** Prefer **`tofu`** ([OpenTofu](https://opentofu.org/)); commands below use `terraform` where that is the conventional spelling in docs—**`tofu plan`**, **`tofu import`**, etc. work the same.
 
 ## Before You Start

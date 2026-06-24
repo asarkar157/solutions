@@ -292,7 +292,7 @@ module "cfn_author" {
 | `validate_blocked` / lint false | Missing or invalid template | Ensure `WORK_ROOT/generated/template.yaml` exists |
 | Skipped to summary, no `pr_url` | Any blocked gate | Inspect execution timeline for first skip reason |
 
-See also [`docs/tr-deployment-profile.md`]({% include doc_url.html path="tr-deployment-profile.md" %}).
+See also [`docs/enterprise-deployment-profile.md`]({% include doc_url.html path="enterprise-deployment-profile.md" %}).
 
 ---
 
@@ -317,4 +317,4 @@ Full scenario script: [`examples/scenarios/cfn-author/README.md`]({{ site.github
 | [Security guardrails report schema]({{ site.github.repository_url }}/blob/main/modules/aios-agent-cfn-author/docs/security-guardrails-report.schema.json) | Checkov/cfn-nag JSON output |
 | [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) | Prospect question → `cfn-author` scenario |
 | [Module Catalog]({% include doc_url.html path="module-catalog.md" %}) | Filter `cloudformation`, `bedrock`, `drift` |
-| [TR deployment profile]({% include doc_url.html path="tr-deployment-profile.md" %}) | Vault bastion + preview IAM wiring |
+| [Enterprise deployment profile]({% include doc_url.html path="enterprise-deployment-profile.md" %}) | Vault bastion + preview IAM wiring |

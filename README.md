@@ -10,13 +10,15 @@ Production-ready, composable Terraform modules for bootstrapping **AIOS (AI Oper
 
 ## For solutions engineers (start here)
 
+**Primary entry point:** [Adopt the repo](https://appcd-dev.github.io/solutions/adopt/) on GitHub Pages — three paths with numbered steps, migration guide picker, and production checklist.
+
 The repo serves **three jobs**. Pick the one that matches what you are doing right now.
 
 | You are… | Where to go |
 |----------|-------------|
-| **Demoing Aiden to a prospect in the next 30 minutes.** | [`docs/se-playbook.md`](docs/se-playbook.md) — prospect-question → scenario map. Then run `make demo SCENARIO=<name>` against a root under [`examples/scenarios/`](examples/scenarios/). Each scenario is < 80 lines of HCL and ships with a talk track. |
-| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / remote runners. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; integrations / policies / schedules / secrets / webhooks are **not** captured today (no provider data sources yet — hand-merge them) and will be added in Phase 2. Phase 2 also rewrites the raw HCL into module form. |
-| **Composing your own root from individual modules** (advanced / customer extending the library). | Continue with [Quick start](#-quick-start), [`examples/complete/`](examples/complete/), and [`docs/onboarding/`](docs/onboarding/). |
+| **Demoing Aiden to a prospect in the next 30 minutes.** | [SE Playbook](docs/se-playbook.md) — prospect-question → scenario map. Then `make demo SCENARIO=<name>` — see [`examples/scenarios/README.md`](examples/scenarios/README.md) for the full index. |
+| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [aios-export](docs/aios-export.md) (Pages) or [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / remote runners. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; integrations / policies / schedules / secrets / webhooks are **not** captured today — hand-merge them. |
+| **Composing your own root from individual modules** (advanced / customer extending the library). | [Prerequisites](docs/prerequisites.md) → [Onboarding step 4](docs/onboarding/04-use-a-module.md) → [`examples/complete/`](examples/complete/). |
 
 > If your prospect has not seen Aiden yet, **skip the repo** — open the Guild UI. Come back once they nod at the concept.
 
@@ -24,11 +26,16 @@ Feedback / scenario requests live in [`docs/se-feedback.md`](docs/se-feedback.md
 
 ## Guided onboarding (GitHub Pages)
 
-Step-by-step docs for **new users and contributors** live under [`docs/`](docs/) as a small [Jekyll](https://jekyllrb.com/) site (orientation → install tools → run checks → use a module → deeper links).
+Step-by-step docs live under [`docs/`](docs/) as a [Jekyll](https://jekyllrb.com/) site published at **https://appcd-dev.github.io/solutions/**.
 
-1. **Enable Pages:** GitHub **Settings → Pages →** build from the default branch, folder **`/docs`** ([publishing source docs](https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)).
-2. **Open the site** after the first build (GitHub shows the URL; it is usually `https://<org>.github.io/<repo>/`).
-3. **Start onboarding:** [`/onboarding/`](https://appcd-dev.github.io/solutions/onboarding/) — if your repo name or org is different, use your Pages URL and update `baseurl` / `repository` in [`docs/_config.yml`](docs/_config.yml) so links stay correct.
+| Page | Purpose |
+|------|---------|
+| [Adopt the repo](docs/adopt.md) | **Start here** — three adoption paths, migration picker, production checklist |
+| [SE Playbook](docs/se-playbook.md) | Prospect question → scenario map |
+| [Prerequisites](docs/prerequisites.md) | Credentials and provider auth checklist |
+| [Glossary](docs/glossary.md) | Plain-English definitions for StackGen, Guild, agents, workflows, and related terms |
+| [Onboarding](docs/onboarding/) | Compose-path deep dive (steps 1–5) |
+| [Topic guides](docs/guides/index.md) | Architecture, migration, CFN Author, CCE, Rego, and more |
 
 Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` (see [`docs/Gemfile`](docs/Gemfile)).
 
@@ -38,7 +45,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 |------|---------|
 | [`modules/`](modules/) | One directory per Terraform module (foundation, integrations, agents, policies). Each module is intended to be used via a `module` block `source` pointing at this repo (see [Quick start](#quick-start)). |
 | [`examples/`](examples/) | Runnable Terraform roots that compose modules for local experimentation and CI validation (`examples/complete`). Snippet-only quickstarts live next to them as READMEs. |
-| [`docs/`](docs/) | **GitHub Pages** onboarding site ([`docs/onboarding/`](docs/onboarding/)), [use-case catalog](docs/use-case-catalog.md), Jekyll [`_config.yml`](docs/_config.yml), and [architecture](docs/architecture.md) for the dependency graph. |
+| [`docs/`](docs/) | **GitHub Pages** site — [adopt](docs/adopt.md), [onboarding](docs/onboarding/), [use-case catalog](docs/use-case-catalog.md), [architecture](docs/architecture.md) |
 | [`AGENTS.md`](AGENTS.md) | **Cursor / IDE / AI assistants** — how to compose modules, provider setup, layer order, and module inventory (keep in sync when adding modules). |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
@@ -192,6 +199,7 @@ The architecture diagram above includes composite **workflow** solutions (incide
 
 | Example | Description |
 |---------|-------------|
+| [`examples/scenarios/`](examples/scenarios/) | Pre-sales demo roots — see [`examples/scenarios/README.md`](examples/scenarios/README.md) for the index. Run with `make demo SCENARIO=<name>`. |
 | [`examples/complete/`](examples/complete/) | Runnable Terraform root: full AIOS stack (validated in CI with **OpenTofu**; Terraform is interchangeable). |
 | [`examples/sre-quickstart/`](examples/sre-quickstart/) | Minimal copy-paste HCL in the README only (no `.tf` root in this folder). |
 

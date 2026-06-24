@@ -33,7 +33,7 @@ module "aiden_infra" {
 }
 ```
 
-See [`docs/tr-deployment-profile.md`](../../docs/tr-deployment-profile.md) for when to use this module vs `aios-agent-selfhosted-infra` alone.
+See [`docs/enterprise-deployment-profile.md`](../../docs/enterprise-deployment-profile.md) for when to use this module vs `aios-agent-selfhosted-infra` alone.
 
 ## Outputs
 

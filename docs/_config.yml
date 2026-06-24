@@ -23,17 +23,11 @@ plugins:
 
 header_pages:
   - index.md
+  - se-playbook.md
+  - adopt.md
   - module-catalog.md
-  - monorepo-services-splitter.md
-  - cfn-author.md
-  - tr-deployment-profile.md
-  - cce-agent-integrations.md
-  - cce-enterprise-workflows.md
-  - use-case-catalog.md
-  - onboarding/index.md
-  - architecture.md
-  - rego-policies.md
-  - migration-guide.md
+  - glossary.md
+  - guides/index.md
 
 markdown: kramdown
 # Global pretty URLs. In page front matter, do not use a leading slash on `permalink`

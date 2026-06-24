@@ -7,6 +7,8 @@ nav_order: 3
 
 # Solutions engineer playbook
 
+<!-- When adding scenarios, also update examples/scenarios/README.md -->
+
 A short, prospect-driven map: what the prospect just asked → which scenario you should run. Every scenario in this playbook is **one runnable Terraform root** under [`examples/scenarios/`]({{ site.github.repository_url }}/tree/main/examples/scenarios) that finishes inside a single discovery call. If the prospect needs the **full** stack with every integration wired, the reference is still [`examples/complete/`]({{ site.github.repository_url }}/tree/main/examples/complete) — but lead with one of these first.
 
 ## When to reach for this repo at all

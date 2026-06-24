@@ -25,9 +25,11 @@ This monorepo is a **Terraform/OpenTofu module library for StackGen**: provider-
 
 ## What you need in the real world (high level)
 
-- A **StackGen / Guild** deployment you can reach, and credentials the modules expect (see each module’s README under `modules/<name>/`).
-- **Terraform** `>= 1.5` (CI uses a recent 1.9.x).
-- **LLM provider keys** as required by the modules you enable (see root README).
+See the full [Prerequisites]({% include doc_url.html path="prerequisites.md" %}) checklist. At minimum:
+
+- A **StackGen / Guild** deployment you can reach, and a PAT for `stackgen_token`
+- **OpenTofu or Terraform** `>= 1.5`
+- **At least one LLM key** for stacks that register models (see prerequisites for Bedrock path)
 
 You do **not** need all of that on day one to finish [step 2]({% include doc_url.html path="onboarding/02-your-machine.md" %})—only Terraform (and Git) to clone.
 

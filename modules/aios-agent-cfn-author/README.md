@@ -166,7 +166,7 @@ Resolved values are in output `workspace`.
 | Embedded script pack on Ubuntu (`CFN_AUTHOR_SCRIPT_PACK_TARBALL_B64`) | — |
 | [`aios-agent-aiden-infra`](../aios-agent-aiden-infra/) composition entry | Dual CFN+TF unified orchestration beyond composition module |
 
-For CFN stack **failure** ingest and pre-deploy review, use [`aios-agent-selfhosted-infra`](../aios-agent-selfhosted-infra/) — see [`docs/tr-deployment-profile.md`](../../docs/tr-deployment-profile.md).
+For CFN stack **failure** ingest and pre-deploy review, use [`aios-agent-selfhosted-infra`](../aios-agent-selfhosted-infra/) — see [`docs/enterprise-deployment-profile.md`](../../docs/enterprise-deployment-profile.md).
 
 ## Workflow 1 — intent-to-infrastructure (17 stages)
 

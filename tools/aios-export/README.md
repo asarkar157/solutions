@@ -4,6 +4,10 @@
 Terraform HCL plus `terraform import` commands so a customer (or another SE)
 can adopt the same tenant configuration into IaC.
 
+> **Related guides (different starting points):**
+> - **[Migration guide](../../docs/migration-guide.md)** — refactor existing monolithic `terraform/guild/main.tf` into `aios-*` modules. Use when you already maintain Terraform, not when capturing a UI-clicked tenant.
+> - **[Adopt the repo (GitHub Pages)](https://appcd-dev.github.io/solutions/adopt/)** — pick the right adoption path before you start.
+
 The killer use case is **not** disaster recovery — it is **capturing an
 SE-clicked demo into a sharable, version-controlled baseline**, then handing
 it to the customer or to another SE who needs the same starting point.

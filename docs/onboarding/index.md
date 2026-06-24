@@ -6,9 +6,9 @@ nav_order: 4
 
 # Onboarding
 
-For **solutions engineers** wiring StackGen with Terraform or OpenTofu. Pick **one step at a time** — each page is short, you can stop and come back later.
+For **solutions engineers** composing StackGen modules in Terraform or OpenTofu. This is the **compose-path deep dive** — if you are not sure which path to take, start at [Adopt the repo]({% include doc_url.html path="adopt.md" %}).
 
-> **If you only have 30 minutes and a prospect on Zoom**, you do not need onboarding. Skip to the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) and run `make demo SCENARIO=<name>`. Come back to these pages when you want to compose your own root or change a module.
+> **If you only have 30 minutes and a prospect on Zoom**, skip onboarding. Go to the [SE Playbook]({% include doc_url.html path="se-playbook.md" %}) and run `make demo SCENARIO=<name>`.
 
 | Step | What you will do | Time (approx.) |
 |------|-------------------|----------------|

@@ -1707,7 +1707,7 @@
     {
       "id": "aios-agent-aiden-infra",
       "name": "Aiden Infra (composition)",
-      "desc": "Thin TR-facing entry: nests aios-agent-cfn-author + optional aios-agent-terraform-bot. Single tofu apply for dual IaC (CFN intent/drift + TF module quality). No second StackGen MCP. See docs/tr-deployment-profile.md.",
+      "desc": "Thin enterprise entry: nests aios-agent-cfn-author + optional aios-agent-terraform-bot. Single tofu apply for dual IaC (CFN intent/drift + TF module quality). No second StackGen MCP. See docs/enterprise-deployment-profile.md.",
       "layer": 2,
       "tags": [
         "cloudformation",

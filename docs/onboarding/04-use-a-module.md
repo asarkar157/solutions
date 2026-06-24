@@ -77,7 +77,20 @@ tofu plan
 
 Fix any missing variables or provider configuration before apply.
 
-## 5. Full stack reference
+## 5. First apply
+
+Set sensitive values via environment variables (preferred over committing secrets):
+
+```bash
+export TF_VAR_stackgen_url="https://main.dev.stackgen.com"
+export TF_VAR_stackgen_token="sg_pat_..."
+export TF_VAR_openai_api_key="sk-..."   # or anthropic / gemini — at least one LLM key
+tofu apply
+```
+
+After apply succeeds, open your Guild URL and confirm the agent (or foundation resources) appear in the UI. If `tofu apply` fails with provider auth errors, see [Prerequisites — provider registry authentication]({% include doc_url.html path="prerequisites.md" %}).
+
+## 6. Full stack reference
 
 For a **large** composition (many integrations and agents), see the runnable example: [`examples/complete/`]({{ site.github.repository_url }}/blob/main/examples/complete/).
 

@@ -6,7 +6,7 @@ This file helps **human developers** and **coding agents** (Cursor, Copilot, etc
 
 - **Reusable modules** under `modules/` — each folder is an independent Terraform module (`aios-foundation`, `aios-policies`, `aios-integration-*`, `aios-agent-*`).
 - **Runnable roots** under `examples/` — especially `examples/complete` for a full composition reference.
-- **Human docs** under `docs/` — onboarding and architecture (Jekyll site).
+- **Human docs** under `docs/` — onboarding, adoption hub, and architecture (Jekyll site at https://appcd-dev.github.io/solutions/).
 
 Modules target the **StackGen** provider (`sg`). They do not implement application runtime code; they declare `sg_*` resources (agents, workflows, policies, integrations, secrets, models).
 
@@ -56,6 +56,8 @@ This repo consumes the **`sg`** provider from `releases.stackgen.com`; it does *
 **Guild read-only data sources** (for lookups and automation without managing those objects in the same root): `sg_agent`, `sg_agents`, `sg_workflow`, `sg_workflows`, `sg_agent_diaries`, `sg_remote_runner`, `sg_remote_runners`, **`data.sg_app`**, **`data.sg_apps`** (deployment catalog, **v0.1.21+** minimum; catalog apps expose **`integrations`**, not the removed `integration_map`). **`resource.sg_app`** (provider **>= 0.1.26**) manages app install integration bindings — see `modules/aios-sre-app-bindings`. From **v0.1.12**, `sg_agent` accepts **`remote_runners`**; **v0.1.13** evidence/remediation patterns; **v0.1.17** `env` on `sg_guild_integration` and adopt-on-conflict for bundles/models/workflows; **v0.1.19** **`auto_approve_tools`** object blocks on `sg_agent` (MCP wildcards — used by `aios-agent-repo-to-iac`, `aios-agent-db-state-splitter`, `aios-agent-sdlc` cloud-infra). **`sg_webhook`** supports in-place updates of `action`, `endpoint_path`, and `allowed_cidrs` (provider **v0.1.21+**). Optional **`enable_stackgen_deployment_catalog`** on `aios-agent-release-tracker` loads `data.sg_apps` at plan time. Modules with `remote_runner_attach_to_agent` use `data.sg_remote_runner`. **AppCD / Vault** examples: `sg_me`, `sg_roles`, `sg_users`, `sg_credential_provider`, etc. Prefer `project_id` on the provider when a data source is org-scoped.
 
 ## Module source (how customers reference this repo)
+
+Human-readable adoption paths (demo, export, compose) live on GitHub Pages: **[Adopt the repo](https://appcd-dev.github.io/solutions/adopt/)** ([`docs/adopt.md`](docs/adopt.md)).
 
 Modules are addressed with a **double-slash** path to the subdirectory. The published examples in [`README.md`](README.md) use **`github.com/appcd-dev/solutions`** as the Git remote; pin `ref=` to a tag or commit for production.
 
