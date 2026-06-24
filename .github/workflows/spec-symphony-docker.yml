@@ -1,0 +1,168 @@
+# Spec-symphony runner image — PR smoke build; main push builds multi-arch and publishes to GHCR.
+# Script-only changes still sync via Vault tarball at tofu apply; the image carries toolchain + baked scripts + AI-DLC rules.
+name: Spec-symphony Docker build
+
+on:
+  pull_request:
+    paths:
+      - "modules/aios-agent-spec-symphony/**"
+      - ".github/workflows/spec-symphony-docker.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "modules/aios-agent-spec-symphony/**"
+      - ".github/workflows/spec-symphony-docker.yml"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: appcd-dev/solutions-spec-symphony-runner
+  MODULE_DIR: modules/aios-agent-spec-symphony
+  AIDEN_RUNNER_IMAGE: ghcr.io/appcd-dev/stackgen-guild-aiden-runner:main
+  INSTALL_CURSOR_CLI: "0"
+  ALLOWED_CLIS: bash,sh,sudo,apt-get,apt,git,gh,jq,npm,specify,openspec
+
+concurrency:
+  group: spec-symphony-docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    name: Resolve script pack version
+    runs-on: ubuntu-latest
+    outputs:
+      script_pack_version: ${{ steps.version.outputs.script_pack_version }}
+      aidlc_rules_version: ${{ steps.aidlc.outputs.aidlc_rules_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read script_pack_version from main.tf
+        id: version
+        run: |
+          set -euo pipefail
+          chmod +x "${{ env.MODULE_DIR }}/scripts/read-script-pack-version.sh"
+          echo "script_pack_version=$("${{ env.MODULE_DIR }}/scripts/read-script-pack-version.sh")" >> "$GITHUB_OUTPUT"
+      - name: Read aidlc_rules_version from variables.tf
+        id: aidlc
+        run: |
+          set -euo pipefail
+          chmod +x "${{ env.MODULE_DIR }}/scripts/read-aidlc-rules-version.sh"
+          echo "aidlc_rules_version=$("${{ env.MODULE_DIR }}/scripts/read-aidlc-rules-version.sh")" >> "$GITHUB_OUTPUT"
+
+  docker-build-smoke:
+    name: Spec-symphony runner image (PR smoke build)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR (pull aiden-runner base image)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build runner image (no push)
+        env:
+          INSTALL_CURSOR_CLI: ${{ env.INSTALL_CURSOR_CLI }}
+        run: |
+          set -euo pipefail
+          chmod +x "${{ env.MODULE_DIR }}/tests/docker_build_smoke.sh"
+          "${{ env.MODULE_DIR }}/tests/docker_build_smoke.sh"
+
+  build-push:
+    name: Build and push (${{ matrix.platform }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: resolve-version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            tag_suffix: -amd
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            tag_suffix: -arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch AI-DLC rules for Docker context
+        run: |
+          set -euo pipefail
+          chmod +x "${{ env.MODULE_DIR }}/scripts/fetch-aidlc-rules.sh"
+          "${{ env.MODULE_DIR }}/scripts/fetch-aidlc-rules.sh" \
+            "${{ needs.resolve-version.outputs.aidlc_rules_version }}" \
+            "${{ env.MODULE_DIR }}/.generated/aidlc-rules"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arch-specific image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.MODULE_DIR }}
+          file: ${{ env.MODULE_DIR }}/docker/Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve-version.outputs.script_pack_version }}${{ matrix.tag_suffix }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main${{ matrix.tag_suffix }}
+          build-args: |
+            AIDEN_RUNNER_IMAGE=${{ env.AIDEN_RUNNER_IMAGE }}
+            SCRIPT_PACK_VERSION=${{ needs.resolve-version.outputs.script_pack_version }}
+            INSTALL_CURSOR_CLI=${{ env.INSTALL_CURSOR_CLI }}
+            ALLOWED_CLIS=${{ env.ALLOWED_CLIS }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.resolve-version.outputs.script_pack_version }}
+
+  create-manifest:
+    name: Create multi-arch manifest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-arch tags
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.script_pack_version }}
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:main" \
+            "${IMAGE}:${VERSION}-amd" \
+            "${IMAGE}:${VERSION}-arm"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          docker buildx imagetools inspect "${IMAGE}:main"

@@ -807,8 +807,8 @@ clone_ver="$(grep 'script_pack_version=' "${ROOT}/templates/clone-execute-series
 if [ "$clone_ver" = "script_pack_version" ]; then
   clone_ver="$(grep 'script_pack_version=' "${ROOT}/templates/clone-execute-series-embedded.sh.tftpl" | tail -1 | sed -E 's/.*\$\{([^}]+)\}.*/\1/')"
 fi
-if [ "$pack_main" != "20260617.1" ]; then
-  echo "FAIL: expected script_pack_version 20260617.1 in main.tf (got ${pack_main})" >&2
+if [ "$pack_main" != "20260624.1" ]; then
+  echo "FAIL: expected script_pack_version 20260624.1 in main.tf (got ${pack_main})" >&2
   exit 1
 fi
 

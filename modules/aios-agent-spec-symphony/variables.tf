@@ -50,13 +50,13 @@ variable "runner_work_home" {
 }
 
 variable "build_runner_image" {
-  description = "Run docker build during apply to bake the script pack into the spec-symphony runner image."
+  description = "Run docker build during apply to bake the script pack into the spec-symphony runner image. Set false when pulling the CI-built GHCR image (see README)."
   type        = bool
   default     = true
 }
 
 variable "runner_docker_image_repository" {
-  description = "Local Docker image repository name for the spec-symphony runner."
+  description = "Docker image repository. Use ghcr.io/appcd-dev/solutions-spec-symphony-runner when build_runner_image=false."
   type        = string
   default     = "spec-symphony-runner"
 }
@@ -159,18 +159,44 @@ variable "linear_webhook_allowed_cidrs" {
 }
 
 variable "sdd_framework" {
-  description = "Target SDD framework: spec-kit, openspec, or auto (directory-based discovery)."
+  description = <<-EOT
+    Target spec-driven-development framework the factory bootstraps and authors against. One of:
+      - spec-kit: GitHub's Spec Kit layout (specs/ with spec.md, plan.md, tasks.md per feature).
+      - openspec: OpenSpec change-proposal layout (openspec/changes/<change>/ with proposal + tasks).
+      - ai-dlc:   AWS AI-DLC layout (aidlc-docs/<feature-id>/ with inception.md, construction.md, operations.md).
+                  Seeds awslabs/aidlc-workflows rules (.aidlc-rule-details/, AGENTS.md or .cursor/rules/ai-dlc-workflow.mdc).
+                  Rules version: aidlc_rules_version (fetched at apply, not vendored in git).
+      - auto:     discover which framework the repo already uses from its directory layout; falls back to a sensible default when neither is present.
+  EOT
   type        = string
   default     = "auto"
 
   validation {
-    condition     = contains(["spec-kit", "openspec", "auto"], var.sdd_framework)
-    error_message = "sdd_framework must be spec-kit, openspec, or auto."
+    condition     = contains(["spec-kit", "openspec", "ai-dlc", "auto"], var.sdd_framework)
+    error_message = "sdd_framework must be spec-kit, openspec, ai-dlc, or auto."
   }
 }
 
+variable "aidlc_rules_version" {
+  description = <<-EOT
+    awslabs/aidlc-workflows release tag fetched at apply (e.g. 1.0.0 or v1.0.0).
+    Downloaded into .generated/aidlc-rules for the script pack and runner image when sdd_framework=ai-dlc.
+    Not checked into git — bump this to pick up a new upstream AI-DLC rules release.
+  EOT
+  type        = string
+  default     = "1.0.0"
+}
+
 variable "change_type" {
-  description = "Change-type preset for SDD Kit starter: greenfield, brownfield, bugfix, refactor, migration."
+  description = <<-EOT
+    Change-type preset for the SDD Kit starter. Tells the factory how to frame the
+    spec, plan, and tasks for the incoming ticket. One of:
+      - greenfield: brand-new feature or service with no existing implementation to extend.
+      - brownfield: change to an existing codebase (the common case) — extend or modify current behavior.
+      - bugfix:     correct incorrect behavior; spec focuses on the defect, reproduction, and regression coverage.
+      - refactor:   restructure code without changing external behavior; spec emphasizes equivalence and safety.
+      - migration:  move/upgrade between frameworks, versions, or data shapes; spec emphasizes cutover and rollback.
+  EOT
   type        = string
   default     = "brownfield"
 
@@ -210,7 +236,13 @@ variable "workflow_skill_refs" {
 }
 
 variable "implement_engine" {
-  description = "Implement stage engine: shell (Guild LLM + runner edits) or cursor_cli (headless Cursor Agent on runner)."
+  description = <<-EOT
+    Engine used for the implement stage. One of:
+      - shell:      Guild's own LLM drives the implementation and applies edits through the
+                    remote runner's shell tools (execute_command / execute_series). No Cursor key needed.
+      - cursor_cli: a headless Cursor Agent runs on the remote runner to make the edits.
+                    Requires CURSOR_API_KEY on the runner (set cursor_api_key or cursor_secret_id).
+  EOT
   type        = string
   default     = "shell"
 
@@ -264,7 +296,12 @@ variable "enable_linear_implement_workflow" {
 }
 
 variable "linear_implement_engine" {
-  description = "Implement engine for linear-spec-implement workflow only."
+  description = <<-EOT
+    Implement engine for the linear-spec-implement workflow only (the GitHub factory uses
+    implement_engine instead). One of:
+      - shell:      Guild's LLM applies edits via the remote runner's shell tools. No Cursor key needed.
+      - cursor_cli: a headless Cursor Agent runs on the runner. Requires CURSOR_API_KEY on the runner.
+  EOT
   type        = string
   default     = "cursor_cli"
 

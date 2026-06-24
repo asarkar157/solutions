@@ -7,4 +7,4 @@
 
 ### Spec reference
 
-<!-- Link specs/CORE-XXX/ or openspec/changes/name/ -->
+<!-- Link specs/CORE-XXX/, openspec/changes/name/, or aidlc-docs/CORE-XXX/ -->

@@ -1,7 +1,9 @@
-When intake/implement blocked: spawn `create-pr-notify` — ONE execute_series with spawn-context **Blocker comment** command (not hand-rolled `gh`). `read_notes` first. No commit when `repo_clone_path` empty.
+DEFAULT PATH — clone OK (`repo_clone_path` set) and `pr_url` unset: spawn ONE `create-pr-runner` with the spawn-context **Commit-pr** command. `read_notes` first, then `note pr_url working_branch`. This is the path for every normal run.
 
-When upstream input contains `max iterations reached` from `validate-loop-gate`: still run `create-pr-runner` (draft/summary PR if no diff) and note `quality_loop_exhausted=true`.
+`module_quality_summary=NEEDS_REVISION` (or any non-PASS quality result) is **NOT a blocker** — still spawn `create-pr-runner` and open the PR. Reviewers handle revisions on the PR; the quality result is recorded in notes/PR body. Never divert to the notify path for quality findings.
 
-When `pr_url` unset and clone OK: ONE `create-pr-runner` with spawn-context Commit-pr command. `note pr_url working_branch`.
+When `validate-loop-gate` reports `max iterations reached`: still run `create-pr-runner` (draft/summary PR if no diff) and note `quality_loop_exhausted=true`.
 
-Close: `stage_summary:create-pr=done` or `=blocked`.
+ONLY spawn `create-pr-notify` (spawn-context **Blocker comment** command, not hand-rolled `gh`) when the clone itself failed — `clone_blocker` is set or `repo_clone_path` is empty. No commit when `repo_clone_path` empty.
+
+Close: `stage_summary:create-pr=done` after `pr_url` is noted, or `=blocked` only when the clone failed.

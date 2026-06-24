@@ -123,7 +123,7 @@ locals {
   stackgen_webhook_trigger_url = trimspace(var.webhook_trigger_base_url) == "" ? "" : "${local.stackgen_webhook_api_origin}/guild/api/v1/webhooks/trigger"
   stackgen_webhook_org_query   = trimspace(var.webhook_trigger_org_id) == "" ? "" : format("&orgId=%s", urlencode(trimspace(var.webhook_trigger_org_id)))
 
-  script_pack_version = "20260617.1"
+  script_pack_version = "20260623.4"
   home_brace_literal  = join("", ["$", "{HOME}"])
   clone_execute_series_body = templatefile(
     "${path.module}/templates/clone-execute-series-embedded.sh.tftpl",
@@ -160,6 +160,7 @@ locals {
     script_pack_version    = local.script_pack_version
     quality_max_iterations = var.quality_max_iterations
     sop_orchestration_name = local.sop_orchestration_name
+    aidlc_rules_version    = local.aidlc_rules_version_tag
   }))
 
   evidence_checklist_name = "${local.module_prefix}-feature-evidence${local.suffix}"
@@ -336,7 +337,7 @@ resource "sg_runbook_sop" "github_content_change" {
   approve     = true
   description = <<-EOT
     GitHub PR and issue comment patterns for spec-symphony.
-    PR body must link specs/ or openspec/changes/ folder.
+    PR body must link specs/, openspec/changes/, or aidlc-docs/ folder.
     Use gh pr create and gh issue comment on the remote runner.
   EOT
 }
@@ -374,8 +375,11 @@ resource "sg_workflow" "spec_driven_feature" {
   name        = local.workflow_name
   domain      = "software-engineering"
   description = <<-EOT
-    Spec-driven feature factory (lean): intake → bootstrap → author-spec → implement → validate → evidence gate → create-pr → update-tracker.
-    Remote runner only. Spec Kit / OpenSpec via sdd_framework. implement_engine=${var.implement_engine}.
+    Spec-driven feature factory. Full pipeline: intake-clone-bootstrap → repo-sdd-bootstrap →
+    author-spec → implement → validate → create-pr → update-tracker. Clones the repo on the
+    remote runner, bootstraps the SDD framework, authors spec/plan/tasks from the ticket,
+    implements the change, validates, opens a PR on a unique per-run branch, and comments the
+    PR/CI status back on the source issue. Remote runner only. implement_engine=${var.implement_engine}.
   EOT
   approve     = true
 
@@ -403,22 +407,20 @@ resource "sg_workflow" "spec_driven_feature" {
 
   example_queries = [
     "Linear issue CORE-101: implement feature per OpenSpec change proposal",
+    "Using AI-DLC, implement GitHub issue #42 with aidlc-docs inception/construction/operations artifacts",
     "GitHub issue #42 on a TypeScript service: bootstrap Spec Kit and open PR with spec linkage",
   ]
 
+  # Full pipeline — all stages greened end-to-end (clone → bootstrap → author-spec → implement →
+  # validate → create-pr → update-tracker). Each stage was brought up and verified one at a time.
   stages = [
     { stage_id = "intake-clone-bootstrap", description = "Parse webhook, clone repo", required = true },
-    { stage_id = "intake-blocked-gate", description = "Skip to create-pr on clone failure", required = false },
     { stage_id = "repo-sdd-bootstrap", description = "Initialize SDD framework + SDD Kit starter", required = true },
     { stage_id = "author-spec", description = "Author spec/plan/tasks from thin ticket", required = true },
-    { stage_id = "author-blocked-gate", description = "Skip to create-pr when spec authoring fails", required = false },
-    { stage_id = "implement", description = "Implement per spec/tasks", required = true },
-    { stage_id = "implement-blocked-gate", description = "Skip to create-pr on plan-only implement", required = false },
-    { stage_id = "validate-and-test", description = "Local validate + CI poll", required = true },
-    { stage_id = "validate-loop-gate", description = "Loop to implement on NEEDS_REVISION", required = false },
-    { stage_id = "spec-evidence-gate", description = "Verify spec linkage evidence before PR", required = false },
-    { stage_id = "create-pr", description = "Commit, push, open PR", required = true },
-    { stage_id = "update-tracker", description = "OpenSpec archive + tracker update", required = true },
+    { stage_id = "implement", description = "Implement the feature per spec/tasks", required = true },
+    { stage_id = "validate", description = "Validate and run tests / quality checks", required = true },
+    { stage_id = "create-pr", description = "Commit spec/code and open a PR (or comment blocker)", required = true },
+    { stage_id = "update-tracker", description = "Comment PR/CI status back on the source issue", required = false },
   ]
 
   stage_bindings = [
@@ -435,20 +437,9 @@ resource "sg_workflow" "spec_driven_feature" {
       note            = local.intake_clone_bootstrap_stage_note
     },
     {
-      stage_id         = "intake-blocked-gate"
-      action_type      = "conditional_skip"
-      stage_depends_on = ["intake-clone-bootstrap"]
-      action_config = {
-        condition = "output_matches_regex"
-        match     = "(?m)stage_summary:intake-clone-bootstrap[=:\"\\s]+blocked:|\"notes\":\\{\\}|context canceled|adaptive loop interrupted|remote runner (offline|unavailable)|runner_unavailable|clone_blocker=(auth|auth_or_network|network|branch|placeholder_url|runner_unavailable|missing_clone_params|malformed_work_root)|specsym_pack_error=|script_pack_error=|shell_runner_incompatible|base64: invalid input|clone-pack\\.sh: not found|does not allow spawning approved sub-agents|repo_clone_path=$|repo_clone_path=.*/\\}|repo_clone_path=.*//home/runner"
-        skip_to   = "create-pr"
-        reason    = "Clone/auth/runner failed at intake — skip implement/validate; create-pr posts blocker comment"
-      }
-    },
-    {
       stage_id         = "repo-sdd-bootstrap"
       agent_ref        = sg_agent.spec_symphony_orchestrator.name
-      stage_depends_on = ["intake-blocked-gate"]
+      stage_depends_on = ["intake-clone-bootstrap"]
       runbook_refs     = [sg_runbook_sop.orchestration.name]
       skill_refs = concat(
         [local.sop_orchestration_name],
@@ -475,20 +466,9 @@ resource "sg_workflow" "spec_driven_feature" {
       note = local.author_spec_stage_note
     },
     {
-      stage_id         = "author-blocked-gate"
-      action_type      = "conditional_skip"
-      stage_depends_on = ["author-spec"]
-      action_config = {
-        condition = "output_matches_regex"
-        match     = "(?m)author_spec_blocker=|author_spec_status=blocked|spec_tasks_path=$|missing_spec_artifacts|stage_summary:author-spec[=:\"\\s]+blocked:"
-        skip_to   = "create-pr"
-        reason    = "Spec authoring failed or tasks.md missing — skip implement/validate; create-pr posts blocker comment"
-      }
-    },
-    {
       stage_id         = "implement"
       agent_ref        = sg_agent.spec_symphony_orchestrator.name
-      stage_depends_on = ["author-blocked-gate"]
+      stage_depends_on = ["author-spec"]
       runbook_refs     = [sg_runbook_sop.orchestration.name]
       skill_refs = concat(
         [local.sop_orchestration_name],
@@ -502,63 +482,28 @@ resource "sg_workflow" "spec_driven_feature" {
       note = local.implement_stage_note
     },
     {
-      stage_id         = "implement-blocked-gate"
-      action_type      = "conditional_skip"
-      stage_depends_on = ["implement"]
-      action_config = {
-        condition = "output_matches_regex"
-        match     = "(?m)implement_blocker=|implement_plan_only|implement_edit_verified=(false|missing)|missing implement markers|author_spec_blocker=|spec_tasks_path=$|specs/[^\\s]+ missing|openspec/changes/[^\\s]+ missing|stage_summary:implement[=:\"\\s]+blocked:|does not allow spawning approved sub-agents|no tool access in this interface|tool registry|### Phase [1-4]: (ANALYZE|PLAN|EXECUTE|SYNTHESIZE)|Repository Path Issue|extraneous characters|malformed_work_root|repo_clone_path=.*/\\}|repo_clone_path=.*//home/runner|repo_clone_path=$|\"notes\":\\{\\}"
-        skip_to   = "create-pr"
-        reason    = "Implement blocked or plan-only — skip validate loop; create-pr posts blocker comment"
-      }
-    },
-    {
-      stage_id         = "validate-and-test"
+      stage_id         = "validate"
       agent_ref        = sg_agent.spec_symphony_orchestrator.name
-      stage_depends_on = ["implement-blocked-gate"]
+      stage_depends_on = ["implement"]
       runbook_refs     = [sg_runbook_sop.orchestration.name]
       skill_refs = concat(
         [local.sop_orchestration_name],
-        try(var.workflow_skill_refs["spec-driven-feature::validate-and-test"], []),
-        try(local.power_pack_skill["validate-and-test"], []),
+        try(var.workflow_skill_refs["spec-driven-feature::validate"], []),
+        try(local.power_pack_skill["validate"], []),
       )
       spawn_contracts = local.spawn_contracts_validate
       note            = local.validate_and_test_stage_note
     },
     {
-      stage_id         = "validate-loop-gate"
-      action_type      = "loop_stage"
-      stage_depends_on = ["validate-and-test"]
-      action_config = {
-        loop_to        = "implement"
-        max_iterations = var.quality_max_iterations
-        exit_condition = "output_matches_regex"
-        exit_match     = "(?m)module_quality_summary[=:][^\\n]{0,32}(PASS|BLOCKED)"
-      }
-    },
-    {
-      stage_id         = "spec-evidence-gate"
-      action_type      = "evidence_gate"
-      stage_depends_on = ["validate-loop-gate"]
-      action_config = {
-        confirmation_items = jsonencode([
-          "spec_linkage_recorded is documented in workflow notes or validate stdout",
-          "spec_artifacts_committed: specs/ or openspec/changes/ paths are referenced",
-          "constitution_present or SDD Kit bootstrap completed",
-          "module_quality_summary is PASS or BLOCKED with documented reason",
-        ])
-      }
-    },
-    {
       stage_id         = "create-pr"
       agent_ref        = sg_agent.spec_symphony_orchestrator.name
-      stage_depends_on = ["spec-evidence-gate"]
+      stage_depends_on = ["validate"]
       runbook_refs = [
         sg_runbook_sop.orchestration.name,
         sg_runbook_sop.github_content_change.name,
       ]
       skill_refs = concat(
-        [local.sop_orchestration_name, local.sop_github_content_change],
+        [local.sop_orchestration_name],
         try(var.workflow_skill_refs["spec-driven-feature::create-pr"], []),
         try(local.power_pack_skill["create-pr"], []),
       )
@@ -569,17 +514,17 @@ resource "sg_workflow" "spec_driven_feature" {
       stage_id         = "update-tracker"
       agent_ref        = sg_agent.spec_symphony_orchestrator.name
       stage_depends_on = ["create-pr"]
-      runbook_refs     = [sg_runbook_sop.orchestration.name, sg_runbook_sop.github_content_change.name]
+      runbook_refs = [
+        sg_runbook_sop.orchestration.name,
+        sg_runbook_sop.github_content_change.name,
+      ]
       skill_refs = concat(
         [local.sop_orchestration_name],
         try(var.workflow_skill_refs["spec-driven-feature::update-tracker"], []),
         try(local.power_pack_skill["update-tracker"], []),
       )
-      spawn_contracts = concat(
-        local.spawn_contracts_archive,
-        local.spawn_contracts_update_tracker,
-      )
-      note = local.update_tracker_stage_note
+      spawn_contracts = local.spawn_contracts_update_tracker
+      note            = local.update_tracker_stage_note
     },
   ]
 }

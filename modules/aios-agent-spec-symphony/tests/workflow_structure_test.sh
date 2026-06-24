@@ -35,7 +35,7 @@ for removed in validate-infra-gate ci-evidence-gate archive-specs; do
   fi
 done
 
-for script in stage-runner.sh clone-pack.sh spec-bootstrap.sh author-spec.sh linear-spec-materialize.sh cursor-agent.sh cursor-implement.sh cursor-author-spec.sh validate.sh ci-spec-linkage.sh ensure-shell-tool.sh blocker-comment.sh; do
+for script in stage-runner.sh clone-pack.sh spec-bootstrap.sh author-spec.sh fetch-aidlc-rules.sh linear-spec-materialize.sh cursor-agent.sh cursor-implement.sh cursor-author-spec.sh validate.sh ci-spec-linkage.sh ensure-shell-tool.sh blocker-comment.sh; do
   if [ ! -x "${ROOT}/scripts/${script}" ]; then
     echo "FAIL: missing or non-executable scripts/${script}" >&2
     exit 1

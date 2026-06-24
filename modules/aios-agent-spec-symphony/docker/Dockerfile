@@ -36,6 +36,7 @@ RUN if [ "$INSTALL_CURSOR_CLI" = "1" ]; then \
 
 RUN mkdir -p "${SPECSYM_PACK_DIR}/templates" && chown -R runner:runner /home/runner/.spec-symphony
 COPY --chown=runner:runner scripts/ "${SPECSYM_PACK_DIR}/"
+COPY --chown=runner:runner .generated/aidlc-rules/ "${SPECSYM_PACK_DIR}/vendor/aidlc-rules/"
 COPY --chown=runner:runner templates/sdd-kit-starter/ "${SPECSYM_PACK_DIR}/templates/sdd-kit-starter/"
 RUN chmod +x "${SPECSYM_PACK_DIR}"/*.sh \
   && test -x "${SPECSYM_PACK_DIR}/stage-runner.sh"

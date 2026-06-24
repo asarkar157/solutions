@@ -60,9 +60,20 @@ destructive_shell(cmd) if contains(cmd, "aws ec2 terminate")
 destructive_shell(cmd) if contains(cmd, "git push")
 destructive_shell(cmd) if contains(cmd, "gh pr create")
 destructive_shell(cmd) if contains(cmd, "gh pr merge")
-destructive_shell(cmd) if contains(cmd, "gh api repos/") ; contains(cmd, "/pulls")
-destructive_shell(cmd) if contains(cmd, "api.datadoghq.com") ; contains(cmd, "/api/v1/events")
-destructive_shell(cmd) if contains(cmd, "api.datadoghq.com") ; contains(cmd, "/api/v1/series")
+destructive_shell(cmd) if {
+	contains(cmd, "gh api repos/")
+	contains(cmd, "/pulls")
+}
+
+destructive_shell(cmd) if {
+	contains(cmd, "api.datadoghq.com")
+	contains(cmd, "/api/v1/events")
+}
+
+destructive_shell(cmd) if {
+	contains(cmd, "api.datadoghq.com")
+	contains(cmd, "/api/v1/series")
+}
 
 approval_reason := "SRE investigation write or remediation requires human approval before execution" if {
 	approval_required

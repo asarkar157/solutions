@@ -1,6 +1,27 @@
+resource "null_resource" "specsym_script_pack_staging" {
+  depends_on = [null_resource.aidlc_rules_fetch]
+
+  triggers = {
+    scripts_hash        = sha1(join("", [for f in fileset("${path.module}/scripts", "*.sh") : filesha1("${path.module}/scripts/${f}")]))
+    aidlc_rules_version = local.aidlc_rules_version_tag
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      rm -rf "${path.module}/.generated/pack-staging"
+      mkdir -p "${path.module}/.generated/pack-staging"
+      cp -R "${path.module}/scripts/." "${path.module}/.generated/pack-staging/"
+      mkdir -p "${path.module}/.generated/pack-staging/vendor"
+      cp -R "${local.aidlc_rules_dir}" "${path.module}/.generated/pack-staging/vendor/aidlc-rules"
+    EOT
+  }
+}
+
 data "archive_file" "specsym_script_pack" {
+  depends_on = [null_resource.specsym_script_pack_staging]
+
   type        = "tar.gz"
-  source_dir  = "${path.module}/scripts"
+  source_dir  = "${path.module}/.generated/pack-staging"
   output_path = "${path.module}/.generated/specsym-script-pack-${sha256(file("${path.module}/scripts/stage-runner.sh"))}.tar.gz"
 }
 

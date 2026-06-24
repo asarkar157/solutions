@@ -67,16 +67,23 @@ order-service ──gRPC──► product-catalog-service  (GetProduct, :3550)
 | `DD_SERVICE` | `payment-service` |
 | Protocol | gRPC `Charge` |
 | Env faults | `PAYMENT_FAILURE_FRACTION`, `PAYMENT_DEMO_FAULT=invalid_card\|expired_card\|logic_bug` |
-| Log `error.kind` | `PaymentFailure`, `InvalidCard`, `PaymentLogicBug` (logic_bug demo) |
+| Log `error.kind` | `PaymentFailure`, `InvalidCard`, `AuthorizationDeclined`, `PaymentLogicBug` |
+| Deployed image (PR path) | `ghcr.io/appcd-dev/payment-service:feat-loyalty-fraud-screen` — `passesIssuerRiskScreen()` rejects Visa last-four starting with `1` |
+| Golden RCA tokens | `AuthorizationDeclined`, `passesIssuerRiskScreen`, `charge.js:123`, `appcd-dev/payment-service` |
 
-**Agent hint:** Leaf service — if order shows dependency fault, verify payment pods, gRPC port `50051`, and recent charge payloads (invalid/expired card). **`logic_bug`** rejects **valid** Visa/Mastercard with `PaymentLogicBug` — closed-loop PR candidate on `charge.js`, not input validation.
+**Agent hint:** Leaf service — if order shows dependency fault, verify payment pods, gRPC port `50051`, and recent charge payloads. **`AuthorizationDeclined`** at `charge.js:123` is the deployed fraud-screen bug (not `InvalidCard` at `:59`). **`logic_bug`** (`PAYMENT_DEMO_FAULT=logic_bug`) rejects **valid** Visa/Mastercard with `PaymentLogicBug` — alternate closed-loop PR path on `charge.js`, not input validation. Do not confuse stale `InvalidCard` traces with the loyalty-screen regression.
+
+**When GitHub returns 404:** read cluster truth — `kubectl -n aiden-demo get configmap aiden-demo-fault-profile -o yaml` and `kubectl -n aiden-demo get deploy payment-service -o jsonpath='{.spec.template.spec.containers[0].image}'`.
+
+**When Datadog logs are empty:** check `kubectl -n aiden-demo exec deploy/datadog-agent -- /opt/datadog-agent/bin/agent/agent status` (Logs Agent section). Logs use **autodiscovery** (`ad.datadoghq.com/*` annotations + `DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL`) — agent must co-locate with stack pods and reach kubelet :10250 + Kubernetes API.
 
 ### Closed-loop remediation matrix
 
 | Demo command | Service | `error.kind` | Fix file | GitHub PR? |
 |--------------|---------|--------------|----------|------------|
 | `fire-pr-demo` / `fire-schema` | order-service | `DatabaseSchemaMismatch` | `cmd/initdb/main.go` | **Yes** |
-| `fire-payment-bug` | payment-service | `PaymentLogicBug` | `charge.js` | **Yes** (after image deploy) |
+| `fire-payment-bug` / `feat-loyalty-fraud-screen` | payment-service | `AuthorizationDeclined` | `charge.js` (`passesIssuerRiskScreen`) | **Yes** (after image deploy) |
+| `fire-payment-bug` (`logic_bug` fault) | payment-service | `PaymentLogicBug` | `charge.js` (loyalty gate) | **Yes** (after image deploy) |
 | chaos `invalid_card` / AIDEN-002 | payment-service | `InvalidCard` | — | **No** (expected validation) |
 | `fire-rank-commit` | product-catalog-service | `CatalogRankIndexPanic` | `main.go` rank path | Maybe (deploy regression) |
 
@@ -104,7 +111,9 @@ PUSH=true ./scripts/deploy-aiden-demo.sh
 | Env faults | `CATALOG_DEMO_FAULT=feature\|rank`, `CATALOG_FAILURE_FRACTION` |
 | Log `error.kind` | `CatalogFeatureFailure`, `CatalogRankIndexPanic`, `CatalogLoadFailure` |
 
-**Agent hint:** Rank panic path often tied to product ID `OLJCESPC7Z` or random IDs under rank fault mode. Feature failure is env-gated.
+**Agent hint:** Rank panic path often tied to product ID `OLJCESPC7Z` or random IDs under rank fault mode. Feature failure is env-gated (`CATALOG_DEMO_FAULT=feature` → `Product Catalog Fail Feature Flag Enabled`).
+
+**When GitHub returns 404:** `kubectl -n aiden-demo get configmap aiden-demo-fault-profile -o yaml` for `CATALOG_DEMO_FAULT` and related keys.
 
 ### ad-service
 

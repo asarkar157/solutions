@@ -8,7 +8,7 @@ TICKET="${3:-}"
 
 PROMPT="Read .specify/memory/constitution.md when present. Implement only what ${TASKS_PATH} requires.
 Ticket context: ${TICKET:-n/a}
-When finished, ensure specs/ or openspec/changes/ and code change together.
+When finished, ensure specs/, openspec/changes/, or aidlc-docs/ and code change together.
 Emit implement_edit_verified=true when edits are complete."
 
 PACK_DIR="${SPECSYM_PACK_DIR:-$(dirname "$0")}"

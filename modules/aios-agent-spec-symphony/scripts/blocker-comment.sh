@@ -2,8 +2,27 @@
 # Post a GitHub issue comment for blocked spec-symphony workflow runs.
 set -euo pipefail
 
-REPO_FULL_NAME="${REPO_FULL_NAME:?set REPO_FULL_NAME}"
+REPO_FULL_NAME="${REPO_FULL_NAME:-}"
 ISSUE_OR_PR="${ISSUE_OR_PR:?set ISSUE_OR_PR}"
+
+# Tolerate an unsubstituted placeholder (e.g. literal "<repository_full_name>") from the spawning agent.
+case "$REPO_FULL_NAME" in *"<"*">"* | "") REPO_FULL_NAME="" ;; esac
+
+# Fallback: derive owner/repo from the cloned repo's git remote when the agent did not supply it.
+if [ -z "$REPO_FULL_NAME" ]; then
+  for d in "${WORK_ROOT:-}/repo" "$PWD"; do
+    [ -n "$d" ] && [ -d "$d/.git" ] || continue
+    url="$(git -C "$d" config --get remote.origin.url 2>/dev/null || true)"
+    REPO_FULL_NAME="$(printf '%s' "$url" | sed -E 's#^(git@github.com:|https://github.com/)##; s#\.git$##')"
+    [ -n "$REPO_FULL_NAME" ] && break
+  done
+fi
+
+if [ -z "$REPO_FULL_NAME" ]; then
+  echo "notify_blocker=missing_repo_full_name"
+  echo "notify_exit=1"
+  exit 1
+fi
 BODY="${COMMENT_BODY:-${BLOCKER_DETAIL:-Spec-symphony workflow blocked — see stage_summary notes.}}"
 
 if ! [[ "$ISSUE_OR_PR" =~ ^[0-9]+$ ]]; then
@@ -37,4 +56,4 @@ fi
 CID="$(printf '%s' "$RESP" | jq -r '.id // empty')"
 echo "notify_comment_id=${CID}"
 echo "notify_exit=0"
-echo "stage_summary:create-pr=done"
+echo "notify_posted=true"

@@ -7,13 +7,13 @@ set -euo pipefail
 apt_install_pkg() {
   local pkg="${1:?pkg}"
   if command -v sudo >/dev/null 2>&1; then
-    sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg"
+    sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq >&2
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" >&2
     return 0
   fi
   if [ "$(id -u)" -eq 0 ]; then
-    DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg"
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq >&2
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" >&2
     return 0
   fi
   return 1

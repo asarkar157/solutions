@@ -16,8 +16,8 @@ jobs:
       - name: Validate PR body spec reference
         run: |
           PR_BODY="${{ github.event.pull_request.body }}"
-          if ! echo "$PR_BODY" | grep -Eiq '(specs/|openspec/changes/)'; then
-            echo "Error: PR body must reference specs/ or openspec/changes/"
+          if ! echo "$PR_BODY" | grep -Eiq '(specs/|openspec/changes/|aidlc-docs/)'; then
+            echo "Error: PR body must reference specs/, openspec/changes/, or aidlc-docs/"
             exit 1
           fi
 

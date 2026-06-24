@@ -14,6 +14,8 @@ locals {
 resource "null_resource" "spec_symphony_runner_image" {
   count = local.build_spec_symphony_runner_image ? 1 : 0
 
+  depends_on = [null_resource.aidlc_rules_fetch]
+
   triggers = {
     dockerfile              = filemd5(local.runner_dockerfile_path)
     aiden_runner_image      = var.aiden_runner_base_image
@@ -22,6 +24,7 @@ resource "null_resource" "spec_symphony_runner_image" {
     linear_implement_engine = var.linear_implement_engine
     needs_cursor            = local.needs_cursor_on_runner
     scripts_hash            = sha1(join("", [for f in fileset("${path.module}/scripts", "*.sh") : filesha1("${path.module}/scripts/${f}")]))
+    aidlc_rules_version     = local.aidlc_rules_version_tag
   }
 
   provisioner "local-exec" {

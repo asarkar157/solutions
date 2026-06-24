@@ -38,7 +38,7 @@ locals {
   stackgen_webhook_api_origin  = trimsuffix(trimspace(var.webhook_trigger_base_url), "/")
   stackgen_webhook_trigger_url = trimspace(var.webhook_trigger_base_url) == "" ? "" : "${local.stackgen_webhook_api_origin}/guild/api/v1/webhooks/trigger"
   stackgen_webhook_org_query   = trimspace(var.webhook_trigger_org_id) == "" ? "" : format("&orgId=%s", urlencode(trimspace(var.webhook_trigger_org_id)))
-  script_pack_version          = "20260617.1"
+  script_pack_version          = "20260624.1"
   cdkbot_pack_dir              = "${local.shell_work_home}/.cdk-bot/pack/${local.script_pack_version}"
   discovery_modules_template_vars = {
     discovery_repositories_list = join(", ", [for r in var.discovery_modules_repository_full_names : "\"${r}\""])

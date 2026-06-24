@@ -16,5 +16,5 @@ This repository uses Spec-Driven Development. All feature work must be traceable
 
 ## SDD traceability
 
-- Every PR linking code changes must reference `specs/` or `openspec/changes/`.
+- Every PR linking code changes must reference `specs/`, `openspec/changes/`, or `aidlc-docs/`.
 - Constitution rules apply to agent-generated code as well as human-authored code.

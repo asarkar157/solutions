@@ -116,16 +116,40 @@ cmd_commit_pr() {
   body="${6:-Automated PR from spec-symphony workflow. Links spec/change folder in description.}"
 
   cd "$repo_dir"
-  local branch fid spec_link
+
+  # Feature slug for branch + spec-link lookup: prefer an explicit feature id, else the issue number.
+  local slug
+  slug="${FEATURE_ID:-}"
+  [ -n "$slug" ] || slug="$issue_or_pr"
+  [ -n "$slug" ] || slug="$(date +%Y%m%d%H%M%S)"
+
+  # Per-run uniqueness token from the workflow scratch dir (".wf-<run-id>"), falling back to a timestamp.
+  # Without this, every run for the same issue reuses one branch name and the second push is rejected
+  # as a non-fast-forward against the branch the prior run already pushed.
+  local run_token
+  run_token="$(basename "$work_root" | sed -E 's/^\.wf-(spec-driven-feature-)?//' | tr -cd 'a-zA-Z0-9' | tail -c 12)"
+  [ -n "$run_token" ] || run_token="$(date +%H%M%S)"
+
+  # Never commit straight to the base branch: cut a unique feature branch off the current HEAD.
+  # gh pr create requires head != base, so committing on main always produced an empty pr_url.
+  local branch
   branch="$(git branch --show-current)"
-  fid="$(feature_id_from_branch "$branch")"
-  if [ -d "openspec/changes/$fid" ]; then
-    spec_link="openspec/changes/$fid"
-  elif [ -d "specs/$fid" ]; then
-    spec_link="specs/$fid"
-  else
-    spec_link="(see branch $branch)"
+  if [ -z "$branch" ] || [ "$branch" = "$base_branch" ]; then
+    branch="spec-symphony/${slug}-${run_token}"
+    git checkout -B "$branch"
   fi
+
+  # Link the spec/change folder in the PR body. Try the branch feature id, then the slug/issue number.
+  local fid spec_link key
+  fid="$(feature_id_from_branch "$branch")"
+  spec_link=""
+  for key in "$fid" "$slug" "$issue_or_pr"; do
+    [ -n "$key" ] || continue
+    if [ -d "openspec/changes/$key" ]; then spec_link="openspec/changes/$key"; break; fi
+    if [ -d "aidlc-docs/$key" ]; then spec_link="aidlc-docs/$key"; break; fi
+    if [ -d "specs/$key" ]; then spec_link="specs/$key"; break; fi
+  done
+  [ -n "$spec_link" ] || spec_link="(see branch $branch)"
   body="${body}
 
 Spec reference: ${spec_link}"
@@ -133,6 +157,7 @@ Spec reference: ${spec_link}"
   git add -A
   if git diff --cached --quiet; then
     echo "pr_url="
+    echo "working_branch=$branch"
     echo "stage_summary:create-pr=skipped_no_changes"
     exit 0
   fi

@@ -19,6 +19,16 @@ if [ -z "$cmd" ] || [ "$cmd" = "null" ]; then
   exit 1
 fi
 
+# When the mothership is the host's localhost, a container cannot reach it via
+# "localhost" (that resolves to the container's own loopback). Rewrite to the
+# Docker host-gateway alias and add the --add-host mapping so the aiden-runner
+# handshake reaches the guild running on the host (Docker Desktop on macOS/Windows
+# and Linux with a recent Docker provide host-gateway).
+if printf '%s' "$cmd" | grep -qE -- '--mothership https?://(localhost|127\.0\.0\.1):'; then
+  cmd="$(printf '%s' "$cmd" | sed -E 's#--mothership (https?)://(localhost|127\.0\.0\.1):#--mothership \1://host.docker.internal:#')"
+  cmd="$(printf '%s' "$cmd" | sed -E 's#^docker run #docker run --add-host=host.docker.internal:host-gateway #')"
+fi
+
 echo "$cmd"
 if [ "$RUN" -eq 1 ]; then
   echo "==> starting runner container" >&2

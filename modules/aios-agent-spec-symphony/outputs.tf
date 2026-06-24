@@ -128,3 +128,8 @@ output "runner_script_pack_env_secret_id" {
   value       = local.runner_script_pack_env_secret_id
   sensitive   = true
 }
+
+output "aidlc_rules_version" {
+  description = "Resolved awslabs/aidlc-workflows release tag fetched at apply for ai-dlc framework."
+  value       = local.aidlc_rules_version_tag
+}

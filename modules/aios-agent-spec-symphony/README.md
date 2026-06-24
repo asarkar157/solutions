@@ -54,7 +54,8 @@ Labels: `needs-spec` (product spec), `spec-blessed` (implement). See `templates/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `sdd_framework` | `auto` | `spec-kit`, `openspec`, or `auto` |
+| `sdd_framework` | `auto` | `spec-kit`, `openspec`, `ai-dlc`, or `auto` |
+| `aidlc_rules_version` | `1.0.0` | awslabs/aidlc-workflows release tag; fetched at apply into `.generated/aidlc-rules` |
 | `change_type` | `brownfield` | SDD Kit preset: greenfield, brownfield, bugfix, refactor, migration |
 | `power_pack_refs` | `{}` | Map `stage_id` → Guild `skill_ref` for optional MCP packs |
 | `quality_max_iterations` | `2` | `validate-loop-gate` GO_BACK cap (Guild visit cap: keep ≤3; implement visits = 1 + this) |
@@ -72,7 +73,19 @@ Labels: `needs-spec` (product spec), `spec-blessed` (implement). See `templates/
 ## Runner image
 
 Base: `ghcr.io/appcd-dev/stackgen-guild-aiden-runner:main`  
-Adds: Node 22, `specify-cli` (uv), `openspec` (npm), script pack at `$HOME/.spec-symphony/pack/<version>/`.
+Adds: Node 22, `specify-cli` (uv), `openspec` (npm), script pack at `$HOME/.spec-symphony/pack/<version>/`, AI-DLC rules under `vendor/aidlc-rules/`.
+
+**CI:** [`ci.yml`](../../.github/workflows/ci.yml) runs script/workflow tests on every PR. [`spec-symphony-docker.yml`](../../.github/workflows/spec-symphony-docker.yml) smoke-builds on PRs; on **push to `main`** it builds **linux/amd64 + linux/arm64**, pushes to **`ghcr.io/appcd-dev/solutions-spec-symphony-runner`**, and tags **`main`** plus **`script_pack_version`** (from `main.tf`).
+
+**Registry-first (no local `docker build` on apply):**
+
+```hcl
+build_runner_image             = false
+runner_docker_image_repository = "ghcr.io/appcd-dev/solutions-spec-symphony-runner"
+runner_docker_image_tag        = "" # defaults to script_pack_version
+```
+
+Then `docker pull ghcr.io/appcd-dev/solutions-spec-symphony-runner:<script_pack_version>` on the runner host before `remote_runner_cli_start_command_with_secrets`.
 
 After apply, run `remote_runner_docker_run_command` or `remote_runner_cli_start_command_with_secrets` from outputs.
 
@@ -83,6 +96,17 @@ Shipped under `templates/sdd-kit-starter/` and copied into target repos by `spec
 - `constitution.md`, change-type presets, agent prompts
 - `.github/workflows/sdd-spec-linkage.yml`, PR template
 - `SPEC_SYMPHONY.md` repo contract
+- `ai-dlc/project.md` when `sdd_framework=ai-dlc`
+
+## AI-DLC framework (`sdd_framework = "ai-dlc"`)
+
+Conforms to [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows). Rules are **not** checked into this repo — `tofu apply` downloads the release zip for `aidlc_rules_version` (default `1.0.0`) into `.generated/aidlc-rules/` and bakes them into the script pack and runner image.
+
+- **Artifacts:** `aidlc-docs/<feature-id>/{inception.md, construction.md, operations.md}` — tasks live in `construction.md`.
+- **Seeded rules:** `.aidlc-rule-details/` plus `AGENTS.md` or `.cursor/rules/ai-dlc-workflow.mdc` from AWS `core-workflow.md`.
+- **No extra CLI** — methodology-first; markdown rules only.
+- **Tenets:** human-in-the-loop (PR gate), question-driven in files (`## Open Questions` in inception.md), adaptive depth by `change_type`.
+- **Bump version:** set `aidlc_rules_version = "1.0.0"` (or newer tag) and re-apply to refresh rules.
 
 ## Tests
 

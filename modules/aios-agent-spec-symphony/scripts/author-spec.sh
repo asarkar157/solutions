@@ -28,11 +28,13 @@ feature_id_from_env() {
 }
 
 detect_framework() {
-  if [ "$FRAMEWORK" = "spec-kit" ] || [ "$FRAMEWORK" = "openspec" ]; then
+  if [ "$FRAMEWORK" = "spec-kit" ] || [ "$FRAMEWORK" = "openspec" ] || [ "$FRAMEWORK" = "ai-dlc" ]; then
     printf '%s' "$FRAMEWORK"
     return 0
   fi
-  if [ -d "$REPO_DIR/openspec/changes" ] || [ -d "$REPO_DIR/openspec" ]; then
+  if [ -d "$REPO_DIR/aidlc-docs" ] || [ -d "$REPO_DIR/.aidlc-rule-details" ]; then
+    echo ai-dlc
+  elif [ -d "$REPO_DIR/openspec/changes" ] || [ -d "$REPO_DIR/openspec" ]; then
     echo openspec
   elif [ -d "$REPO_DIR/.specify" ] || [ -d "$REPO_DIR/specs" ]; then
     echo spec-kit
@@ -114,6 +116,62 @@ EOF
   echo "spec_tasks_path=openspec/changes/${fid}/tasks.md"
 }
 
+write_ai_dlc_artifacts() {
+  local fid="$1"
+  local base="aidlc-docs/${fid}"
+  mkdir -p "$base"
+  if [ ! -f "$base/inception.md" ]; then
+    cat >"$base/inception.md" <<EOF
+# Inception: ${fid}
+
+## Unit of Work
+${ISSUE_TITLE}
+
+## Business intent
+${ISSUE_BODY:-_(no description in webhook payload — fill acceptance criteria)_}
+
+## Acceptance criteria
+- [ ] Implement the requested change
+- [ ] Spec and code change together (SDD linkage)
+
+## Change type
+${CHANGE_TYPE}
+
+## Open Questions
+- [ ] _(Add structured multiple-choice questions here when ticket context is thin — do not block in chat)_
+EOF
+  fi
+  if [ ! -f "$base/construction.md" ]; then
+    cat >"$base/construction.md" <<EOF
+# Construction: ${fid}
+
+## Component design
+1. Read constitution and existing codebase
+2. Implement tasks below
+3. Run validate (tests, lint, ci-spec-linkage)
+
+## Tasks
+- [ ] Implement feature per inception.md
+- [ ] Update tests as needed
+- [ ] Ensure aidlc-docs/${fid}/ changes with code changes
+EOF
+  fi
+  if [ ! -f "$base/operations.md" ]; then
+    cat >"$base/operations.md" <<EOF
+# Operations: ${fid}
+
+## Deployment notes
+_(Future: deployment automation, monitoring, production readiness)_
+
+## Rollout / validation
+- [ ] CI passes
+- [ ] PR reviewed and approved (human-in-the-loop)
+EOF
+  fi
+  echo "spec_artifact_path=aidlc-docs/${fid}"
+  echo "spec_tasks_path=aidlc-docs/${fid}/construction.md"
+}
+
 main() {
   cd "$REPO_DIR"
   local fid fw
@@ -126,6 +184,7 @@ main() {
   case "$fw" in
     spec-kit) write_spec_kit_artifacts "$fid" ;;
     openspec) write_openspec_artifacts "$fid" ;;
+    ai-dlc) write_ai_dlc_artifacts "$fid" ;;
     *)
       echo "author_spec_blocker=unknown_framework"
       exit 1

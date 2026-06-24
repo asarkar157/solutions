@@ -114,6 +114,22 @@ grep -q "aws:kms" "${FIXTURE_TS}/test/sample-stack.test.ts"
 git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts test/sample-stack.test.ts 2>/dev/null || true
 rm -f "$fail_edit"
 
+echo "implement-app-run builtin KMS recovery with relative MODULE_PATH argv"
+fail_edit="$(mktemp)"
+cat >"$fail_edit" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cmp -s /nonexistent /also-missing
+EOF
+chmod +x "$fail_edit"
+rel_module="examples/fixtures/cdk-repos/generic-typescript"
+run_rel="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$rel_module" "$fail_edit" 'kms relative path' 2>&1)"
+printf '%s' "$run_rel" | grep -q 'implement_edit_recovered=builtin_kms_after_script_failure'
+printf '%s' "$run_rel" | grep -q 'implement_edit_verified=true'
+git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts test/sample-stack.test.ts 2>/dev/null || true
+rm -f "$fail_edit"
+rm -rf "${FIXTURE_TS}/examples" 2>/dev/null || true
+
 echo "read-implement-markers prints durable marker file"
 wr_parent="$(mktemp -d)"
 work_root="$wr_parent/.wf-markers"

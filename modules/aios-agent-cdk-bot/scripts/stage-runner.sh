@@ -1227,12 +1227,12 @@ cmd_resolve_paths() {
 cmd_implement_app_preflight() {
   local module_path="${1:?MODULE_PATH}"
   local runner_dir f
-  module_path="$(normalize_work_root "$module_path")"
+  module_path="$(absolutize_path "$module_path")"
   runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   if ! command -v rg >/dev/null 2>&1; then
     if [ -x "$runner_dir/ensure-shell-tool.sh" ]; then
-      "$runner_dir/ensure-shell-tool.sh" rg || true
+      "$runner_dir/ensure-shell-tool.sh" rg >&2 || true
     fi
   fi
   if ! command -v rg >/dev/null 2>&1; then
@@ -1264,7 +1264,7 @@ apply_builtin_s3_kms_migration() {
   local module_path="${1:?MODULE_PATH}"
   local f changed=0
 
-  module_path="$(normalize_work_root "$module_path")"
+  module_path="$(absolutize_path "$module_path")"
   if [ ! -d "$module_path" ]; then
     return 1
   fi
@@ -1506,6 +1506,8 @@ cmd_implement_app_run() {
     work_root="$(dirname "$(dirname "$edit_script")")"
     module_path="$(resolve_module_path_arg "$work_root" "$module_arg")"
   fi
+  module_path="$(absolutize_path "$module_path")"
+  work_root="$(absolutize_path "$work_root")"
   runner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
   if [ ! -f "$edit_script" ]; then
@@ -1613,6 +1615,17 @@ normalize_work_root() {
     wr="${wr//\${HOME}/${HOME}}"
   fi
   printf '%s' "$wr"
+}
+
+# absolutize_path resolves a directory path so mkdir/cd stay correct after implement preflight chdir (CI relative argv).
+absolutize_path() {
+  local p="${1:?path}"
+  p="$(normalize_work_root "$p")"
+  if [ -d "$p" ]; then
+    (cd "$p" && pwd)
+    return 0
+  fi
+  printf '%s' "$p"
 }
 
 # repo_clone_path_under_work_root returns success when candidate lives under the current workflow work root.

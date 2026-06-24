@@ -121,6 +121,12 @@ Close every stage with `stage_summary:<stage_id>=done` or `=blocked: <reason>`.
 
 - **spec-kit** (greenfield): `.specify/`, `specs/NNN-feature/`, plan.md, tasks.md
 - **openspec** (brownfield): `openspec/changes/<id>/` with proposal.md, tasks.md, delta specs
+- **ai-dlc** (AWS AI-DLC ${aidlc_rules_version}): `aidlc-docs/<id>/` with inception.md, construction.md, operations.md; tasks in `construction.md`. Seeds `.aidlc-rule-details/` + `AGENTS.md` or `.cursor/rules/ai-dlc-workflow.mdc` from awslabs/aidlc-workflows (fetched at apply). No archive step.
+
+**AI-DLC tenets (when sdd_framework=ai-dlc):**
+- Human-in-the-loop: PR review is the approval gate; never auto-merge.
+- Question-driven in files: write `## Open Questions` in inception.md and post to issue/Linear — do not block workflow on chat clarifications.
+- Adaptive depth: use `change_type` (greenfield = full Inception; bugfix = lean).
 
 `repo-sdd-bootstrap` runs `stage-runner.sh spec-bootstrap` when framework dirs missing.
 

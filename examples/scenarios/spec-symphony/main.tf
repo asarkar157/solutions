@@ -14,6 +14,7 @@ provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
   project_id     = var.stackgen_project_id != "" ? var.stackgen_project_id : null
+  insecure       = var.stackgen_insecure
 }
 
 module "foundation" {
@@ -82,6 +83,23 @@ module "spec_symphony" {
 
   create_remote_runner = var.create_remote_runner
   build_runner_image   = var.build_runner_image
+
+  # Advertise the runner workspace so Guild's execution-surface guard recognizes
+  # Do NOT declare workspace.paths for this runner, and do NOT use timestamp()-based
+  # labels here. Two reasons:
+  #   1. The spec-symphony SDD factory runner is a general-purpose, ephemeral-workspace
+  #      runner: each run gets a fresh WORK_ROOT (/home/runner/.wf-<run-id>, clone dir
+  #      <work_root>/repo, pack under /home/runner/.spec-symphony/...). The execution-
+  #      surface guard only enforces the workspace prefix when a runner declares
+  #      workspace.paths; when none are declared it treats the runner as able to serve
+  #      any path it is handed (terraform-provider/guild #760). Declaring explicit paths
+  #      re-enables prefix enforcement and false-blocks the clone subagent spawn.
+  #   2. A timestamp() value changes on every apply, which forces sg_remote_runner to
+  #      re-register on every `tofu apply`, churning the runner token and briefly
+  #      dropping its execute_command/execute_series tools from the agent tool registry
+  #      (clone subagent then fails with "tools not available in the current tool
+  #      registry"). Keep labels static/empty so the runner registers once and stays.
+  remote_runner_labels = {}
 
   power_pack_refs = var.power_pack_refs
 }

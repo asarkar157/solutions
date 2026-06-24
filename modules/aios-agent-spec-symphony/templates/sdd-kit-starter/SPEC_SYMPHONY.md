@@ -14,7 +14,7 @@
 
 ## Variables
 
-- `sdd_framework`: `spec-kit` | `openspec` | `auto`
+- `sdd_framework`: `spec-kit` | `openspec` | `ai-dlc` | `auto`
 - `change_type`: `greenfield` | `brownfield` | `bugfix` | `refactor` | `migration`
 
 ## Linear product ticket body
@@ -31,4 +31,4 @@ Default: npm lint+test, go test, cargo test, or pytest when detected.
 
 ## PR requirements
 
-PR description must link `specs/<id>/` or `openspec/changes/<id>/`.
+PR description must link `specs/<id>/`, `openspec/changes/<id>/`, or `aidlc-docs/<id>/`.
