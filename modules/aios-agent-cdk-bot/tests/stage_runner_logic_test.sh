@@ -97,6 +97,23 @@ if printf '%s' "$preflight_out" | grep -qF -- '--- file:'; then
 fi
 
 echo "implement-app-run recovers from failing edit script via builtin KMS migration"
+git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts test/sample-stack.test.ts 2>/dev/null || true
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-kms"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+kms_body='Enable KMS encryption on the S3 bucket in lib/sample-stack.ts using KMS_MANAGED and aws:kms.'
+jq -n \
+  --arg body "$kms_body" \
+  --arg repo "$repo_dir" \
+  '{issue_details: {number: 1, title: "Fix encryption on SampleStack", body: $body}, issue_or_pr_number: "1", repository_full_name: "sks/cdk-typescript-demo", repo_clone_path: $repo}' \
+  >"$work_root/notes.json"
 fail_edit="$(mktemp)"
 cat >"$fail_edit" <<'EOF'
 #!/usr/bin/env bash
@@ -104,17 +121,80 @@ set -euo pipefail
 cmp -s /nonexistent /also-missing
 EOF
 chmod +x "$fail_edit"
-run_recover="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$FIXTURE_TS" "$fail_edit" 'kms via builtin fallback' 2>&1)"
+run_recover="$(CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$repo_dir" "$fail_edit" 'kms via builtin fallback' 2>&1)"
 printf '%s' "$run_recover" | grep -q 'implement_edit_recovered=builtin_kms_after_script_failure'
 printf '%s' "$run_recover" | grep -q 'implement_edit_verified=true'
 printf '%s' "$run_recover" | grep -q 'implement_markers_file='
 printf '%s' "$run_recover" | grep -q 'implement_summary=kms via builtin fallback'
-grep -q 'KMS_MANAGED' "${FIXTURE_TS}/lib/sample-stack.ts"
-grep -q "aws:kms" "${FIXTURE_TS}/test/sample-stack.test.ts"
-git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts test/sample-stack.test.ts 2>/dev/null || true
+grep -q 'KMS_MANAGED' "$repo_dir/lib/sample-stack.ts"
+grep -q "aws:kms" "$repo_dir/test/sample-stack.test.ts"
 rm -f "$fail_edit"
 
+echo "implement-app-postcheck recovers block public access brownfield via builtin fallback"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-bpa"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+issue_body='Brownfield — edit only lib/sample-stack.ts. Add blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL to SampleStack bucket.'
+jq -n \
+  --arg body "$issue_body" \
+  --arg repo "$repo_dir" \
+  '{issue_details: {number: 20, title: "B2 block public access", body: $body}, issue_or_pr_number: "20", repository_full_name: "sks/cdk-typescript-demo", repo_clone_path: $repo}' \
+  >"$work_root/notes.json"
+bpa_out="$(CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$work_root" "$repo_dir" 2>&1)"
+printf '%s' "$bpa_out" | grep -q 'implement_edit_verified=true'
+grep -q 'BlockPublicAccess.BLOCK_ALL' "$repo_dir/lib/sample-stack.ts"
+
+echo "implement-app-postcheck recovers G2 notification queue greenfield scaffold"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-g2"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+g2_body='Greenfield L3 — add new files only. Do not modify lib/sample-stack.ts.
+
+## Deliverables
+1. lib/gf-notification-queue-demo.ts — export GfNotificationQueue construct
+2. test/gf-notification-queue-demo.test.ts — Jest test for SQS queue + DLQ'
+jq -n \
+  --arg body "$g2_body" \
+  --arg repo "$repo_dir" \
+  '{issue_details: {number: 19, title: "G2 notification queue", body: $body}, issue_or_pr_number: "19", repository_full_name: "sks/cdk-typescript-demo", repo_clone_path: $repo}' \
+  >"$work_root/notes.json"
+g2_out="$(CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$work_root" "$repo_dir" 2>&1)"
+printf '%s' "$g2_out" | grep -q 'implement_edit_verified=true'
+test -f "$repo_dir/lib/gf-notification-queue-demo.ts"
+test -f "$repo_dir/test/gf-notification-queue-demo.test.ts"
+grep -q 'AWS::SQS::Queue' "$repo_dir/test/gf-notification-queue-demo.test.ts"
+
 echo "implement-app-run builtin KMS recovery with relative MODULE_PATH argv"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-kms-rel"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+kms_body='Enable KMS encryption on the S3 bucket in lib/sample-stack.ts using KMS_MANAGED.'
+jq -n \
+  --arg body "$kms_body" \
+  --arg repo "$repo_dir" \
+  '{issue_details: {number: 2, title: "Fix encryption on SampleStack", body: $body}, issue_or_pr_number: "2", repository_full_name: "sks/cdk-typescript-demo", repo_clone_path: $repo}' \
+  >"$work_root/notes.json"
 fail_edit="$(mktemp)"
 cat >"$fail_edit" <<'EOF'
 #!/usr/bin/env bash
@@ -122,11 +202,9 @@ set -euo pipefail
 cmp -s /nonexistent /also-missing
 EOF
 chmod +x "$fail_edit"
-rel_module="examples/fixtures/cdk-repos/generic-typescript"
-run_rel="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$rel_module" "$fail_edit" 'kms relative path' 2>&1)"
+run_rel="$(cd "$work_root" && CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "repo" "$fail_edit" 'kms relative path' 2>&1)"
 printf '%s' "$run_rel" | grep -q 'implement_edit_recovered=builtin_kms_after_script_failure'
 printf '%s' "$run_rel" | grep -q 'implement_edit_verified=true'
-git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts test/sample-stack.test.ts 2>/dev/null || true
 rm -f "$fail_edit"
 rm -rf "${FIXTURE_TS}/examples" 2>/dev/null || true
 
@@ -198,15 +276,55 @@ fi
 printf '%s' "$empty_out" | grep -q 'implement_blocker=edit_script_path_empty'
 
 echo "implement-app-run rejects mangled edit script with literal backslash-n"
-bad_edit="$(mktemp)"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-mangled-reject"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir" "$work_root/.work"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+jq -n \
+  --arg body 'Greenfield L3 — add new files only. Do not modify lib/sample-stack.ts.' \
+  '{issue_details: {number: 99, title: "G-only", body: $body}, issue_or_pr_number: "99"}' \
+  >"$work_root/notes.json"
+bad_edit="$work_root/.work/implement-edits.sh"
 printf '%s\n' '#!/bin/bash' 'echo literal\\nbroken' 'true' >"$bad_edit"
 chmod +x "$bad_edit"
-if bad_run="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$FIXTURE_TS" "$bad_edit" 'x' 2>&1)"; then
+if bad_run="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$repo_dir" "$bad_edit" 'x' 2>&1)"; then
   echo "FAIL: implement-app-run should reject mangled edit script: $bad_run" >&2
   exit 1
 fi
 printf '%s' "$bad_run" | grep -q 'implement_blocker=edit_script_mangled_escapes'
 rm -f "$bad_edit"
+
+echo "implement-app-run recovers B2 block-public-access from mangled edit script"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-mangled-b2"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+jq -n \
+  --arg body "Brownfield — edit lib/sample-stack.ts only. Add blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL to SampleStack S3 bucket." \
+  '{issue_or_pr_number: "27", repository_full_name: "sks/cdk-typescript-demo", issue_body: $body}' \
+  >"$work_root/notes.json"
+bad_b2_edit="$(mktemp)"
+printf '%s\n' '#!/bin/bash' 'echo literal\\nbroken' 'true' >"$bad_b2_edit"
+chmod +x "$bad_b2_edit"
+mangled_b2_out="$(CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$repo_dir" "$bad_b2_edit" 'block public access' 2>&1)" || true
+if ! printf '%s' "$mangled_b2_out" | grep -q 'implement_edit_recovered=builtin_block_public_access_mangled_escapes'; then
+  echo "FAIL: mangled B2 edit should recover via builtin block public access: $mangled_b2_out" >&2
+  exit 1
+fi
+grep -q 'blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL' "$repo_dir/lib/sample-stack.ts"
+rm -f "$bad_b2_edit"
 
 echo "implement-app-run rejects edit script with heredoc"
 heredoc_edit="$(mktemp)"
@@ -304,6 +422,51 @@ if ! test -s "$work_root/.work/pr-body.md"; then
 fi
 grep -q 'CDK validation' "$work_root/.work/pr-body.md"
 git -C "$repo_dir" log -1 --format=%s | grep -q 'feat(cdk):'
+
+echo "commit-pr greenfield PR title/body without repo_kind in notes (trace PR#12)"
+wr_parent="$(mktemp -d)"
+work_root="$wr_parent/.wf-gf-pr"
+repo_dir="$work_root/repo"
+mkdir -p "$repo_dir"
+cp -a "$FIXTURE_TS/." "$repo_dir/"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" config user.email "test@test.com"
+git -C "$repo_dir" config user.name "test"
+git -C "$repo_dir" add -A
+git -C "$repo_dir" commit -q -m "init"
+mkdir -p "$repo_dir/lib" "$repo_dir/test"
+cat >"$repo_dir/lib/gf-archive-bucket-demo.ts" <<'TS'
+import { Construct } from 'constructs';
+export class GfArchiveBucketDemo extends Construct {}
+TS
+cat >"$repo_dir/test/gf-archive-bucket-demo.test.ts" <<'TS'
+test('placeholder', () => { expect(true).toBe(true); });
+TS
+git -C "$repo_dir" add lib/gf-archive-bucket-demo.ts test/gf-archive-bucket-demo.test.ts
+issue_title='G1 greenfield: VersionedArchiveBucket 20260624-000339'
+issue_body='Greenfield L3 — add new files only. Do not modify lib/sample-stack.ts.
+
+## Deliverables
+1. lib/gf-archive-bucket-demo.ts — export construct
+2. test/gf-archive-bucket-demo.test.ts — Jest test'
+jq -n \
+  --arg title "$issue_title" \
+  --arg body "$issue_body" \
+  '{issue_details: {number: 5, title: $title, body: $body}, issue_or_pr_number: "5"}' \
+  >"$work_root/notes.json"
+gf_pr_out="$(GIT_TOKEN=fake CDKBOT_ALLOW_DIRECT=1 CDKBOT_SKIP_ISSUE_FETCH=1 bash "${ROOT}/scripts/stage-runner.sh" commit-pr "$work_root" 'sks/cdk-typescript-demo' '5' '' 'main' 2>&1)" || true
+if ! test -s "$work_root/.work/pr-body.md"; then
+  echo "FAIL: greenfield commit-pr should write pr-body.md: $gf_pr_out" >&2
+  exit 1
+fi
+grep -q 'VersionedArchiveBucket' "$work_root/.work/pr-body.md"
+grep -q 'CDK validation' "$work_root/.work/pr-body.md"
+grep -q 'Deliverables (from issue)' "$work_root/.work/pr-body.md"
+git -C "$repo_dir" log -1 --format=%s | grep -q 'VersionedArchiveBucket construct'
+if grep -q 'Terraform resources' "$work_root/.work/pr-body.md"; then
+  echo "FAIL: greenfield CDK PR body must not use Terraform template" >&2
+  exit 1
+fi
 
 echo "commit-pr ignores WORKING_BRANCH spawn placeholder (trace 30cad5fbade9)"
 wr_parent="$(mktemp -d)"

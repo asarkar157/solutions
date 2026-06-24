@@ -171,13 +171,47 @@ if [ -z "$REPO" ] || [ ! -d "$REPO" ]; then
   exit 1
 fi
 
+log "seed workflow notes for commit-pr"
+issue_details_json="$(printf '%s' "$PAYLOAD" | jq -c '.issue')"
+jq -n \
+  --arg rf "$REPO_FULL" \
+  --arg in "$ISSUE_NUM" \
+  --arg rb "$BRANCH" \
+  --arg details "$issue_details_json" \
+  '{repository_full_name: $rf, issue_or_pr_number: $in, repository_default_branch: $rb, issue_details: ($details | fromjson)}' \
+  >"$WORK_ROOT/notes.json"
+
+run_commit_pr_if_needed() {
+  if grep -qE '^pr_url=https?://' "$WORK_ROOT/implement.out" 2>/dev/null; then
+    log "PR already opened during implement-app-run"
+    grep -E '^(pr_url|working_branch|pr_title)=' "$WORK_ROOT/implement.out" || true
+    return 0
+  fi
+  if [ -z "${GIT_TOKEN:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+    export GIT_TOKEN="$GITHUB_TOKEN"
+  fi
+  if [ -z "${GIT_TOKEN:-}" ]; then
+    log "SKIP commit-pr — export GIT_TOKEN or GITHUB_TOKEN to open a real PR"
+    return 0
+  fi
+  log "commit-pr (draft before validate)"
+  bash "${PACK}/stage-runner.sh" commit-pr "$WORK_ROOT" "$REPO_FULL" "$ISSUE_NUM" "" "$BRANCH" \
+    | tee "$WORK_ROOT/commit-pr.out"
+  if ! grep -qE '^pr_url=https?://' "$WORK_ROOT/commit-pr.out"; then
+    echo "FAIL: commit-pr did not return pr_url" >&2
+    grep -E '^(pr_error|pr_blocker)=' "$WORK_ROOT/commit-pr.out" >&2 || true
+    return 1
+  fi
+  grep -E '^(pr_url|working_branch|pr_title)=' "$WORK_ROOT/commit-pr.out"
+}
+
 log "2/4 implement-app-preflight + edit script"
 bash "${PACK}/stage-runner.sh" implement-app-preflight "$REPO" | tee "$WORK_ROOT/preflight.out"
 bash "${PACK}/stage-runner.sh" prepare-implement-edits "$WORK_ROOT" "$REPO" | tee "$WORK_ROOT/prepare.out"
 EDIT_SH="${WORK_ROOT}/.work/implement-edits.sh"
 write_kms_edit_script "$EDIT_SH" "$REPO" "$TARGET_FILE"
 
-log "3/4 implement-app-run"
+log "3/5 implement-app-run"
 bash "${PACK}/stage-runner.sh" implement-app-run "$REPO" "$EDIT_SH" "kms_encryption_${TARGET_FILE//\//_}" \
   | tee "$WORK_ROOT/implement.out"
 
@@ -187,7 +221,9 @@ if ! grep -q 'implement_edit_verified=true' "$WORK_ROOT/implement.out"; then
   exit 1
 fi
 
-log "4/4 validate (pass 1)"
+run_commit_pr_if_needed || exit 1
+
+log "4/5 validate (pass 1)"
 run_validate
 if grep -q '^module_quality_summary=PASS' "$WORK_ROOT/validate.out"; then
   log "PASS on first validate"
@@ -199,7 +235,7 @@ fi
 log "validate NEEDS_REVISION — loop-back fixes (cdk.json + test)"
 apply_loopback_fixes "$REPO"
 
-log "4/4 validate (pass 2 — after loop-back)"
+log "5/5 validate (pass 2 — after loop-back)"
 run_validate
 grep -E '^(validation_summary|module_quality_summary)=' "$WORK_ROOT/validate.out"
 

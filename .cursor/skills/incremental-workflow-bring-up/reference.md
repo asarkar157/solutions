@@ -74,6 +74,8 @@ Session events hold orchestrator `note()` calls. Extract real note bodies with P
 
 ## Trim example (first stage only)
 
+**Gate stages** (`*-blocked-gate`, `validate-loop-gate`) use `skip_to` / `loop_to` targets. Any stage referenced there **must** appear in `stages` — otherwise Temporal fails with `target "validate" not found in stage plans`. When trimming past implement, keep `validate` if gate stages remain; or drop gates and wire `implement-cdk` → `stage_depends_on = ["clone"]` directly.
+
 ```hcl
 stages = [
   { stage_id = "intake-clone-bootstrap", description = "Parse webhook, clone repo", required = true },

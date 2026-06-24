@@ -363,8 +363,8 @@ if ! grep -q 'stage-runner.sh commit-pr' "${ROOT}/spawn_contracts.tf"; then
   exit 1
 fi
 
-if ! grep -q 'skipping commit-pr because pr_url is set' "${ROOT}/spawn_contracts.tf"; then
-  echo "FAIL: create-pr-runner must forbid skipping commit-pr when pr_url is set (rework push)" >&2
+if ! grep -q 'skipping commit-pr execute_series because pr_url is set' "${ROOT}/spawn_contracts.tf"; then
+  echo "FAIL: create-pr-runner must forbid skipping commit-pr execute_series on rework when pr_url is set" >&2
   exit 1
 fi
 
@@ -807,8 +807,38 @@ clone_ver="$(grep 'script_pack_version=' "${ROOT}/templates/clone-execute-series
 if [ "$clone_ver" = "script_pack_version" ]; then
   clone_ver="$(grep 'script_pack_version=' "${ROOT}/templates/clone-execute-series-embedded.sh.tftpl" | tail -1 | sed -E 's/.*\$\{([^}]+)\}.*/\1/')"
 fi
-if [ "$pack_main" != "20260624.1" ]; then
-  echo "FAIL: expected script_pack_version 20260624.1 in main.tf (got ${pack_main})" >&2
+if [ "$pack_main" != "20260624.16" ]; then
+  echo "FAIL: expected script_pack_version 20260624.16 in main.tf (got ${pack_main})" >&2
+  exit 1
+fi
+
+if ! grep -q 'greenfield_working_branch_from_issue' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must derive gf branch from deliverable paths" >&2
+  exit 1
+fi
+
+if ! grep -q 'create-pr-runner-retry' "${STAGE_NOTES}/edit.md.tftpl"; then
+  echo "FAIL: edit stage note must document create-pr-runner-retry for spawn dedup" >&2
+  exit 1
+fi
+
+if ! grep -q 'skip.*create-pr-runner' "${STAGE_NOTES}/edit.md.tftpl"; then
+  echo "FAIL: edit stage note must skip create-pr-runner when pr_url already set" >&2
+  exit 1
+fi
+
+if ! grep -q 'implement-cdk-app-update-retry' "${STAGE_NOTES}/edit.md.tftpl"; then
+  echo "FAIL: edit stage note must document implement-cdk-app-update-retry for spawn dedup" >&2
+  exit 1
+fi
+
+if ! grep -q 'lib_test_has_changes' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must detect untracked lib/test files for greenfield postcheck" >&2
+  exit 1
+fi
+
+if ! grep -q 'try_builtin_g1_greenfield_recovery' "${ROOT}/scripts/stage-runner.sh"; then
+  echo "FAIL: stage-runner must scaffold G1 greenfield deliverables when agent edits fail" >&2
   exit 1
 fi
 
@@ -1015,7 +1045,7 @@ if ! grep -q 'repo_kind=cdk_app' "${ROOT}/templates/cdk-bot-orchestration-sop.md
   exit 1
 fi
 
-if ! awk '/cdk_spawn_context_discovery_scaffold/,/^  cdk_spawn_context =/' "${ROOT}/spawn_contracts.tf" | grep -q 'cdkbot_pack_dir}/stage-runner.sh catalog-scaffold'; then
+if ! grep -Fq 'cdkbot_pack_dir}/stage-runner.sh catalog-scaffold' "${ROOT}/spawn_contracts.tf"; then
   echo "FAIL: catalog scaffold command must invoke \${cdkbot_pack_dir}/stage-runner.sh catalog-scaffold" >&2
   exit 1
 fi

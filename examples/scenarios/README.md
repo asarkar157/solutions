@@ -37,7 +37,7 @@ make demo-list                      # list available scenarios
 | [`spec-symphony`](spec-symphony/) | Stage 5 SDD factory: webhooks → remote runner → spec → PR. | `make demo SCENARIO=spec-symphony` |
 | [`sre-boost`](sre-boost/) | Add GitHub, AWS, remote runner to an **existing** SRE agent. | `make demo SCENARIO=sre-boost` |
 | [`slo-weekly-review`](slo-weekly-review/) | OpenSLO from GitHub + Grafana Prometheus → weekly Slack digest. | `make demo SCENARIO=slo-weekly-review` |
-| [`cdk-bot`](cdk-bot/) | CDK bot agent — GitHub issue/PR → validate → quality loop → register. | `make demo SCENARIO=cdk-bot` |
+| [`cdk-bot`](cdk-bot/) | GitHub issue → CDK change + quality checks → draft PR (plain-English README + runner scripts). | `make demo SCENARIO=cdk-bot` |
 | [`clean-tenant-reset`](clean-tenant-reset/) | Utility: reset demo tenant to foundation + policies baseline. | `make demo SCENARIO=clean-tenant-reset` |
 
 ---

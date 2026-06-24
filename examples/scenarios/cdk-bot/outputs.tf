@@ -1,14 +1,14 @@
+output "webhook_ingress_payload_url" {
+  value     = module.cdk_bot.webhook_ingress_payload_url
+  sensitive = true
+}
+
 output "agent_names" {
   value = module.cdk_bot.agent_names
 }
 
 output "workflow_name" {
   value = module.cdk_bot.workflow_name
-}
-
-output "webhook_ingress_payload_url" {
-  value     = module.cdk_bot.webhook_ingress_payload_url
-  sensitive = true
 }
 
 output "remote_runner_name" {

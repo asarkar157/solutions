@@ -18,7 +18,7 @@ clone → clone-blocked-gate → implement-cdk → validate → validate-loop-ga
 | Stage | Allowed runners | Forbidden |
 |-------|-----------------|-----------|
 | `clone` | `clone-runner`, `clone-fetch`, `progress-comment-updater` | `implement-cdk-*`, `validate-runner`, `create-pr-*`, `load_skill` |
-| `implement-cdk` | `implement-cdk-resolve-paths`, `implement-cdk-app-update`, `implement-cdk-catalog-scaffold`, `create-pr-runner`, `progress-comment-updater` | `validate-runner`, `create-pr-notify`, `load_skill` |
+| `implement-cdk` | `implement-cdk-resolve-paths`, `implement-cdk-app-update`, `implement-cdk-app-update-retry`, `implement-cdk-catalog-scaffold`, `create-pr-runner`, `create-pr-runner-retry`, `progress-comment-updater` | `validate-runner`, `create-pr-notify`, `load_skill` |
 | `validate` | `validate-runner`, `create-pr-notify`, `create-pr-comment`, `progress-comment-updater` | `create-pr-runner`, `implement-cdk-*`, `load_skill` |
 
 ========================================================================
@@ -62,7 +62,7 @@ When `enable_progress_issue_comment=true`, each agent stage ends with ONE `progr
 3g) When `ask_clarifying_question` is appropriate
 ========================================================================
 
-Use for: missing PAT, ambiguous `module_paths` when issue body lacks file hints. **Never** for CDK edits when `issue_details.body` names files — re-spawn `implement-cdk-app-update`.
+Use for: missing PAT, ambiguous `module_paths` when issue body lacks file hints. **Never** for CDK edits when `issue_details.body` names files — re-spawn `implement-cdk-app-update-retry` (not duplicate `implement-cdk-app-update`; Guild spawn dedup blocks repeats).
 
 ========================================================================
 3h) Workflow script pack — single-command embed

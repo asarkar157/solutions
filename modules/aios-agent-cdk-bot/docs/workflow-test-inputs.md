@@ -28,7 +28,8 @@ Webhook filter: `issue.created`, `pull_request.opened`.
 
 | ID | Fixture | Trigger | Title | Labels | Expected |
 |----|---------|---------|-------|--------|----------|
-| T1 | `generic-typescript` | issue | Add S3 bucket construct with versioning | — | Greenfield → validate → draft PR |
+| **G1** | `generic-typescript` | issue | `G1 greenfield: VersionedArchiveBucket {token}` | — | **Preferred greenfield** — new `lib/gf-archive-bucket-{token}.ts` + matching test; no edits to `sample-stack.ts`; draft PR on `cdk-bot/gf-{token}` |
+| T1 | `generic-typescript` | issue | Add S3 bucket construct with versioning | — | Greenfield → validate → draft PR (legacy; vague scope) |
 | T2 | `generic-typescript` | issue | Fix encryption on SampleStack | — | Edit `lib/sample-stack.ts` |
 | T3 | `catalog-typescript` | issue | `aws_s3_versioned_bucket` | `cdk-construct-request` | Template I catalog scaffold |
 | T4 | `catalog-typescript` | issue | same | *(none)* | Label gate blocked |
@@ -36,7 +37,18 @@ Webhook filter: `issue.created`, `pull_request.opened`.
 | T6 | `generic-python` | issue | Add Lambda construct | — | Python validate path |
 | T7 | any + AWS | issue | vpc from lookup | — | AWS synth when `enable_aws_validation` |
 
-## Sample payload (T1)
+## Sample payload (G1 greenfield — preferred)
+
+Trigger via scenario script (creates GitHub issue + webhook):
+
+```bash
+cd examples/scenarios/cdk-bot
+./scripts/trigger-greenfield-g1.sh --repo your-org/cdk-typescript-demo
+```
+
+Issue body uses a unique run token and explicit file paths so implement cannot no-op on an existing file.
+
+## Sample payload (T1 — legacy)
 
 ```json
 {

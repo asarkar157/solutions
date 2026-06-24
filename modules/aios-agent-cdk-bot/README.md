@@ -1,5 +1,11 @@
 # AWS CDK bot (`aios-agent-cdk-bot`)
 
+**Plain language:** When someone opens a GitHub issue on your CDK repo, this agent reads the request, applies the code change on a remote worker, runs your quality checks, and opens a **draft pull request** — only after lint, typecheck, synth, tests, and security scans all pass. Humans review and merge; the bot does not ship to production by itself.
+
+**Try it:** [`examples/scenarios/cdk-bot`](../../examples/scenarios/cdk-bot) has a step-by-step demo README (including a non-technical “what success looks like” section).
+
+---
+
 Guild agent pack for **GitHub-driven AWS CDK** changes with a **zero-defect validate bar** before any draft PR:
 
 lint, typecheck, `cdk synth`, cfn-lint, assertion-based unit tests, and cdk-nag must all **PASS**.

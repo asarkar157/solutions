@@ -2,6 +2,11 @@ variable "stackgen_url" {
   type = string
 }
 
+variable "stackgen_insecure" {
+  type    = bool
+  default = false
+}
+
 variable "stackgen_token" {
   type      = string
   sensitive = true

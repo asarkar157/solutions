@@ -32,6 +32,17 @@ mirror_note() {
   echo "mirrored:${key}" >&2
 }
 
+# repository_full_name_from_url derives owner/repo from a GitHub clone URL for commit-pr trigger fields.
+repository_full_name_from_url() {
+  local url="${1:-}"
+  if [ -z "$url" ]; then
+    return 0
+  fi
+  if [[ "$url" =~ github\.com[:/]([^/]+)/([^/.]+) ]]; then
+    printf '%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  fi
+}
+
 bootstrap_gh() {
   local git_token="${GIT_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
   export GIT_TOKEN="$git_token" GH_TOKEN="$git_token" GITHUB_TOKEN="$git_token"
@@ -215,6 +226,14 @@ cmd_clone() {
   fi
   mirror_note "$work_root" "repo_clone_path" "$repo_dir"
   mirror_note "$work_root" "repo_head_sha" "$sha"
+  mirror_note "$work_root" "issue_or_pr_number" "$issue_or_pr"
+  mirror_note "$work_root" "repository_default_branch" "$default_branch"
+  mirror_note "$work_root" "repository_clone_url" "$repo_clone_url"
+  local repo_full_name
+  repo_full_name="$(repository_full_name_from_url "$repo_clone_url")"
+  if [ -n "$repo_full_name" ]; then
+    mirror_note "$work_root" "repository_full_name" "$repo_full_name"
+  fi
   if [ -n "${CDKBOT_PACK_DIR:-}" ] && [ -f "${CDKBOT_PACK_DIR}/stage-runner.sh" ]; then
     mkdir -p "$work_root/.pack"
     cp "${CDKBOT_PACK_DIR}/stage-runner.sh" "$work_root/.pack/stage-runner.sh"
