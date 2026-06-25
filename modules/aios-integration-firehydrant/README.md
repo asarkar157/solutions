@@ -23,7 +23,7 @@ module "firehydrant" {
 
 ## Guild catalog
 
-Confirm the integration type and image tag with your StackGen Guild deployment (`GET /api/v1/integrations/types`). Default image: `ghcr.io/appcd-dev/stackgen-guild-integration-firehydrant:main`.
+Registered in Guild `builtins.json` as type `firehydrant`. Default image: `ghcr.io/appcd-dev/stackgen-guild-integration-firehydrant:main`.
 
 ## Outputs
 

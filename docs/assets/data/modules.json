@@ -795,6 +795,109 @@
       "usage": "module \"sonarqube_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-sonarqube?ref=main\"\n\n  server_url = \"https://sonar.example.com\"\n  token      = var.sonarqube_token\n}"
     },
     {
+      "id": "aios-integration-kubernetes",
+      "name": "Kubernetes (EKS) Integration",
+      "desc": "EKS kubectl integration for read-only cluster inspection via IAM role assumption.",
+      "layer": 1,
+      "tags": ["kubernetes", "eks", "aws", "integration", "sre", "aiden", "use-case"],
+      "icon": "\u2699\ufe0f",
+      "vars": [
+        { "n": "role_arn", "t": "string", "r": false },
+        { "n": "region", "t": "string", "r": false },
+        { "n": "cluster_name", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"kubernetes\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-kubernetes?ref=main\"\n\n  role_arn = var.eks_role_arn\n  region = \"us-west-2\"\n  cluster_name = \"my-cluster\"\n}"
+    },
+    {
+      "id": "aios-integration-digitalocean",
+      "name": "DigitalOcean Integration",
+      "desc": "DigitalOcean cloud integration via doctl CLI probe.",
+      "layer": 1,
+      "tags": ["digitalocean", "cloud", "integration", "aiden", "use-case"],
+      "icon": "\u2601\ufe0f",
+      "vars": [
+        { "n": "digitalocean_token", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"digitalocean\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-digitalocean?ref=main\"\n\n  digitalocean_token = var.do_token\n}"
+    },
+    {
+      "id": "aios-integration-coralogix",
+      "name": "Coralogix Integration",
+      "desc": "Coralogix observability integration (alerts and dashboards).",
+      "layer": 1,
+      "tags": ["coralogix", "observability", "integration", "sre", "aiden", "use-case"],
+      "icon": "\ud83d\udcca",
+      "vars": [
+        { "n": "coralogix_api_key", "t": "string", "r": false },
+        { "n": "coralogix_base_url", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"coralogix\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-coralogix?ref=main\"\n\n  coralogix_api_key = var.coralogix_key\n}"
+    },
+    {
+      "id": "aios-integration-civo",
+      "name": "Civo Integration",
+      "desc": "Civo cloud integration via Civo CLI.",
+      "layer": 1,
+      "tags": ["civo", "cloud", "integration", "aiden", "use-case"],
+      "icon": "\u2601\ufe0f",
+      "vars": [
+        { "n": "civo_api_key", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"civo\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-civo?ref=main\"\n\n  civo_api_key = var.civo_key\n}"
+    },
+    {
+      "id": "aios-integration-newrelic",
+      "name": "New Relic Integration",
+      "desc": "New Relic remote MCP integration (US/EU regional endpoint).",
+      "layer": 1,
+      "tags": ["newrelic", "observability", "integration", "sre", "aiden", "use-case"],
+      "icon": "\ud83d\udcc8",
+      "vars": [
+        { "n": "newrelic_api_key", "t": "string", "r": false },
+        { "n": "newrelic_region", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"newrelic\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-newrelic?ref=main\"\n\n  newrelic_api_key = var.nr_key\n  newrelic_region = \"us\"\n}"
+    },
+    {
+      "id": "aios-integration-circleci",
+      "name": "CircleCI Integration",
+      "desc": "CircleCI MCP integration for pipelines and workflows.",
+      "layer": 1,
+      "tags": ["circleci", "cicd", "integration", "devops", "aiden", "use-case"],
+      "icon": "\u26a1",
+      "vars": [
+        { "n": "circleci_token", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"circleci\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-circleci?ref=main\"\n\n  circleci_token = var.circleci_token\n}"
+    },
+    {
+      "id": "aios-integration-squadcast",
+      "name": "Squadcast Integration",
+      "desc": "Squadcast incident management integration.",
+      "layer": 1,
+      "tags": ["squadcast", "incident", "integration", "sre", "aiden", "use-case"],
+      "icon": "\ud83d\udea8",
+      "vars": [
+        { "n": "squadcast_refresh_token", "t": "string", "r": false },
+        { "n": "squadcast_region", "t": "string", "r": false },
+        { "n": "existing_secret_id", "t": "string", "r": false }
+      ],
+      "outputs": ["integration_name", "secret_id"],
+      "usage": "module \"squadcast\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-squadcast?ref=main\"\n\n  squadcast_refresh_token = var.squadcast_token\n}"
+    },
+    {
       "id": "aios-integration-langfuse",
       "name": "Langfuse Integration",
       "desc": "Langfuse LLM observability: traces, cost, and quality scoring. API keys in Vault; containerized Guild integration sidecar.",

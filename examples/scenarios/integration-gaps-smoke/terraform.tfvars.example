@@ -1,0 +1,10 @@
+stackgen_url   = "http://localhost:8088"
+stackgen_token = "your-stackgen-token"
+# stackgen_insecure = true
+
+name_prefix = "integration-gaps-smoke"
+
+# Enable integrations you can test (all default false).
+# enable_sonarqube = true
+# sonarqube_server_url = "https://sonarcloud.io"
+# sonarqube_token      = "..."

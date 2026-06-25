@@ -150,6 +150,13 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-argocd` | Argo CD GitOps integration |
 | `modules/aios-integration-jenkins` | Jenkins CI/CD integration (Remote MCP) |
 | `modules/aios-integration-sonarqube` | SonarQube quality gate integration |
+| `modules/aios-integration-kubernetes` | EKS kubectl integration (read-only cluster inspection) |
+| `modules/aios-integration-digitalocean` | DigitalOcean CLI integration |
+| `modules/aios-integration-coralogix` | Coralogix observability integration |
+| `modules/aios-integration-civo` | Civo cloud integration |
+| `modules/aios-integration-newrelic` | New Relic remote MCP integration |
+| `modules/aios-integration-circleci` | CircleCI MCP integration |
+| `modules/aios-integration-squadcast` | Squadcast incident management integration |
 | `modules/aios-agent-sre` | SRE agents and incident workflows |
 | `modules/aios-agent-alert-triage` | Grafana alert RCA — webhook ingest + Rego filter, prior-incident memory, PromQL query probe, ReAcTree hypothesis investigation, optional AWS/GitHub/k8s enrichment, Slack RCA publish |
 | `modules/aios-agent-aws-sre` | AWS-focused SRE |

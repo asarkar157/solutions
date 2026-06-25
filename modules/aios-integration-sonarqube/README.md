@@ -23,10 +23,6 @@ module "sonarqube_integration" {
 }
 ```
 
-## Catalog note
-
-Confirm `sonarqube` is registered in your StackGen Guild integration catalog before apply.
-
 ## Outputs
 
 | Name | Description |
