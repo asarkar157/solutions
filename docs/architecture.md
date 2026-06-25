@@ -62,6 +62,8 @@ graph TD
         I_GH["aios-integration-github"]
         I_UB["aios-integration-ubuntu"]
         I_CH["aios-integration-clickhouse"]
+        I_DB["aios-integration-database<br/>aios-integration-mysql …"]
+        I_ES["aios-integration-elasticsearch"]
         I_DD["aios-integration-datadog"]
         I_PD["aios-integration-pagerduty"]
         I_SN["aios-integration-servicenow"]

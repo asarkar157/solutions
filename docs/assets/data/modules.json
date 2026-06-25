@@ -799,15 +799,42 @@
       "name": "Kubernetes (EKS) Integration",
       "desc": "EKS kubectl integration for read-only cluster inspection via IAM role assumption.",
       "layer": 1,
-      "tags": ["kubernetes", "eks", "aws", "integration", "sre", "aiden", "use-case"],
-      "icon": "\u2699\ufe0f",
-      "vars": [
-        { "n": "role_arn", "t": "string", "r": false },
-        { "n": "region", "t": "string", "r": false },
-        { "n": "cluster_name", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "kubernetes",
+        "eks",
+        "aws",
+        "integration",
+        "sre",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "⚙️",
+      "vars": [
+        {
+          "n": "role_arn",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "region",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "cluster_name",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"kubernetes\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-kubernetes?ref=main\"\n\n  role_arn = var.eks_role_arn\n  region = \"us-west-2\"\n  cluster_name = \"my-cluster\"\n}"
     },
     {
@@ -815,13 +842,30 @@
       "name": "DigitalOcean Integration",
       "desc": "DigitalOcean cloud integration via doctl CLI probe.",
       "layer": 1,
-      "tags": ["digitalocean", "cloud", "integration", "aiden", "use-case"],
-      "icon": "\u2601\ufe0f",
-      "vars": [
-        { "n": "digitalocean_token", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "digitalocean",
+        "cloud",
+        "integration",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "☁️",
+      "vars": [
+        {
+          "n": "digitalocean_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"digitalocean\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-digitalocean?ref=main\"\n\n  digitalocean_token = var.do_token\n}"
     },
     {
@@ -829,14 +873,36 @@
       "name": "Coralogix Integration",
       "desc": "Coralogix observability integration (alerts and dashboards).",
       "layer": 1,
-      "tags": ["coralogix", "observability", "integration", "sre", "aiden", "use-case"],
-      "icon": "\ud83d\udcca",
-      "vars": [
-        { "n": "coralogix_api_key", "t": "string", "r": false },
-        { "n": "coralogix_base_url", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "coralogix",
+        "observability",
+        "integration",
+        "sre",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "📊",
+      "vars": [
+        {
+          "n": "coralogix_api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "coralogix_base_url",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"coralogix\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-coralogix?ref=main\"\n\n  coralogix_api_key = var.coralogix_key\n}"
     },
     {
@@ -844,13 +910,30 @@
       "name": "Civo Integration",
       "desc": "Civo cloud integration via Civo CLI.",
       "layer": 1,
-      "tags": ["civo", "cloud", "integration", "aiden", "use-case"],
-      "icon": "\u2601\ufe0f",
-      "vars": [
-        { "n": "civo_api_key", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "civo",
+        "cloud",
+        "integration",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "☁️",
+      "vars": [
+        {
+          "n": "civo_api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"civo\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-civo?ref=main\"\n\n  civo_api_key = var.civo_key\n}"
     },
     {
@@ -858,14 +941,36 @@
       "name": "New Relic Integration",
       "desc": "New Relic remote MCP integration (US/EU regional endpoint).",
       "layer": 1,
-      "tags": ["newrelic", "observability", "integration", "sre", "aiden", "use-case"],
-      "icon": "\ud83d\udcc8",
-      "vars": [
-        { "n": "newrelic_api_key", "t": "string", "r": false },
-        { "n": "newrelic_region", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "newrelic",
+        "observability",
+        "integration",
+        "sre",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "📈",
+      "vars": [
+        {
+          "n": "newrelic_api_key",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "newrelic_region",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"newrelic\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-newrelic?ref=main\"\n\n  newrelic_api_key = var.nr_key\n  newrelic_region = \"us\"\n}"
     },
     {
@@ -873,13 +978,31 @@
       "name": "CircleCI Integration",
       "desc": "CircleCI MCP integration for pipelines and workflows.",
       "layer": 1,
-      "tags": ["circleci", "cicd", "integration", "devops", "aiden", "use-case"],
-      "icon": "\u26a1",
-      "vars": [
-        { "n": "circleci_token", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "circleci",
+        "cicd",
+        "integration",
+        "devops",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "⚡",
+      "vars": [
+        {
+          "n": "circleci_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"circleci\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-circleci?ref=main\"\n\n  circleci_token = var.circleci_token\n}"
     },
     {
@@ -887,14 +1010,36 @@
       "name": "Squadcast Integration",
       "desc": "Squadcast incident management integration.",
       "layer": 1,
-      "tags": ["squadcast", "incident", "integration", "sre", "aiden", "use-case"],
-      "icon": "\ud83d\udea8",
-      "vars": [
-        { "n": "squadcast_refresh_token", "t": "string", "r": false },
-        { "n": "squadcast_region", "t": "string", "r": false },
-        { "n": "existing_secret_id", "t": "string", "r": false }
+      "tags": [
+        "squadcast",
+        "incident",
+        "integration",
+        "sre",
+        "aiden",
+        "use-case"
       ],
-      "outputs": ["integration_name", "secret_id"],
+      "icon": "🚨",
+      "vars": [
+        {
+          "n": "squadcast_refresh_token",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "squadcast_region",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "secret_id"
+      ],
       "usage": "module \"squadcast\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-squadcast?ref=main\"\n\n  squadcast_refresh_token = var.squadcast_token\n}"
     },
     {
@@ -1022,6 +1167,528 @@
         "secret_id"
       ],
       "usage": "module \"clickhouse_integration\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-clickhouse?ref=main\"\n\n  clickhouse_host      = \"abc123.us-east-1.aws.clickhouse.cloud\"\n  clickhouse_password  = var.clickhouse_password\n  clickhouse_mcp_image = \"your-registry/mcp-clickhouse:latest\"\n}"
+    },
+    {
+      "id": "aios-integration-database",
+      "name": "Database (PostgreSQL)",
+      "desc": "PostgreSQL MCP integration via Guild database sidecar (mcp-server-postgres). Vault keys: driver, dsn, read_only.",
+      "layer": 1,
+      "tags": [
+        "postgres",
+        "database",
+        "sql",
+        "integration"
+      ],
+      "icon": "🐘",
+      "vars": [
+        {
+          "n": "dsn",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "driver",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "read_only",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"postgres\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-database?ref=main\"\n\n  integration_name = \"prod-postgres\"\n  dsn              = var.postgres_dsn\n  read_only        = \"true\"\n  database_mcp_image   = var.database_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-elasticsearch",
+      "name": "Elasticsearch Integration",
+      "desc": "Elasticsearch index search and analytics via official Elastic MCP server sidecar.",
+      "layer": 1,
+      "tags": [
+        "elasticsearch",
+        "search",
+        "database",
+        "integration"
+      ],
+      "icon": "🔍",
+      "vars": [
+        {
+          "n": "es_url",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "es_api_key",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "es_ssl_skip_verify",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"elasticsearch\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-elasticsearch?ref=main\"\n\n  integration_name = \"prod-elasticsearch\"\n  es_url           = \"https://elasticsearch.example.com:9200\"\n  es_api_key       = var.elasticsearch_api_key\n  elasticsearch_mcp_image = var.elasticsearch_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-influxdb",
+      "name": "InfluxDB Integration",
+      "desc": "InfluxDB time-series queries via Guild InfluxDB MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "influxdb",
+        "timeseries",
+        "database",
+        "integration"
+      ],
+      "icon": "📈",
+      "vars": [
+        {
+          "n": "instance_url",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "token",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "product_type",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"influxdb\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-influxdb?ref=main\"\n\n  integration_name = \"prod-influxdb\"\n  instance_url     = var.influxdb_url\n  token            = var.influxdb_token\n  influxdb_mcp_image = var.influxdb_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-milvus",
+      "name": "Milvus Integration",
+      "desc": "Zilliz Cloud / Milvus vector operations via zilliz-mcp-server sidecar.",
+      "layer": 1,
+      "tags": [
+        "milvus",
+        "vector",
+        "database",
+        "integration"
+      ],
+      "icon": "🧬",
+      "vars": [
+        {
+          "n": "token",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "uri",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"milvus\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-milvus?ref=main\"\n\n  integration_name = \"prod-milvus\"\n  token            = var.zilliz_cloud_token\n  milvus_mcp_image   = var.milvus_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-mongodb",
+      "name": "MongoDB Integration",
+      "desc": "MongoDB document queries via Guild MongoDB MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "mongodb",
+        "database",
+        "integration"
+      ],
+      "icon": "🍃",
+      "vars": [
+        {
+          "n": "connection_string",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"mongodb\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-mongodb?ref=main\"\n\n  integration_name    = \"prod-mongodb\"\n  connection_string   = var.mongodb_uri\n  mongodb_mcp_image  = var.mongodb_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-mssql",
+      "name": "Microsoft SQL Server Integration",
+      "desc": "SQL Server queries via Guild MSSQL MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "mssql",
+        "sqlserver",
+        "database",
+        "integration"
+      ],
+      "icon": "🗃️",
+      "vars": [
+        {
+          "n": "mssql_host",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "mssql_password",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "mssql_database",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "mssql_user",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"mssql\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-mssql?ref=main\"\n\n  integration_name = \"prod-mssql\"\n  mssql_host       = var.mssql_host\n  mssql_password   = var.mssql_password\n  mssql_mcp_image    = var.mssql_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-mysql",
+      "name": "MySQL Integration",
+      "desc": "MySQL SQL queries via Guild MySQL MCP Toolbox sidecar.",
+      "layer": 1,
+      "tags": [
+        "mysql",
+        "database",
+        "sql",
+        "integration"
+      ],
+      "icon": "🐬",
+      "vars": [
+        {
+          "n": "mysql_host",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "mysql_password",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "mysql_database",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "mysql_user",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"mysql\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-mysql?ref=main\"\n\n  integration_name = \"prod-mysql\"\n  mysql_host       = var.mysql_host\n  mysql_password   = var.mysql_password\n  mysql_mcp_image    = var.mysql_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-neo4j",
+      "name": "Neo4j Integration",
+      "desc": "Graph queries via Guild Neo4j MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "neo4j",
+        "graph",
+        "database",
+        "integration"
+      ],
+      "icon": "🕸️",
+      "vars": [
+        {
+          "n": "uri",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "password",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "username",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"neo4j\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-neo4j?ref=main\"\n\n  integration_name = \"prod-neo4j\"\n  uri              = var.neo4j_uri\n  password         = var.neo4j_password\n  neo4j_mcp_image    = var.neo4j_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-oracle",
+      "name": "Oracle Database Integration",
+      "desc": "Oracle SQL via Guild Oracle MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "oracle",
+        "database",
+        "sql",
+        "integration"
+      ],
+      "icon": "🏛️",
+      "vars": [
+        {
+          "n": "connection_string",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "password",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "username",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"oracle\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-oracle?ref=main\"\n\n  integration_name    = \"prod-oracle\"\n  connection_string   = var.oracle_connect_string\n  username            = var.oracle_user\n  password            = var.oracle_password\n  oracle_mcp_image   = var.oracle_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-pinecone",
+      "name": "Pinecone Integration",
+      "desc": "Pinecone vector index operations via Guild Pinecone MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "pinecone",
+        "vector",
+        "database",
+        "integration"
+      ],
+      "icon": "🌰",
+      "vars": [
+        {
+          "n": "api_key",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"pinecone\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-pinecone?ref=main\"\n\n  integration_name = \"prod-pinecone\"\n  api_key          = var.pinecone_api_key\n  pinecone_mcp_image = var.pinecone_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-redis",
+      "name": "Redis Integration",
+      "desc": "Redis key operations via Guild Redis MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "redis",
+        "cache",
+        "database",
+        "integration"
+      ],
+      "icon": "⚡",
+      "vars": [
+        {
+          "n": "url",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"redis\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-redis?ref=main\"\n\n  integration_name = \"prod-redis\"\n  url              = var.redis_url\n  redis_mcp_image    = var.redis_mcp_image\n}"
+    },
+    {
+      "id": "aios-integration-timescaledb",
+      "name": "TimescaleDB Integration",
+      "desc": "TimescaleDB / Postgres time-series via dedicated Timescale MCP sidecar.",
+      "layer": 1,
+      "tags": [
+        "timescaledb",
+        "postgres",
+        "timeseries",
+        "database",
+        "integration"
+      ],
+      "icon": "⏱️",
+      "vars": [
+        {
+          "n": "dsn",
+          "t": "string",
+          "r": true
+        },
+        {
+          "n": "existing_secret_id",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "read_only",
+          "t": "string",
+          "r": false
+        },
+        {
+          "n": "integration_name",
+          "t": "string",
+          "r": false
+        }
+      ],
+      "outputs": [
+        "integration_name",
+        "integration_id",
+        "secret_id"
+      ],
+      "usage": "module \"timescaledb\" {\n  source = \"github.com/appcd-dev/solutions//modules/aios-integration-timescaledb?ref=main\"\n\n  integration_name = \"prod-timescale\"\n  dsn              = var.timescale_dsn\n  timescaledb_mcp_image = var.timescaledb_mcp_image\n}"
     },
     {
       "id": "aios-integration-cursor",

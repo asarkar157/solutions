@@ -136,6 +136,18 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-jira` | Jira ticketing integration |
 | `modules/aios-integration-linear` | Linear integration |
 | `modules/aios-integration-clickhouse` | ClickHouse integration |
+| `modules/aios-integration-mysql` | MySQL integration |
+| `modules/aios-integration-mssql` | Microsoft SQL Server integration |
+| `modules/aios-integration-oracle` | Oracle Database integration |
+| `modules/aios-integration-mongodb` | MongoDB integration |
+| `modules/aios-integration-redis` | Redis integration |
+| `modules/aios-integration-neo4j` | Neo4j integration |
+| `modules/aios-integration-timescaledb` | TimescaleDB integration |
+| `modules/aios-integration-database` | PostgreSQL (`database` vault type, `mcp-server-postgres`) |
+| `modules/aios-integration-elasticsearch` | Elasticsearch search and index MCP |
+| `modules/aios-integration-influxdb` | InfluxDB integration |
+| `modules/aios-integration-pinecone` | Pinecone vector integration |
+| `modules/aios-integration-milvus` | Milvus vector integration |
 | `modules/aios-integration-ubuntu` | Ubuntu / CLI integration |
 | `modules/aios-cce-scripts` | Shared CCE bash pack (`CCE_PACK_B64`) + outputs for agent modules; see `docs/cce-agent-integrations.md` and **`docs/cce-enterprise-workflows.md`** (seven enterprise superpowers + demo scenarios) |
 | `modules/aios-integration-cursor` | Cursor integration |
