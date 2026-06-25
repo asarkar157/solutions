@@ -147,6 +147,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-paloalto` | Palo Alto Networks PAN-OS firewall integration |
 | `modules/aios-integration-gitlab` | GitLab SCM integration |
 | `modules/aios-integration-argocd` | Argo CD GitOps integration |
+| `modules/aios-integration-jenkins` | Jenkins CI/CD integration (Remote MCP) |
 | `modules/aios-integration-sonarqube` | SonarQube quality gate integration |
 | `modules/aios-agent-sre` | SRE agents and incident workflows |
 | `modules/aios-agent-alert-triage` | Grafana alert RCA — webhook ingest + Rego filter, prior-incident memory, PromQL query probe, ReAcTree hypothesis investigation, optional AWS/GitHub/k8s enrichment, Slack RCA publish |

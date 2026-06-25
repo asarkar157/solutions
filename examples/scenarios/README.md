@@ -24,6 +24,7 @@ make demo-list                      # list available scenarios
 | [`grafana-github-rca`](grafana-github-rca/) | Grafana alert → correlate with GitHub commits → RCA (no cloud creds). | `make demo SCENARIO=grafana-github-rca` |
 | [`finops-weekly`](finops-weekly/) | Weekly FinOps summary to Slack with policy-gated cleanup proposals. | `make demo SCENARIO=finops-weekly` |
 | [`pipeline-insights`](pipeline-insights/) | Read-only CI/deployment intelligence — lowest-friction first demo. | `make demo SCENARIO=pipeline-insights` |
+| [`jenkins-sre-demo`](jenkins-sre-demo/) | Jenkins CI/CD integration with OPA safety gates for triggering production builds. | `make demo SCENARIO=jenkins-sre-demo` |
 | [`incident-triage`](incident-triage/) | Grafana alert fatigue → filtered ingest, hypothesis RCA, Slack narrative. | `make demo SCENARIO=incident-triage` |
 | [`repo-to-iac`](repo-to-iac/) | GitHub URL → inferred Terraform via StackGen MCP. | `make demo SCENARIO=repo-to-iac` |
 | [`monorepo-services-split`](monorepo-services-split/) | Monorepo → DDD boundary map and optional service extract PR. | `make demo SCENARIO=monorepo-services-split` |

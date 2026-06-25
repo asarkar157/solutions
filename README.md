@@ -161,6 +161,7 @@ Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hos
 | [`aios-integration-internal-tool`](modules/aios-integration-internal-tool/) | Internal REST operator console — `privatesaas` |
 | [`aios-integration-gitlab`](modules/aios-integration-gitlab/) | GitLab SCM — `gitops`, `privatesaas` |
 | [`aios-integration-argocd`](modules/aios-integration-argocd/) | Argo CD GitOps — `gitops`, `privatesaas` |
+| [`aios-integration-jenkins`](modules/aios-integration-jenkins/) | Jenkins CI/CD — `cicd`, `mcp` |
 | [`aios-integration-sonarqube`](modules/aios-integration-sonarqube/) | SonarQube quality gates — `gitops` |
 
 ### Agents (Layer 2)

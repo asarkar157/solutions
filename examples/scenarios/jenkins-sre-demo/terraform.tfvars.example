@@ -1,0 +1,17 @@
+# StackGen / Guild Connection
+stackgen_url        = "https://main.dev.stackgen.com"
+stackgen_token      = "YOUR_STACKGEN_PERSONAL_ACCESS_TOKEN"
+stackgen_project_id = "" # Leave blank unless matching a specific project ID
+
+# LLM Providers (At least one must be supplied)
+openai_api_key    = ""
+anthropic_api_key = ""
+gemini_api_key    = ""
+
+# Jenkins Connection
+jenkins_base_url = "https://jenkins.yourcompany.com"
+jenkins_username = "aiden-bot"
+jenkins_token    = "11a51bc90a82b..." # Jenkins User API Token
+
+# Optional Slack integration
+slack_bot_token = ""
