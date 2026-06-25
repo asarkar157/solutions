@@ -148,6 +148,7 @@ Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hos
 | [`aios-integration-aws`](modules/aios-integration-aws/) | AWS integration with IAM role assumption via Vault |
 | [`aios-integration-azure`](modules/aios-integration-azure/) | Azure integration with service principal + role assignments |
 | [`aios-integration-grafana`](modules/aios-integration-grafana/) | Grafana observability integration |
+| [`aios-integration-jira`](modules/aios-integration-jira/) | Jira issue triage and ticket management integration |
 | [`aios-integration-slack`](modules/aios-integration-slack/) | Slack ChatOps integration |
 | [`aios-integration-github`](modules/aios-integration-github/) | GitHub SCM integration |
 | [`aios-integration-clickhouse`](modules/aios-integration-clickhouse/) | ClickHouse BYOI analytics integration |
@@ -202,6 +203,7 @@ The architecture diagram above includes composite **workflow** solutions (incide
 |---------|-------------|
 | [`examples/scenarios/`](examples/scenarios/) | Pre-sales demo roots — see [`examples/scenarios/README.md`](examples/scenarios/README.md) for the index. Run with `make demo SCENARIO=<name>`. |
 | [`examples/complete/`](examples/complete/) | Runnable Terraform root: full AIOS stack (validated in CI with **OpenTofu**; Terraform is interchangeable). |
+| [`examples/jira-sre-app/`](examples/jira-sre-app/) | End-to-end Jira → SRE Copilot: create the Jira integration, then bind it onto the installed SRE app via `sg_app` (with in-depth verification notes). |
 | [`examples/sre-quickstart/`](examples/sre-quickstart/) | Minimal copy-paste HCL in the README only (no `.tf` root in this folder). |
 
 ## Local verification

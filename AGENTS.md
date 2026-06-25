@@ -133,6 +133,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 | `modules/aios-integration-github` | GitHub integration |
 | `modules/aios-integration-slack` | Slack integration |
 | `modules/aios-integration-grafana` | Grafana integration |
+| `modules/aios-integration-jira` | Jira ticketing integration |
 | `modules/aios-integration-linear` | Linear integration |
 | `modules/aios-integration-clickhouse` | ClickHouse integration |
 | `modules/aios-integration-ubuntu` | Ubuntu / CLI integration |

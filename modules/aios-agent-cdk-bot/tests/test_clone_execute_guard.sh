@@ -31,7 +31,8 @@ if ! grep -q 'TRIGGER_JSON_B64' "${CLONE_TMPL}"; then
 fi
 
 # Discrete env exports (no inline JSON).
-out="$(bash <<'EOF'
+discrete_script="$WORK/discrete-env.sh"
+cat >"$discrete_script" <<'EOF'
 set -euo pipefail
 REPO_CLONE_URL='https://github.com/stackgenhq/discovery-modules.git'
 DEFAULT_BRANCH='main'
@@ -45,7 +46,7 @@ is_placeholder_clone_url() {
 if is_placeholder_clone_url "${REPO_CLONE_URL:-}"; then exit 1; fi
 printf 'ok url=%s issue=%s\n' "$REPO_CLONE_URL" "$ISSUE_OR_PR"
 EOF
-)"
+out="$(bash "$discrete_script")"
 printf '%s' "$out" | grep -q 'ok url=https://github.com/stackgenhq/discovery-modules.git'
 
 # TRIGGER_JSON_B64 path (no quotes in JSON on shell command line).
@@ -80,7 +81,8 @@ EOF
 printf '%s' "$out2" | grep -q 'url=https://github.com/stackgenhq/discovery-modules.git'
 printf '%s' "$out2" | grep -q 'issue=9'
 
-block_out="$(bash <<'EOF'
+block_script="$WORK/block-placeholder.sh"
+cat >"$block_script" <<'EOF'
 set -euo pipefail
 REPO_CLONE_URL='https://github.com/example/example.git'
 DEFAULT_BRANCH='main'
@@ -96,7 +98,7 @@ if is_placeholder_clone_url "$REPO_CLONE_URL"; then
   exit 1
 fi
 EOF
-)" || true
+block_out="$(bash "$block_script")" || true
 printf '%s' "$block_out" | grep -q 'clone_blocker=placeholder_url'
 
 # Render clone tftpl like Terraform templatefile ($${ -> ${}) and verify bash syntax.

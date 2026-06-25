@@ -218,19 +218,25 @@ printf '%s' "$markers_out" | grep -q 'implement_edit_verified=true'
 printf '%s' "$markers_out" | grep -q 'implement_summary=from file'
 
 echo "implement-app-postcheck rejects clean tree"
-if postcheck_fail="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$FIXTURE_TS" 2>&1)"; then
+wr_parent="$(mktemp -d)"
+postcheck_repo="$wr_parent/repo"
+mkdir -p "$postcheck_repo"
+cp -a "$FIXTURE_TS/." "$postcheck_repo/"
+git -C "$postcheck_repo" init -q
+git -C "$postcheck_repo" config user.email "test@test.com"
+git -C "$postcheck_repo" config user.name "test"
+git -C "$postcheck_repo" add -A
+git -C "$postcheck_repo" commit -q -m "init"
+if postcheck_fail="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$postcheck_repo" 2>&1)"; then
   echo "FAIL: postcheck should fail when lib/ unchanged: $postcheck_fail" >&2
   exit 1
 fi
 printf '%s' "$postcheck_fail" | grep -q 'implement_blocker=no_file_edits'
 
 echo "implement-app-postcheck accepts edits"
-cp "${FIXTURE_TS}/lib/sample-stack.ts" "${FIXTURE_TS}/lib/sample-stack.ts.bak"
-echo "// postcheck test" >>"${FIXTURE_TS}/lib/sample-stack.ts"
-postcheck_ok="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$FIXTURE_TS")"
+echo "// postcheck test" >>"${postcheck_repo}/lib/sample-stack.ts"
+postcheck_ok="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-postcheck "$postcheck_repo")"
 printf '%s' "$postcheck_ok" | grep -q 'implement_edit_verified=true'
-mv "${FIXTURE_TS}/lib/sample-stack.ts.bak" "${FIXTURE_TS}/lib/sample-stack.ts"
-git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts 2>/dev/null || true
 
 echo "normalize-work-root expands \$HOME token"
 wr_out="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" normalize-work-root '$HOME/.wf-normalize-test')"
@@ -365,6 +371,15 @@ printf '%s' "$quote_run" | grep -q 'implement_blocker=edit_script_syntax_error'
 rm -f "$quote_edit"
 
 echo "implement-app-run executes edit script and emits markers"
+wr_parent="$(mktemp -d)"
+run_repo="$wr_parent/repo"
+mkdir -p "$run_repo"
+cp -a "$FIXTURE_TS/." "$run_repo/"
+git -C "$run_repo" init -q
+git -C "$run_repo" config user.email "test@test.com"
+git -C "$run_repo" config user.name "test"
+git -C "$run_repo" add -A
+git -C "$run_repo" commit -q -m "init"
 edit_sh="$(mktemp)"
 cat >"$edit_sh" <<'EOF'
 #!/usr/bin/env bash
@@ -372,12 +387,11 @@ set -euo pipefail
 echo "// implement-app-run test" >>lib/sample-stack.ts
 EOF
 chmod +x "$edit_sh"
-run_out="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$FIXTURE_TS" "$edit_sh" 'test edit applied')"
+run_out="$(CDKBOT_ALLOW_DIRECT=1 bash "${ROOT}/scripts/stage-runner.sh" implement-app-run "$run_repo" "$edit_sh" 'test edit applied')"
 printf '%s' "$run_out" | grep -q 'implement_preflight_ok=true'
 printf '%s' "$run_out" | grep -q 'implement_edit_verified=true'
 printf '%s' "$run_out" | grep -q 'implement_summary=test edit applied'
 printf '%s' "$run_out" | grep -q 'cdk_language=typescript'
-git -C "$FIXTURE_TS" checkout -- lib/sample-stack.ts 2>/dev/null || true
 rm -f "$edit_sh"
 
 echo "clone-pack rejects unexpanded \$REPO_CLONE_URL argv"
