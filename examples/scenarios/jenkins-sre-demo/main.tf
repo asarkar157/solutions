@@ -72,6 +72,7 @@ module "jenkins_integration" {
   jenkins_token      = var.jenkins_token
   jenkins_mcp_url    = var.jenkins_mcp_url
   existing_secret_id = var.existing_jenkins_secret_id
+  scope              = var.integration_scope
 }
 
 module "slack_integration" {

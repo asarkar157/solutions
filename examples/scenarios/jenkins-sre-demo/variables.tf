@@ -73,6 +73,12 @@ variable "existing_jenkins_secret_id" {
   default     = ""
 }
 
+variable "integration_scope" {
+  description = "Guild integration scope for Jenkins (e.g. PROJECT or tenant/org equivalent)."
+  type        = string
+  default     = "PROJECT"
+}
+
 variable "slack_bot_token" {
   description = "Slack Bot Token. Optional: leave empty to skip the Slack integration in this scenario (the agent still runs in Guild chat)."
   type        = string
