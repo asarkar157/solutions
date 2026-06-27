@@ -81,6 +81,7 @@ scenario_pitch() {
     cfn-author)         echo "Intent to CloudFormation PR + drift + compliance on Bedrock. (foundation-bedrock, github, aws, agent-cfn-author)";;
     spec-symphony)      echo "Spec Kit / OpenSpec factory on remote runner. (GitHub + Linear webhooks → SDD pipeline → PR)";;
     sre-boost)          echo "Boost an existing SRE agent with GitHub + AWS + on-prem runner. (no new models or agents; agent_name required)";;
+    episodic-memory)    echo "Store then recall episodic memory across sessions. (memory-tutor agent, no integrations)";;
     clean-tenant-reset) echo "Wipe to a known baseline between demos. (foundation + policies only)";;
     *)                  return 1;;
   esac
@@ -225,11 +226,6 @@ doctor() {
       ;;
     datadog-aws-rca)
       info "Checking GitHub (required — attaches GitHub to SRE app)"
-      ;;
-    grafana-github-rca)
-      info "Checking Grafana"
-      check_var GRAFANA_SERVER required "GRAFANA_SERVER" || fail=1
-      check_var GRAFANA_TOKEN required "GRAFANA_TOKEN" || fail=1
       ;;
     repo-to-iac|monorepo-services-split)
       info "Checking GitHub repo URL"
