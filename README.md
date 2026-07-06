@@ -1,37 +1,69 @@
-# AIOS Modules — Reusable Terraform Modules for AI Operations
+# AIOS Modules — Aiden 2.0 Terraform Modules for AI Operations
 
 [![OpenTofu](https://img.shields.io/badge/OpenTofu-1.9.x-FFEC00?logo=opentofu&logoColor=black)](https://opentofu.org/)
 [![Terraform](https://img.shields.io/badge/Terraform-interchangeable-blue.svg)](https://www.terraform.io/)
 [![Provider](https://img.shields.io/badge/Provider-StackGen-%23FF6B35.svg)](https://appcd-dev.github.io/terraform-provider-stackgen/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![CI](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/appcd-dev/solutions/actions/workflows/ci.yml)
+[![CI](https://github.com/asarkar157/solutions/actions/workflows/ci.yml/badge.svg)](https://github.com/asarkar157/solutions/actions/workflows/ci.yml)
 
-Production-ready, composable Terraform modules for bootstrapping **AIOS (AI Operations)** solutions — autonomous SRE agents, incident response workflows, software engineering pipelines, and supply chain security scanners.
+Production-ready, composable Terraform modules for onboarding **Aiden 2.0 / AIOS (AI Operations)** into your own StackGen/Guild tenant: autonomous SRE agents, incident response workflows, software engineering pipelines, and supply chain security scanners.
 
-## For solutions engineers (start here)
+## Start here
 
-**Primary entry point:** [Adopt the repo](https://appcd-dev.github.io/solutions/adopt/) on GitHub Pages — three paths with numbered steps, migration guide picker, and production checklist.
+Use this repository to choose an Aiden capability, wire the required integrations, and apply it into your StackGen/Guild environment with OpenTofu or Terraform.
 
-The repo serves **three jobs**. Pick the one that matches what you are doing right now.
+### Prerequisites
+
+Before you run an example or consume a module, make sure you have:
+
+- **Git** and access to this private GitHub repository.
+- **OpenTofu** or **Terraform** `>= 1.5`. OpenTofu `1.9.x` is preferred and is what CI uses; Terraform is interchangeable for `fmt`, `init`, `validate`, `plan`, and `apply`.
+- A **StackGen/Guild tenant URL** and **StackGen API key** with permission to create the Guild resources you plan to manage.
+- At least one **LLM provider API key** for the foundation module, such as OpenAI, Anthropic, or Gemini.
+- Credentials for the integrations you enable, such as AWS role ARN, GitHub token or app credentials, Slack bot token, Grafana token, Datadog keys, PagerDuty token, or ServiceNow credentials.
+- Provider registry credentials for `releases.stackgen.com` if your environment requires authenticated provider downloads.
+
+Set these in your shell before running examples. Leave optional values empty until the module you choose needs them:
+
+```bash
+export STACKGEN_URL="https://<your-stackgen-host>"
+export STACKGEN_TOKEN="<your-stackgen-api-key>"
+export STACKGEN_PROJECT_ID="<optional-project-or-org-id>"
+export TF_TOKEN_releases_stackgen_com="<provider-registry-token-if-required>"
+
+export OPENAI_API_KEY="<openai-key-if-used>"
+export ANTHROPIC_API_KEY="<anthropic-key-if-used>"
+export GEMINI_API_KEY="<gemini-key-if-used>"
+
+export TF_VAR_stackgen_url="$STACKGEN_URL"
+export TF_VAR_stackgen_token="$STACKGEN_TOKEN"
+export TF_VAR_stackgen_project_id="$STACKGEN_PROJECT_ID"
+export TF_VAR_openai_api_key="$OPENAI_API_KEY"
+export TF_VAR_anthropic_api_key="$ANTHROPIC_API_KEY"
+export TF_VAR_gemini_api_key="$GEMINI_API_KEY"
+```
+
+Do not commit API keys, `.tfvars` files with secrets, Terraform state files, or generated plans.
+
+The repo serves **four common onboarding jobs**. Pick the one that matches what you are doing right now.
 
 | You are… | Where to go |
 |----------|-------------|
-| **Demoing Aiden to a prospect in the next 30 minutes.** | [SE Playbook](docs/se-playbook.md) — prospect-question → scenario map. Then `make demo SCENARIO=<name>` — see [`examples/scenarios/README.md`](examples/scenarios/README.md) for the full index. |
-| **Capturing a UI-clicked Guild tenant into Terraform** (PoC → prod, multi-env, customer hand-off, DR). | [aios-export](docs/aios-export.md) (Pages) or [`tools/aios-export/`](tools/aios-export/) — read-only export of agents / workflows / remote runners. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; integrations / policies / schedules / secrets / webhooks are **not** captured today — hand-merge them. |
-| **Composing your own root from individual modules** (advanced / customer extending the library). | [Prerequisites](docs/prerequisites.md) → [Onboarding step 4](docs/onboarding/04-use-a-module.md) → [`examples/complete/`](examples/complete/). |
+| **Installing Aiden capabilities into a tenant for the first time.** | Start with [Adopt the repo](docs/adopt.md), then follow [Prerequisites](docs/prerequisites.md) and [Onboarding step 4](docs/onboarding/04-use-a-module.md). |
+| **Trying a focused scenario before composing your own stack.** | Browse [`examples/scenarios/README.md`](examples/scenarios/README.md), then run `make demo SCENARIO=<name>` for the scenario that matches your use case. |
+| **Capturing a UI-created Guild tenant into Terraform** for repeatable environments, DR, or handoff. | Use [aios-export](docs/aios-export.md) or [`tools/aios-export/`](tools/aios-export/) for read-only export of agents / workflows / remote runners. Phase 1 emits a JSON snapshot + raw `sg_*` HCL; integrations / policies / schedules / secrets / webhooks are **not** captured today, so hand-merge them. |
+| **Composing your own root from individual modules.** | Use [`examples/complete/`](examples/complete/) as the full reference graph, then copy only the module blocks you need. |
 
-> If your prospect has not seen Aiden yet, **skip the repo** — open the Guild UI. Come back once they nod at the concept.
+Scenario requests and suggested improvements can be filed as GitHub issues in this repository.
 
-Feedback / scenario requests live in [`docs/se-feedback.md`](docs/se-feedback.md). Scenario reviewers per area are pinned in [`CONTRIBUTORS-SE.md`](CONTRIBUTORS-SE.md). The loop is **automated** by [`modules/aios-agent-scenario-author`](modules/aios-agent-scenario-author/) — it reads every `scenario-request` issue and either points you at the matching scenario or scaffolds a draft PR within minutes.
+## Guided onboarding
 
-## Guided onboarding (GitHub Pages)
-
-Step-by-step docs live under [`docs/`](docs/) as a [Jekyll](https://jekyllrb.com/) site published at **https://appcd-dev.github.io/solutions/**.
+Step-by-step docs live under [`docs/`](docs/) as Markdown and as an optional [Jekyll](https://jekyllrb.com/) site. If GitHub Pages is enabled for this private repo, use the Pages URL shown in repository settings; otherwise read the files directly in GitHub.
 
 | Page | Purpose |
 |------|---------|
 | [Adopt the repo](docs/adopt.md) | **Start here** — three adoption paths, migration picker, production checklist |
-| [SE Playbook](docs/se-playbook.md) | Prospect question → scenario map |
+| [Scenario guide](docs/se-playbook.md) | Outcome → scenario map |
 | [Prerequisites](docs/prerequisites.md) | Credentials and provider auth checklist |
 | [Glossary](docs/glossary.md) | Plain-English definitions for StackGen, Guild, agents, workflows, and related terms |
 | [Onboarding](docs/onboarding/) | Compose-path deep dive (steps 1–5) |
@@ -45,7 +77,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 |------|---------|
 | [`modules/`](modules/) | One directory per Terraform module (foundation, integrations, agents, policies). Each module is intended to be used via a `module` block `source` pointing at this repo (see [Quick start](#quick-start)). |
 | [`examples/`](examples/) | Runnable Terraform roots that compose modules for local experimentation and CI validation (`examples/complete`). Snippet-only quickstarts live next to them as READMEs. |
-| [`docs/`](docs/) | **GitHub Pages** site — [adopt](docs/adopt.md), [onboarding](docs/onboarding/), [use-case catalog](docs/use-case-catalog.md), [architecture](docs/architecture.md) |
+| [`docs/`](docs/) | Customer onboarding docs — [adopt](docs/adopt.md), [onboarding](docs/onboarding/), [use-case catalog](docs/use-case-catalog.md), [architecture](docs/architecture.md) |
 | [`AGENTS.md`](AGENTS.md) | **Cursor / IDE / AI assistants** — how to compose modules, provider setup, layer order, and module inventory (keep in sync when adding modules). |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
@@ -80,7 +112,7 @@ Each layer depends only on the layers below it. Pick exactly what you need.
 
 ```hcl
 module "foundation" {
-  source = "github.com/appcd-dev/solutions//modules/aios-foundation"
+  source = "github.com/asarkar157/solutions//modules/aios-foundation"
 
   stackgen_url   = "https://main.dev.stackgen.com"
   stackgen_token = var.stackgen_token
@@ -91,11 +123,11 @@ module "foundation" {
 }
 
 module "policies" {
-  source = "github.com/appcd-dev/solutions//modules/aios-policies"
+  source = "github.com/asarkar157/solutions//modules/aios-policies"
 }
 
 module "sre_agents" {
-  source = "github.com/appcd-dev/solutions//modules/aios-agent-sre"
+  source = "github.com/asarkar157/solutions//modules/aios-agent-sre"
 
   model_names = module.foundation.model_names
   policy_ids  = module.policies.policy_ids
@@ -132,7 +164,7 @@ See [`examples/complete/`](examples/complete/) for a full reproduction of the AI
 
 ## 📦 Available Modules
 
-Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hosted): **[`docs/use-case-catalog.md`](docs/use-case-catalog.md)**. Interactive catalog with tags: **[GitHub Pages module catalog](https://appcd-dev.github.io/solutions/module-catalog/)** (or [`docs/module-catalog.md`](docs/module-catalog.md) locally).
+Customer-situation → module mapping (SaaS, PrivateSaaS, multi-tenant, self-hosted): **[`docs/use-case-catalog.md`](docs/use-case-catalog.md)**. Interactive catalog with tags: [`docs/module-catalog.md`](docs/module-catalog.md), or the same page on GitHub Pages if enabled for this private repo.
 
 ### Foundation (Layer 0)
 
@@ -254,14 +286,6 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (runs on pull r
 | **Workflow stage bindings** | [`scripts/verify-workflow-stage-bindings.py`](scripts/verify-workflow-stage-bindings.py) — every `sg_workflow` `stage_bindings` entry must set `agent_ref`, `parallel_agents`, or `action_type` (same rule as Guild `WORKFLOW_HAS_UNBOUND_STAGE` on webhooks/schedules). |
 | **OpenTofu validate** | [`scripts/terraform-validate-all.sh`](scripts/terraform-validate-all.sh) runs **`tofu`** (or **`terraform`** if only that is installed) in every Terraform root under `modules/` and `examples/`. |
 | **DB state split tftpl** | [`scripts/verify-db-state-split-templates.sh`](scripts/verify-db-state-split-templates.sh) renders `modules/aios-agent-db-state-splitter/templates/db-state-split-orchestration.md.tftpl` with dummy inputs (catches template errors without StackGen credentials). |
-
-## 🔧 Prerequisites
-
-**When consuming these modules in your own stack:**
-
-- **OpenTofu** or **Terraform** `>= 1.5` (see modules’ `required_version` and [`.opentofu-version`](.opentofu-version) / CI above)
-- **StackGen** platform with Guild enabled, and **terraform-provider-stackgen** **`>= 0.1.25, < 0.2.0`** from `releases.stackgen.com` (matches module pins; includes `sg_agent.auto_approve_tools` object blocks, `data.sg_app`/`data.sg_apps` (`integrations` list), `sg_webhook` in-place updates, evidence checklists, remediation `approve`, remote runner attach, `sg_guild_integration.env`, and adopt-on-conflict for bundles/models/workflows/webhooks) ([provider reference docs](https://appcd-dev.github.io/terraform-provider-stackgen/))
-- LLM API keys (OpenAI, Anthropic, and/or Gemini) as required by your chosen modules
 
 ## 📄 License
 
