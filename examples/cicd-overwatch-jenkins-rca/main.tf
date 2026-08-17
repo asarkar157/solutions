@@ -11,6 +11,7 @@ terraform {
 provider "sg" {
   stackgen_url   = var.stackgen_url
   stackgen_token = var.stackgen_token
+  project_id     = var.stackgen_project_id
 }
 
 variable "stackgen_url" {
@@ -20,6 +21,11 @@ variable "stackgen_url" {
 variable "stackgen_token" {
   type      = string
   sensitive = true
+}
+
+variable "stackgen_project_id" {
+  description = "StackGen project (organization) ID to scope all resources to (the POC workspace)."
+  type        = string
 }
 
 module "cicd_overwatch_jenkins_rca" {
