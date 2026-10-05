@@ -1,3 +1,4 @@
-display_name: Guild Solutions Aiden Deployer
-short_description: Deploy Aiden workflows via Terraform modules.
-default_prompt: Use Guild-Solutions as the Terraform framework to deploy or update Aiden agent workflows. Ask only for StackGen URL, PAT token, and workspace name; infer the workspace UUID before planning.
+interface:
+  display_name: "Guild Solutions Aiden Deployer"
+  short_description: "Capture Aiden workspaces and deploy with Terraform."
+  default_prompt: "Use $guild-solutions-aiden-deployer to initialize my Aiden workspace: synthesize TFstate, generate matching Terraform IaC, and verify a zero-diff plan for the entire workspace; ask for missing StackGen URL, PAT, and workspace name."

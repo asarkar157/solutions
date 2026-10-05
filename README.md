@@ -79,6 +79,7 @@ Optional local preview: `cd docs && bundle install && bundle exec jekyll serve` 
 | [`examples/`](examples/) | Runnable Terraform roots that compose modules for local experimentation and CI validation (`examples/complete`). Snippet-only quickstarts live next to them as READMEs. |
 | [`docs/`](docs/) | Customer onboarding docs — [adopt](docs/adopt.md), [onboarding](docs/onboarding/), [use-case catalog](docs/use-case-catalog.md), [architecture](docs/architecture.md) |
 | [`AGENTS.md`](AGENTS.md) | **Cursor / IDE / AI assistants** — how to compose modules, provider setup, layer order, and module inventory (keep in sync when adding modules). |
+| [`skills/guild-solutions-aiden-deployer/`](skills/guild-solutions-aiden-deployer/SKILL.md) | Agent-agnostic workspace initialization/import, full capture, matching Terraform IaC, zero-diff verification, and safe deployment guidance. |
 | [`scripts/`](scripts/) | Shell helpers invoked by the [`Makefile`](Makefile) and [GitHub Actions](.github/workflows/ci.yml). |
 
 **Conventions:** Modules declare `terraform { required_version = ">= 1.5" }` (HCL block name is unchanged under OpenTofu). **Prefer [OpenTofu](https://opentofu.org/)** (`tofu` CLI); [HashiCorp Terraform](https://www.terraform.io/) (`terraform`) is **interchangeable** for `fmt`, `init`, `validate`, `plan`, and `apply`. Rego policies are shipped as separate `sg_policy` bodies (each `.rego` file is validated in isolation in CI). The StackGen provider is resolved from `releases.stackgen.com` (see [Local verification](#local-verification) for authentication).

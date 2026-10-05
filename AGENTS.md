@@ -213,6 +213,7 @@ For a working full graph, start from `examples/complete/main.tf`.
 
 - **terraform-ls**: Hover and completion use `description` on variables/outputs — keep module `variables.tf` / `outputs.tf` descriptions accurate when changing contracts.
 - **Terraform/OpenTofu extension**: Set workspace root to the customer’s root where `provider "sg"` lives; use submodule opens only for reading source.
+- **Workspace capture and deployment skill**: [`guild-solutions-aiden-deployer`](skills/guild-solutions-aiden-deployer/SKILL.md) — initialize/import an existing workspace through full inventory → managed TFstate → matching IaC → a refreshed zero-diff plan, then deploy only requested changes. Agent-agnostic instructions and bundled UUID lookup; agents can read or install the same skill folder.
 
 ## When editing this repository
 
